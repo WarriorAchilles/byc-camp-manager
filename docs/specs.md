@@ -12,12 +12,11 @@ Node.js + React Web Application | PostgreSQL Database | AWS Deployment
 >
 > 1. **Age Groups** - What age groups should be used for dorm assignments? (e.g., 7-9, 10-12, 13-15). These will be configurable by super admins, but we need sensible defaults.
 > 2. **Camp Capacity** - Is there a maximum number of campers? Should registration automatically close when capacity is reached?
-> 3. **Discount Structure** - What is the exact pricing for multi-child family discounts? (e.g., 3rd child is X% off, 4th child is Y% off, or flat dollar amounts?)
-> 4. **Base Registration Fee** - What is the per-camper registration fee?
-> 5. **Camper Information Fields** - The registration form currently collects standard camp info (see [Camper Data Model](#camper-data-model)). Are there additional fields needed?
-> 6. **Report Requirements** - What specific summary reports do camp admins need beyond dorm rosters? See the [Reports](#reports) section for proposed examples.
-> 7. **Dorm Inventory** - How many dorms are there? What are their names, capacities, and gender designations? (These are configurable in the system, but knowing the starting set helps.)
-> 8. **Check-in Confirmation Email** - What information should be included in the email sent to parents after check-in? (e.g., dorm assignment, dorm leader name, emergency contact info?)
+> 3. **Camper Information Fields** - The registration form currently collects standard camp info (see [Camper Data Model](#camper-data-model)). Are there additional fields needed?
+> 4. **Report Requirements** - What specific summary reports do camp admins need beyond dorm rosters? See the [Reports](#reports) section for proposed examples.
+> 5. **Dorm Inventory** - How many dorms are there? What are their names, capacities, and gender designations? (These are configurable in the system, but knowing the starting set helps.)
+> 6. **Merchandise Pricing** - What merch items will be available for pre-order (t-shirts, hats, etc.)? What are the prices and available sizes/options? Merch pricing can be configured in the admin interface and may also be adjustable through Stripe.
+> 7. **Check-in Confirmation Email** - What information should be included in the email sent to parents after check-in? (e.g., dorm assignment, dorm leader name, emergency contact info?)
 
 ---
 
@@ -137,13 +136,30 @@ The parent adds one or more campers. For each camper, the following information 
 - Parent/guardian provides a **digital legal signature** (typed full name + checkbox acknowledgment, or drawn signature via signature pad).
 - Timestamp and IP address recorded for legal purposes.
 
-#### Step 4 - Payment
+#### Step 4 - Merchandise Pre-Order (Optional)
 
-- Display itemized pricing showing per-camper fee and any applicable multi-child discounts.
+- After the medical release, the parent is presented with available camp merchandise for pre-order (e.g., t-shirts, hats).
+- Each merch item displays its name, price, and available options (size, color, etc.).
+- The parent can select items and quantities per camper or per family as appropriate.
+- Pre-ordering is optional - the parent can skip this step entirely.
+- **Purpose:** Pre-orders allow the camp to order only the exact quantities and sizes needed, eliminating excess inventory carried over between years.
+- **TBD: Specific merch items and pricing.** Super admins can configure available merchandise, options, and prices through the admin interface.
+
+#### Step 5 - Payment
+
+> **UX Priority:** Pricing clarity is critical. Parents have historically been confused about how much they owe. The payment step must make the total unmistakably clear regardless of payment method.
+
+- Display a prominent, **itemized pricing breakdown** styled as a receipt/invoice:
+  - Each camper listed by name with their individual fee (e.g., "Sarah Smith - $165")
+  - If a multi-child discount applies, show the full price struck through next to the discounted price for the 3rd+ child (e.g., "~~$165~~ $90") with a label like "Family discount"
+  - Merchandise pre-order line items (if any), each with item name, options, quantity, and price
+  - A clear **subtotal** for registration fees and merchandise separately
+  - A bold, large-font **total amount due**
+- The total amount due should remain **persistently visible** on screen as the parent selects a payment method - it should not scroll out of view.
 - Parent selects payment method:
-  - **Pay now via Stripe** - Processes the payment immediately. Registration is confirmed upon successful payment.
-  - **Pay at camp with cash** - Registration is confirmed but marked as unpaid. Payment is collected and recorded by a camp admin at check-in.
-- After successful submission, a confirmation page is displayed.
+  - **Pay now via Stripe** - Processes the payment immediately (registration fee + merch). Registration is confirmed upon successful payment.
+  - **Pay at camp with cash** - Registration is confirmed but marked as unpaid. The confirmation screen and email must **clearly restate the total amount that will be due in cash at check-in** so the parent knows exactly how much to bring.
+- After successful submission, a confirmation page is displayed that repeats the full pricing breakdown and payment status.
 
 #### Post-Registration
 
@@ -151,6 +167,7 @@ The parent adds one or more campers. For each camper, the following information 
 - A confirmation email is sent to the parent/guardian email address containing:
   - Registration confirmation details
   - One QR code per registered camper (for use at check-in)
+  - Merchandise pre-order summary (if any items were ordered)
   - Any relevant camp information (dates, what to bring, etc.)
 
 ---
@@ -160,7 +177,7 @@ The parent adds one or more campers. For each camper, the following information 
 ### Stripe Integration
 
 - Stripe is used for online credit/debit card payments during registration.
-- The system creates a single Stripe charge per family registration (total of all camper fees minus discounts).
+- The system creates a single Stripe charge per family registration (total of all camper fees minus discounts, plus any merchandise pre-orders).
 - Payment status is tracked per family registration: **Paid (Stripe)**, **Paid (Cash)**, or **Unpaid**.
 
 ### Cash Payments
@@ -171,13 +188,15 @@ The parent adds one or more campers. For each camper, the following information 
 
 ### Multi-Child Discounts
 
-- **TBD: Exact discount structure.** The system will support configurable discounts based on the number of children in a single family registration:
-  - 1st child: full price
-  - 2nd child: full price
-  - 3rd child: discounted (amount TBD)
-  - 4th child: discounted (amount TBD)
-  - 5th+ child: discounted (amount TBD)
-- Super admins can configure the base registration fee and discount tiers through the admin interface.
+- The base registration fee is **$165 per camper** for the first two children in a family.
+- Starting with the **3rd child**, the fee drops to **$90 per child**.
+- Examples:
+  - 1 camper: $165
+  - 2 campers: $330 ($165 + $165)
+  - 3 campers: $420 ($165 + $165 + $90)
+  - 4 campers: $510 ($165 + $165 + $90 + $90)
+  - 5 campers: $600 ($165 + $165 + $90 + $90 + $90)
+- Super admins can adjust the base fee and discount tier amounts through the admin interface if pricing changes in future years.
 
 ---
 
@@ -192,6 +211,7 @@ Super admins can configure the following camp-wide settings:
 - **Registration open date/time** - controls when the public form becomes accessible
 - **Base registration fee**
 - **Discount tiers** - configurable multi-child discount amounts
+- **Merchandise catalog** - items available for pre-order, with names, prices, and options (sizes, colors, etc.). **TBD: Specific items and pricing.**
 - **Age group definitions** - named age brackets used for dorm assignment (e.g., "Juniors: 7-9", "Teens: 13-15"). **TBD: Specific age groups.**
 
 ### People in the System
@@ -204,7 +224,7 @@ The system tracks three categories of people:
 | **Workers**      | Adult volunteers/staff helping at camp. Entered via admin interface or CSV. |
 | **Dorm Leaders** | Adults assigned to lead specific dorms. Entered via admin interface or CSV. |
 
-Workers and dorm leaders share a similar data profile (name, gender, contact info) but are distinguished by their role. Workers have their own separate dorms. Dorm leaders are assigned to camper dorms.
+Workers and dorm leaders share a similar data profile (name, gender, contact info) but are distinguished by their role. Workers have their own separate dorms. Dorm leaders are assigned to camper dorms. Workers and dorm leaders do not pay a registration fee - they are entered into the system by camp admins and are not part of the payment workflow.
 
 ---
 
@@ -252,7 +272,7 @@ Check-in is performed by camp admins on the day(s) campers arrive.
 Super admins can create and configure dorms with the following properties:
 
 - **Dorm name** (e.g., "Cabin A", "Building 3 Room 201")
-- **Gender** - Boys, Girls, or Workers
+- **Gender** - Boys, Girls, or Co-ed (Workers). Worker dorms are co-ed to accommodate married couples and families with young children.
 - **Age group** - One of the configured age group brackets (for camper dorms)
 - **Bed count / capacity**
 - **Assigned dorm leader(s)**
@@ -273,7 +293,7 @@ Super admins can create and configure dorms with the following properties:
   - Each dorm showing its current occupants and remaining capacity
   - An "unassigned" area for people not yet assigned to a dorm
 - Drag a camper/worker/dorm leader from one dorm to another, or from unassigned to a dorm.
-- The system should warn (but not prevent) if an assignment violates gender or age group rules, in case an admin needs to make an exception.
+- The system should warn (but not prevent) if an assignment violates gender or age group rules for camper dorms, in case an admin needs to make an exception. Gender warnings do not apply to co-ed worker dorms.
 
 ### Dorm Roster View
 
@@ -310,6 +330,7 @@ The following are proposed reports. **Camp admins should review and confirm whic
 - **Check-In Status Report** - Real-time list of who has and hasn't checked in, filterable by dorm.
 - **Emergency Contact List** - All campers with their emergency contact info, organized by dorm.
 - **Head Count Summary** - Total campers, workers, and dorm leaders on site (checked in) vs. expected.
+- **Merchandise Order Summary** - Total quantities per merch item and option (e.g., 45 Medium t-shirts, 30 Large t-shirts, 12 hats). Used for placing bulk orders with suppliers so only the exact needed quantities are purchased.
 
 ---
 
@@ -323,8 +344,10 @@ Sent immediately after a family completes registration. Contains:
 
 - Confirmation that registration was received
 - List of registered campers
+- **Full itemized pricing breakdown** (same receipt-style format shown during registration)
 - **One QR code per camper** (embedded image or attached)
-- Payment status (paid via Stripe, or reminder that cash payment is due at camp)
+- Merchandise pre-order summary (if any items were ordered)
+- Payment status: if paid via Stripe, a confirmation of payment received; if paying cash, a **prominent reminder of the exact total amount due at check-in**
 - Camp dates and relevant information
 
 ### 2. Check-In Confirmation Email
@@ -385,6 +408,25 @@ This section outlines the core data entities. Exact schema will be defined durin
 - Stripe transaction ID (if applicable)
 - Total amount charged
 - Discount applied
+- Merchandise order total
+
+### Merchandise Order
+
+- Order item ID
+- Family registration ID (FK)
+- Merch item name
+- Selected options (size, color, etc.)
+- Quantity
+- Unit price
+- Line total
+
+### Merchandise Item (Admin-Configured)
+
+- Item ID
+- Name (e.g., "Camp T-Shirt", "Camp Hat")
+- Available options (sizes, colors, etc.)
+- Price
+- Active status (whether it appears in the registration form)
 
 ### Camper
 
@@ -422,7 +464,7 @@ This section outlines the core data entities. Exact schema will be defined durin
 
 - Dorm ID
 - Name
-- Gender designation (boys / girls / workers)
+- Gender designation (boys / girls / co-ed workers)
 - Age group (FK or label)
 - Bed count / capacity
 - Assigned dorm leader(s)
