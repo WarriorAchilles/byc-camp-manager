@@ -10,13 +10,10 @@ Node.js + React Web Application | PostgreSQL Database | AWS Deployment
 >
 > The following items still need to be decided before development of the relevant features. Camp admins and stakeholders - please review and provide input.
 >
-> 1. **Age Groups** - What age groups should be used for dorm assignments? (e.g., 7-9, 10-12, 13-15). These will be configurable by super admins, but we need sensible defaults.
-> 2. **Camp Capacity** - Is there a maximum number of campers? Should registration automatically close when capacity is reached?
-> 3. **Camper Information Fields** - The registration form currently collects standard camp info (see [Camper Data Model](#camper-data-model)). Are there additional fields needed?
-> 4. **Report Requirements** - What specific summary reports do camp admins need beyond dorm rosters? See the [Reports](#reports) section for proposed examples.
-> 5. **Dorm Inventory** - How many dorms are there? What are their names, capacities, and gender designations? (These are configurable in the system, but knowing the starting set helps.)
-> 6. **Merchandise Pricing** - What merch items will be available for pre-order (t-shirts, hats, etc.)? What are the prices and available sizes/options? Merch pricing can be configured in the admin interface and may also be adjustable through Stripe.
-> 7. **Check-in Confirmation Email** - What information should be included in the email sent to parents after check-in? (e.g., dorm assignment, dorm leader name, emergency contact info?)
+> 1. **Worker T-Shirt Checkout** - The legacy worker form captures shirt size intent only. Should the in-app worker flow collect payment for worker shirts via Stripe, or remain informational with purchase handled elsewhere (online store / at camp), matching current practice?
+> 2. **Report Requirements** - What specific summary reports do camp admins need beyond dorm rosters? See the [Reports](#reports) section for proposed examples.
+> 3. **Merchandise Pricing** - What merch items will be available for pre-order (t-shirts, hats, etc.)? What are the prices and available sizes/options? Merch pricing can be configured in the admin interface and may also be adjustable through Stripe.
+> 4. **Check-in Confirmation Email** - What information should be included in the email sent to parents after check-in? (e.g., dorm assignment, dorm leader name, emergency contact info?)
 
 ---
 
@@ -25,7 +22,7 @@ Node.js + React Web Application | PostgreSQL Database | AWS Deployment
 - [1. Overview](#1-overview)
 - [2. Technical Architecture](#2-technical-architecture)
 - [3. User Roles & Authentication](#3-user-roles--authentication)
-- [4. Registration System](#4-registration-system)
+- [4. Registration System](#4-registration-system) (includes [Worker Registration Flow](#worker-registration-flow))
 - [5. Payment](#5-payment)
 - [6. Camp Management](#6-camp-management)
 - [7. Check-In](#7-check-in)
@@ -42,10 +39,10 @@ Node.js + React Web Application | PostgreSQL Database | AWS Deployment
 
 BYC Camp Manager is a web application for managing summer camp registration and on-site camp operations. The system has two major functional areas:
 
-1. **Public Registration** - A family registration form that opens at a scheduled date/time, allowing parents or campers to register one or more children, sign medical release forms, and pay via Stripe or elect to pay cash at camp.
-2. **Admin Management** - A protected admin interface for managing camper records, dorm assignments, check-in (including QR code scanning), payment tracking, and generating printable reports.
+1. **Public Registration** - Two separate unauthenticated flows, each gated by its own open date/time: **family (camper) registration** for parents/guardians, and **worker registration** for adult volunteers/staff. Campers use medical release and camper fees; workers use the field set described in [Worker Registration Flow](#worker-registration-flow) (parity with the legacy Google Form). Both support Stripe where payment applies.
+2. **Admin Management** - A protected admin interface for managing camper and worker records, dorm assignments, check-in (including QR code scanning), payment tracking, and generating printable reports.
 
-The registration system may not be used in the first year of operation. The admin/management side must be fully functional independently, supporting bulk CSV import of camper data so that camp operations can proceed even if registration was handled externally.
+The registration system may not be used in the first year of operation. The admin/management side must be fully functional independently, supporting bulk CSV import of camper (and optionally worker) data so that camp operations can proceed even if registration was handled externally.
 
 ---
 
@@ -66,9 +63,9 @@ The registration system may not be used in the first year of operation. The admi
 ### Key Technical Considerations
 
 - The admin interface must be **mobile-friendly / responsive** so that camp staff can perform check-in from their phones using the device camera for QR scanning, or from a laptop with a webcam.
-- The public registration form should be a clean, accessible, multi-step form optimized for both mobile and desktop.
+- The public **camper (family)** and **worker** registration experiences should each be a clean, accessible form (multi-step or single page) optimized for both mobile and desktop.
 - The API should be RESTful with proper authentication middleware protecting admin routes.
-- The registration form route is publicly accessible but gated by a configurable open date/time - the form is not available before the scheduled opening.
+- Public registration routes are accessible without login but each is gated by its own configurable **open date/time** until the scheduled opening (see [Registration Form Availability](#registration-form-availability)).
 
 ---
 
@@ -78,10 +75,10 @@ The registration system may not be used in the first year of operation. The admi
 
 | Role            | Description                                                                                     |
 | --------------- | ----------------------------------------------------------------------------------------------- |
-| **Super Admin** | Full system access. Can manage all settings, users, camp configuration, dorms, and camper data. |
+| **Super Admin** | Full system access. Can manage all settings, users, camp configuration (dates, registration windows, fees, camper capacity, age group definitions), dorm inventory (create/edit all dorms and capacities), and camper data. |
 | **Camp Admin**  | Operational access. Can perform check-in, view/manage camper data, manage dorms, run reports.   |
 
-There are no login-based roles for parents, campers, dorm leaders, or workers. Parents interact with the system solely through the public registration form. Dorm leaders receive printed reports from camp admins.
+There are no login-based roles for parents, campers, dorm leaders, or workers. **Parents** use the public **family (camper) registration** form. **Workers** use the public **worker registration** form (or are entered by admins / import). Dorm leaders receive printed reports from camp admins.
 
 ### Authentication
 
@@ -97,10 +94,12 @@ There are no login-based roles for parents, campers, dorm leaders, or workers. P
 
 ### Registration Form Availability
 
-- Super admins can configure a **registration open date and time** through the admin interface.
-- Before the open date, the public registration page displays a **countdown timer** showing the time remaining until registration opens. The registration form itself is not accessible until the countdown reaches zero.
-- Once the countdown reaches zero, the page automatically transitions to the live registration form - no page refresh required.
-- After the open date, the form is publicly accessible - no login or account required.
+Super admins configure **separate** open dates/times for each public flow (they may be identical for a given year if desired):
+
+- **Family (camper) registration** - open date/time, optional countdown until zero, then live form (same behavior as previously specified for the parent/camper flow). If a **camp capacity** is configured for the year (see [Camp Configuration (Super Admin)](#camp-configuration-super-admin)), the camper form must also refuse new registrations once camper headcount reaches that cap, even when the open window is still active.
+- **Worker registration** - its own open date/time and optional countdown; when closed, the worker registration route is not available; when open, no login or account is required.
+
+For each flow, before the open time the public page may display a **countdown timer**; after zero, the live form is shown (no page refresh required for countdown transition, if implemented).
 
 ### Family Registration Flow
 
@@ -116,19 +115,18 @@ Registration is structured as a **single family registration**, where a parent/g
 
 #### Step 2 - Camper Information (repeatable for each child)
 
-The parent adds one or more campers. For each camper, the following information is collected:
+The parent adds one or more campers. For each camper, collect at least the fields required for **legacy parity** with [Camper Registration - BYC 2026](https://docs.google.com/forms/d/e/1FAIpQLSeIEgbd-w0vlTgxnMCbNaKxks82kb28FRWQEl9sRRfK9tIOGw/viewform) (see [Camper fields (legacy parity)](#camper-fields-legacy-parity)). The family flow may still collect parent email and relationship in Step 1; align per-camper vs. family-level fields so nothing required on the legacy form is missing.
 
-- Full name (first and last)
-- Date of birth
-- Gender
-- Allergies / medical conditions
-- Current medications
-- Dietary restrictions
-- T-shirt size
-- Emergency contact name and phone (may default to parent info)
-- Church / organization affiliation
-- Any special needs or accommodations
-- **TBD: Additional fields as determined by camp admins**
+**Baseline per camper (legacy + existing spec where still applicable):**
+
+- Legal first name, last name, optional middle name or initial
+- Date of birth, gender
+- Mailing address (street, city, state/province/territory, zip, country) — legacy form asks that multi-camper addresses stay **congruent**; the app should allow one shared address with optional per-camper override if needed
+- Camper cell number (digits only, optional if not applicable)
+- Parent/guardian name and phone (required on legacy form; may default from Step 1)
+- Faith/church: whether the camper identifies as a Christian (yes/no), whether they have received the **gift of the Holy Ghost** since they believed (yes/no), church presently attending, pastor full name
+- T-shirt size intent (required on legacy form; options match legacy list — see parity table)
+- **Medical / dietary / allergies / medications / special needs** — collect as today if not on the public Google Form pages (may be covered by separate emergency medical form for minors, waiver step, or later pages); do not drop fields the camp still needs for operations and rosters
 
 #### Step 3 - Medical Release & Legal Agreement
 
@@ -170,15 +168,110 @@ The parent adds one or more campers. For each camper, the following information 
   - Merchandise pre-order summary (if any items were ordered)
   - Any relevant camp information (dates, what to bring, etc.)
 
+#### Camper fields (legacy parity)
+
+The **family (camper)** registration UI should expose configurable **camp header** content equivalent to the top of the legacy Google Form (dates, **check-in after 4:00 p.m.** on arrival day, ages **10–25**, venue name and address, fee summary, Square / payment links, contact phone and email, and notices: e.g. campers under 18 must submit the **emergency medical form** from [Believersyouthcamp.com/registrationforms](https://Believersyouthcamp.com/registrationforms); youth **over 25** should use the **worker** form).
+
+**Authoritative checklist** (same semantics as [Camper Registration - BYC 2026](https://docs.google.com/forms/d/e/1FAIpQLSeIEgbd-w0vlTgxnMCbNaKxks82kb28FRWQEl9sRRfK9tIOGw/viewform); cross-check all pages of the live form before release):
+
+| Field | Required on legacy form | Notes |
+| ----- | ------------------------- | ----- |
+| Email | Yes | In a **family** flow, typically one parent email for the registration; ensure every required legacy answer is captured somewhere. |
+| First name (legal) | Yes | |
+| Last name | Yes | |
+| Middle name or initial | No | |
+| Gender | Yes | **Male**, **Female** (same as legacy). |
+| Date of birth | Yes | |
+| Street address | Yes | Legacy asks that multiple campers in one family use **congruent** addresses. |
+| City | Yes | |
+| State/Province/Territory | Yes | Dropdown must match legacy: US states, **DC**, **GU**, **PR**, Canadian provinces/territories (**NL**, **PE**, **NS**, **NB**, **QC**, **ON**, **MB**, **SK**, **AB**, **BC**, **YT**, **NT**, **NU**) — verify against live form for any additions (e.g. **Other**). |
+| Zip code | Yes | |
+| Country | Yes | Free text (e.g. USA, CAN). |
+| Cell number | No | Legacy: **numerical only** (e.g. 8881234567). |
+| Parent/Guardian contact number | Yes | Numerical only on legacy form. |
+| Parent/Guardian name | Yes | |
+| Are you a Christian? | Yes | **Yes** / **No**. |
+| Have you received the gift of the Holy Ghost since you believed? | Yes | **Yes** / **No**. |
+| Church presently attending | Yes | |
+| Pastor name (first and last) | Yes | |
+| T-shirt size | Yes | Legacy options: **Not interested**, **Adult XS** … **Adult XXL**, **Youth S** … **Youth XL**, **Other**. Legacy note: unisex shirts, sold online and in person; may run large — copy can be admin-edited. |
+
+**Fees shown on legacy form (2026 copy)** — must be configurable per year; implement the same **structure** in the app and in Stripe/receipt copy:
+
+- **Before June 10:** **$165** each for 1st–2nd sibling, **$90** each for 3rd and additional siblings.
+- **On or after June 10:** **$180** each for 1st–2nd sibling, **$90** each for 3rd and additional siblings.
+
+Online pre-payment link on legacy materials: [believersyouthcamp.square.site](https://believersyouthcamp.square.site/) (Square).
+
+### Worker Registration Flow
+
+Adult workers (volunteers/staff) complete a **dedicated worker registration** in the application. Field names, option lists, and required flags must match the current production intake, which is documented in the legacy Google Form: [Worker Registration - BYC 2026](https://docs.google.com/forms/d/1zPJxB8K0RTSgX8inXz31n1qGvTppUQ8p9efKQLCNVmU/viewform) (use this as the authoritative checklist for parity during implementation and QA).
+
+The worker-facing page should display configurable **camp header** content (dates, check-in instructions, physical address, contact phone/email) equivalent to the information shown at the top of the Google Form.
+
+#### Collected fields (same semantics as the Google Form)
+
+| Field | Required | Notes |
+| ----- | -------- | ----- |
+| Email | Yes | |
+| First name | Yes | |
+| Last name | Yes | |
+| Date of birth | No | Optional on legacy form; collect when present for age verification or reporting. |
+| Gender | Yes | Options: **Male**, **Female** (same as legacy). |
+| Cell number | Yes | |
+| Alt. number | No | |
+| Street address | Yes | |
+| City | Yes | |
+| State or province | Yes | Option list must match legacy: US states, **DC**, **PR**, Canadian provinces (**ON**, **QC**, **NS**, **NB**, **MB**, **BC**, **PE**, **SK**, **AB**, **NL**), and **Other** (same set and labels as Google Form). |
+| Zip code | Yes | |
+| Country | Yes | Free text (e.g., USA, CAN) as on legacy form. |
+| How long have you been faithfully serving the Lord? | Yes | Long text. |
+| Church presently attending | Yes | |
+| Pastor name | Yes | |
+| Pastor's phone number | Yes | |
+| Preferred tasks (top 3) | Yes | Worker must rank **three** distinct choices from the fixed list below. UI copy should reflect legacy text: assignments are based on camp need, not strictly preferences; hair clinic, crafts, and serving lines are not full-time duties and volunteers selecting those may receive additional jobs. **Night Watch** and **Administrative duties** must be labeled **(pre-approval required)** in the UI. |
+| Worker T-shirt size | No | Same options as legacy: **Not interested**, **XS**, **S**, **M**, **L**, **XL**, **XXL**, **XXXL or larger**. Display the legacy note that shirts are unisex, may run large on smaller frames, and are sold online and in person (wording can be admin-edited). |
+
+**Task preference choices** (exact labels):
+
+1. Kitchen  
+2. Snack Bar  
+3. Serving Lines  
+4. Cleaning Crew  
+5. Sports and Recreation  
+6. Hair Clinic  
+7. Crafts  
+8. Medical Nurse  
+9. Night Watch (pre-approval required)  
+10. Administrative duties (pre-approval required)  
+
+#### Informational content (not form fields)
+
+Replicate the legacy form’s static guidance on the confirmation step and/or confirmation email:
+
+- Written **testimony** and **pastor’s letter of recommendation** are required for all workers; submit to the camp email or have the pastor call the designated camp contact for a verbal recommendation (contact details admin-configurable).
+- Workers and leaders are expected to follow the same rules as campers (e.g., camp rules summary admin-configurable, including legacy copy such as expectations around appearance standards if still policy).
+
+#### Post–worker registration
+
+- A **confirmation email** is sent to the worker’s email with a copy of their submitted answers (equivalent to Google Forms “get a copy of your responses”).
+- Workers do **not** pay a camp registration fee through this flow. Optional paid worker merchandise (e.g., t-shirt) is covered in [Payment](#payment) and **TBD** in Outstanding Items.
+- Each submitted worker registration creates or updates a **Worker** record for the camp year (see [Data Model](#12-data-model-overview)). Admins may still add workers manually or via CSV; import rules should avoid duplicate persons where possible (**TBD** matching strategy: email + name + year).
+
 ---
 
 ## 5. Payment
 
 ### Stripe Integration
 
-- Stripe is used for online credit/debit card payments during registration.
+- Stripe is used for online credit/debit card payments during **family (camper) registration** where the parent elects to pay now.
 - The system creates a single Stripe charge per family registration (total of all camper fees minus discounts, plus any merchandise pre-orders).
 - Payment status is tracked per family registration: **Paid (Stripe)**, **Paid (Cash)**, or **Unpaid**.
+
+### Worker registration and money
+
+- There is **no** worker “camp tuition” charge in the worker registration flow (workers are volunteers).
+- **Worker t-shirt** selection is captured as on the legacy form; whether the app charges for shirts via Stripe in the same session is **TBD** (see Outstanding Items). Until implemented, shirt rows may be informational only and fulfilled through existing online/in-person sales processes.
 
 ### Cash Payments
 
@@ -186,17 +279,30 @@ The parent adds one or more campers. For each camper, the following information 
 - During check-in, camp admins can mark the family registration as **Paid (Cash)**.
 - The system should display unpaid registrations prominently so admins can collect payment.
 
-### Multi-Child Discounts
+### Multi-Child Discounts and Early / Late Pricing
 
-- The base registration fee is **$165 per camper** for the first two children in a family.
-- Starting with the **3rd child**, the fee drops to **$90 per child**.
-- Examples:
-  - 1 camper: $165
-  - 2 campers: $330 ($165 + $165)
-  - 3 campers: $420 ($165 + $165 + $90)
-  - 4 campers: $510 ($165 + $165 + $90 + $90)
-  - 5 campers: $600 ($165 + $165 + $90 + $90 + $90)
-- Super admins can adjust the base fee and discount tier amounts through the admin interface if pricing changes in future years.
+Legacy 2026 camper materials use a **June 10** cutover for the first-two-sibling rate (see [Camper fields (legacy parity)](#camper-fields-legacy-parity)). The app should support configurable **early** and **late** base rates for the 1st–2nd child tier, plus a separate rate for the **3rd+** child tier (unchanged across cutover in current practice).
+
+**Default amounts matching current Google Form / Square copy:**
+
+- **Before the early-registration deadline (e.g. June 10):** **$165** per camper for the **first two** children; **$90** per camper for the **third and each additional** child.
+- **On or after that deadline:** **$180** per camper for the **first two** children; **$90** per camper for the **third and each additional** child.
+
+Examples (early pricing):
+
+- 1 camper: $165
+- 2 campers: $330 ($165 + $165)
+- 3 campers: $420 ($165 + $165 + $90)
+- 4 campers: $510 ($165 + $165 + $90 + $90)
+- 5 campers: $600 ($165 + $165 + $90 + $90 + $90)
+
+Examples (late pricing for 1st–2nd tier only):
+
+- 1 camper: $180
+- 2 campers: $360 ($180 + $180)
+- 3 campers: $450 ($180 + $180 + $90)
+
+Super admins configure the deadline date/time, early base fee, late base fee, and 3rd+ child fee through the admin interface.
 
 ---
 
@@ -208,11 +314,13 @@ Super admins can configure the following camp-wide settings:
 
 - **Camp name and year**
 - **Camp dates** (start and end date)
-- **Registration open date/time** - controls when the public form becomes accessible
-- **Base registration fee**
-- **Discount tiers** - configurable multi-child discount amounts
+- **Family (camper) registration open date/time** - controls when the parent/camper public form becomes accessible  
+- **Worker registration open date/time** - controls when the worker public form becomes accessible
+- **Camp capacity (camper maximum)** - optional hard cap on the number of campers for the year. When configured, the **family (camper) registration** flow must block new camper submissions once the cap is reached (with a clear message to the parent). CSV import and admin-created campers should respect the same cap or surface warnings—exact enforcement rules can be tightened during implementation so operations are never surprised.
+- **Registration fee schedule** - early vs. late **base** rate for 1st–2nd camper (e.g. $165 / $180), **cutover date/time** (e.g. June 10), and **3rd+ child** rate (e.g. $90); see [Multi-Child Discounts and Early / Late Pricing](#multi-child-discounts-and-early--late-pricing)
+- **Discount tiers** - legacy model is “2 full tiers + reduced 3rd+”; amounts are configurable
 - **Merchandise catalog** - items available for pre-order, with names, prices, and options (sizes, colors, etc.). **TBD: Specific items and pricing.**
-- **Age group definitions** - named age brackets used for dorm assignment (e.g., "Juniors: 7-9", "Teens: 13-15"). **TBD: Specific age groups.**
+- **Age group definitions** - named age brackets (each with min/max age or equivalent rules) used for **camper** dorm assignment and reporting (e.g., "Juniors: 7-9", "Teens: 13-15"). Super admins create, edit, reorder, and deactivate brackets per camp year; the product may ship with **sensible defaults** in seed data or migrations, but the live list is always admin-owned—no stakeholder sign-off is required to “freeze” age bands before build.
 
 ### People in the System
 
@@ -221,10 +329,10 @@ The system tracks three categories of people:
 | Category         | Description                                                                 |
 | ---------------- | --------------------------------------------------------------------------- |
 | **Campers**      | Children attending camp. Registered via form or CSV import.                 |
-| **Workers**      | Adult volunteers/staff helping at camp. Entered via admin interface or CSV. |
+| **Workers**      | Adult volunteers/staff helping at camp. Registered via the **worker registration** form, and/or entered via admin interface or CSV. |
 | **Dorm Leaders** | Adults assigned to lead specific dorms. Entered via admin interface or CSV. |
 
-Workers and dorm leaders share a similar data profile (name, gender, contact info) but are distinguished by their role. Workers have their own separate dorms. Dorm leaders are assigned to camper dorms. Workers and dorm leaders do not pay a registration fee - they are entered into the system by camp admins and are not part of the payment workflow.
+Workers and dorm leaders share a similar data profile (name, gender, contact info) but are distinguished by their role. Workers are assigned only to **worker dorms** (dorms whose purpose is worker housing). Dorm leaders are assigned to **camper dorms**. The system treats camper dorms and worker dorms as distinct types so assignments and rules stay correct. Workers and dorm leaders do not pay a registration fee - they are entered into the system by camp admins and are not part of the payment workflow.
 
 ---
 
@@ -238,7 +346,7 @@ Check-in is performed by camp admins on the day(s) campers arrive.
 2. Admin activates the device camera (phone camera or laptop webcam).
 3. Admin scans the camper's QR code.
 4. The system looks up the camper and displays:
-   - Camper name and photo (if available)
+   - Camper name
    - Dorm assignment (building/room name)
    - Payment status (paid or unpaid - if unpaid, prompt admin to collect cash and mark as paid)
    - Any medical notes or special needs flagged for attention
@@ -269,31 +377,37 @@ Check-in is performed by camp admins on the day(s) campers arrive.
 
 ### Dorm Configuration
 
+The **full dorm inventory** for a camp year—how many dorms exist, and each dorm’s name, bed capacity, **purpose (camper vs worker)**, and (where applicable) gender designation—is defined only in the system by **super admins** (create, edit, archive). There is no dependency on an external “starting list” from stakeholders before development; initial-year data is entered through the admin UI (or optional bulk tools if added later).
+
 Super admins can create and configure dorms with the following properties:
 
-- **Dorm name** (e.g., "Cabin A", "Building 3 Room 201")
-- **Gender** - Boys, Girls, or Co-ed (Workers). Worker dorms are co-ed to accommodate married couples and families with young children.
-- **Age group** - One of the configured age group brackets (for camper dorms)
+- **Dorm purpose** - **Camper dorm** or **Worker dorm**. This is the primary way the system distinguishes housing for youth from housing for staff/volunteers; it drives which people can be assigned, which fields apply, and which validation rules run.
+- **Dorm name** (e.g., "Cabin A", "Building 3 Room 201", "Staff Lodge")
+- **Gender designation**
+  - **Camper dorms** - Always **single gender**: **Boys** or **Girls** only. Co-ed is not available for camper dorms.
+  - **Worker dorms** - Configurable per dorm: **Boys**, **Girls**, or **Co-ed**. Co-ed supports married couples, families with young children, or any camp policy that allows mixed-gender worker housing; single-gender worker dorms are available when the camp prefers to separate by gender.
+- **Age group** - One of the configured age group brackets (**camper dorms only**; worker dorms do not use camper age brackets for assignment logic)
 - **Bed count / capacity**
-- **Assigned dorm leader(s)**
+- **Assigned dorm leader(s)** (**camper dorms**; worker dorms do not need assigned leaders)
 
 ### Auto-Assignment
 
-- When camper data is available (via registration or CSV import), the system can **auto-assign campers to dorms** based on:
-  - Gender
+- When camper data is available (via registration or CSV import), the system can **auto-assign campers to camper dorms** based on:
+  - Gender (must match the dorm's single-gender designation)
   - Age group (calculated from date of birth)
 - Auto-assignment fills dorms up to their bed capacity.
-- Workers are auto-assigned to worker-designated dorms.
+- Workers are auto-assigned only to dorms with **purpose = Worker**. Workers are never auto-assigned into camper dorms, and campers are never auto-assigned into worker dorms.
 
 ### Manual Assignment (Drag and Drop)
 
 - After auto-assignment (or at any time), camp admins can **manually reassign** people between dorms using a **drag-and-drop interface**.
 - The interface should display:
-  - All dorms grouped by gender / type
+  - **Camper dorms** and **worker dorms** in clearly separated sections (or with explicit labels), each further grouped by gender designation as appropriate
   - Each dorm showing its current occupants and remaining capacity
   - An "unassigned" area for people not yet assigned to a dorm
-- Drag a camper/worker/dorm leader from one dorm to another, or from unassigned to a dorm.
-- The system should warn (but not prevent) if an assignment violates gender or age group rules for camper dorms, in case an admin needs to make an exception. Gender warnings do not apply to co-ed worker dorms.
+- Drag a person from one dorm to another, or from unassigned to a dorm. Valid targets depend on role: **campers** and **dorm leaders** only in **camper dorms**; **workers** only in **worker dorms**. The UI should block or strongly discourage invalid combinations (e.g., a camper or dorm leader in a worker dorm, or a worker in a camper dorm).
+- The system should warn (but not prevent) if an assignment violates gender or age group rules **for camper dorms**, in case an admin needs to make an exception.
+- **Worker dorms:** If the dorm is **co-ed**, gender mismatch warnings do not apply. If the dorm is **single gender** (Boys or Girls), the same style of gender warning as for camper dorms applies when assigning someone of a different gender.
 
 ### Dorm Roster View
 
@@ -323,7 +437,7 @@ All reports should be viewable on screen and available as **printable / PDF-expo
 
 The following are proposed reports. **Camp admins should review and confirm which are needed:**
 
-- **Registration Summary** - Total registrations, breakdown by age group, gender, payment status.
+- **Registration Summary** - Total registrations, breakdown by age group, gender, payment status; include **worker registration** counts and optional breakdown by preferred tasks.
 - **Financial Summary** - Total revenue collected (Stripe vs. cash), outstanding unpaid registrations, discount amounts applied.
 - **Medical Summary** - All campers with allergies, medications, or special medical needs, grouped by dorm. Useful for camp nurse / medical staff.
 - **Dietary Needs Report** - All campers with dietary restrictions, for kitchen staff.
@@ -336,11 +450,11 @@ The following are proposed reports. **Camp admins should review and confirm whic
 
 ## 10. Email Notifications
 
-The system sends emails at two points:
+The system sends transactional emails at the points below.
 
-### 1. Registration Confirmation Email
+### 1. Family (camper) registration confirmation
 
-Sent immediately after a family completes registration. Contains:
+Sent immediately after a family completes **camper** registration. Contains:
 
 - Confirmation that registration was received
 - List of registered campers
@@ -350,15 +464,23 @@ Sent immediately after a family completes registration. Contains:
 - Payment status: if paid via Stripe, a confirmation of payment received; if paying cash, a **prominent reminder of the exact total amount due at check-in**
 - Camp dates and relevant information
 
-### 2. Check-In Confirmation Email
+### 2. Worker registration confirmation
 
-Sent to the parent/guardian email after a camper is checked in at camp. Contains:
+Sent immediately after a worker submits **worker registration**. Contains:
+
+- Confirmation that the registration was received
+- A **copy of submitted responses** (all fields), equivalent to Google Forms’ emailed response copy
+- Reminders from the informational block (testimony, pastor recommendation, rules expectations) as appropriate
+
+### 3. Check-In Confirmation Email
+
+Sent to the parent/guardian email after a **camper** is checked in at camp. Contains:
 
 - Confirmation that the camper has been checked in
 - Dorm assignment
 - **TBD: Additional info to include (dorm leader name, emergency contact info, etc.)**
 
-No other automated emails are sent. If parents need to update information, they contact the camp directly.
+No other automated emails are required beyond the above and any future explicitly scoped notifications. If registrants need to update information, they contact the camp directly unless a future portal is added.
 
 ---
 
@@ -375,6 +497,7 @@ The software may not be ready for public registration before the first year's ca
 - Super admins upload a CSV file through the admin interface.
 - The system validates the file, previews the data, and shows any errors or warnings before committing the import.
 - Imported campers are treated identically to online-registered campers for all management features.
+- **Worker import (optional)** - A separate template or mode may import workers; column mapping should align with the [Worker Registration Flow](#worker-registration-flow) field list where applicable.
 
 ### Expected CSV Fields
 
@@ -391,6 +514,10 @@ The CSV should map to the camper data model. At minimum:
 - Payment status (paid / unpaid)
 
 The system should handle reasonable variations in column naming and provide a column-mapping interface if headers don't match exactly.
+
+### Worker CSV (optional)
+
+If worker bulk import is supported, columns should map to worker registration fields (email, name, phones, address components, gender, church, pastor contact, serving response, ranked task preferences, t-shirt size, etc.) plus admin fields (dorm assignment, check-in) as needed.
 
 ---
 
@@ -432,15 +559,19 @@ This section outlines the core data entities. Exact schema will be defined durin
 
 - Camper ID
 - Family registration ID (FK)
-- First name, last name
+- First name, last name, optional middle name or initial
 - Date of birth
 - Gender
+- **Address:** street, city, state/province/territory, zip, country (per legacy form; often congruent across siblings)
+- **Phones:** camper cell (optional), parent/guardian phone (required for parity)
+- **Parent/guardian name** (required on legacy form; may mirror family record)
+- **Faith (legacy parity):** Christian (yes/no), Holy Ghost since believed (yes/no)
+- Church presently attending, pastor name (same semantics as legacy; merge with any “organization affiliation” field if a single column is preferred in CSV/API)
 - Allergies / medical conditions
 - Medications
 - Dietary restrictions
-- T-shirt size
+- T-shirt size (legacy option set: not interested, adult/youth sizes, other — see [Camper fields (legacy parity)](#camper-fields-legacy-parity))
 - Emergency contact name and phone
-- Church / organization
 - Special needs / accommodations
 - QR code token (unique identifier encoded in QR)
 - Dorm assignment (FK)
@@ -449,34 +580,54 @@ This section outlines the core data entities. Exact schema will be defined durin
 - Medical release signed (boolean)
 - Import source (online registration / CSV import)
 
-### Worker / Dorm Leader
+### Worker (volunteer / staff)
+
+Stores a worker for a camp year. May be created from **online worker registration**, **admin entry**, or **CSV import**.
+
+- Worker ID
+- Camp year / season (FK or label)
+- **Identity & contact:** email (unique per year **TBD**), first name, last name, date of birth (optional), gender (`male` / `female`), cell phone, alt phone
+- **Address:** street, city, state or province (enum matching Google Form options), zip, country (string)
+- **Faith & church:** how long faithfully serving the Lord (long text), church presently attending, pastor name, pastor phone
+- **Task preferences:** first choice, second choice, third choice (each FK or enum to the ten fixed task options; must be three distinct choices)
+- **Worker t-shirt:** size selection (`not_interested`, `xs`, `s`, `m`, `l`, `xl`, `xxl`, `xxxl_or_larger`) — same semantics as legacy form
+- **Provenance:** import source (online worker registration / admin / CSV); submission timestamp; optional IP for abuse prevention
+- **Admin:** dorm assignment (FK to worker dorm), check-in status, check-in timestamp
+- **Optional future flags:** testimony received, pastor recommendation received (if camp wants to track in-system; **TBD**)
+
+### Dorm Leader
+
+Dorm leaders are not created through the public worker registration form unless camp policy later conflates roles; initially match existing spec.
 
 - Person ID
 - First name, last name
 - Gender
 - Contact info (phone, email)
-- Role (worker / dorm leader)
-- Dorm assignment (FK)
+- Role = dorm leader
+- Dorm assignment (FK to **camper** dorm)
 - Check-in status
 - Check-in timestamp
 
 ### Dorm
 
 - Dorm ID
+- **Purpose** - `camper` or `worker` (distinguishes camper dorms from worker dorms for assignment, UI grouping, and validation)
 - Name
-- Gender designation (boys / girls / co-ed workers)
-- Age group (FK or label)
+- **Gender designation** - For **camper** dorms: `boys` or `girls` only. For **worker** dorms: `boys`, `girls`, or `co_ed` (super-admin configurable per dorm)
+- Age group (FK or label; **camper dorms only**; null or N/A for worker dorms)
 - Bed count / capacity
-- Assigned dorm leader(s)
+- Assigned dorm leader(s) (typically **camper** dorms)
 
 ### Camp Configuration
 
 - Camp year / name
 - Camp start and end dates
-- Registration open date/time
-- Base registration fee
+- Optional **maximum camper count** (camp capacity) and behavior when at cap (block public registration; surface over-cap warnings for admin/CSV paths as agreed in build)
+- Family (camper) registration open date/time
+- Worker registration open date/time
+- Early / late base registration fees, cutover date/time, 3rd+ child rate
 - Discount tiers (JSON or related table)
-- Age group definitions
+- Age group definitions (super-admin-managed list per year)
 
 ### Admin User
 
@@ -496,5 +647,5 @@ These features are **not in scope** for the initial build but are noted for pote
 - **Multi-Year Support** - Retain historical data across camp years. Allow admins to view past years' data, carry forward dorm configurations, and compare year-over-year statistics.
 - **Parent Portal** - Allow parents to log in, view their registration, update camper information, and see dorm assignments.
 - **SMS Notifications** - Text message alerts for check-in confirmation or camp announcements.
-- **Volunteer Management** - Application and approval workflow for workers and dorm leaders.
-- **Waitlist** - If camp reaches capacity, allow parents to join a waitlist with automatic notification when spots open.
+- **Volunteer Management** - Extended application, approval, and credentialing workflow beyond self-service worker registration and admin edits.
+- **Waitlist** - If camp reaches the configured maximum camper count, allow parents to join a waitlist with automatic notification when spots open.
