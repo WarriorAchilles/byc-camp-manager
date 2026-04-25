@@ -1,39 +1,50 @@
-# Step 1.01 - Project Foundation and Admin Auth
+# Step 01: Project Foundation and Admin Authentication
 
-## Things for a Human to Complete
+## Human Tasks Required
 
-- Confirm the exact backend framework if the repo does not already establish one. The spec allows Node.js with Express or similar.
-- Choose the authentication style for admin API access: session cookies or JWT.
-- Provide local, staging, and production environment values for PostgreSQL connection strings, auth secrets, and allowed origins.
-- Decide the first deployment target on AWS, or leave deployment wiring as environment-agnostic until infrastructure is chosen.
-- Provide the initial super admin email address and a secure temporary password process.
+- [ ] Provide the initial super admin email address and any required bootstrap secret values before deploying outside local development.
+- [ ] Confirm whether production admin sessions should use JWTs or server-managed sessions if stakeholders have a preference.
+
+## Spec References
+
+- `docs/specs.md` - "1. Overview"
+- `docs/specs.md` - "2. Technical Architecture"
+- `docs/specs.md` - "Stack"
+- `docs/specs.md` - "Key Technical Considerations"
+- `docs/specs.md` - "3. User Roles & Authentication"
+- `docs/specs.md` - "Roles"
+- `docs/specs.md` - "Authentication"
+- `docs/specs.md` - "Admin User"
 
 ## Goal
 
-Create the application foundation required by every later step: React SPA, Node.js API, PostgreSQL access, admin authentication, role-based authorization, and basic deployment/environment structure.
+Create the runnable application foundation for the protected admin system, including database connectivity, admin authentication, role-based access, and a responsive admin shell that later camp-management steps can build on.
 
-## Agent Implementation Tasks
+## Agent Tasks
 
-- Establish the project structure for frontend, backend, shared types if used, migrations, tests, and environment configuration.
-- Add PostgreSQL connection management and migration tooling.
-- Implement admin users with email/password authentication, password hashing, active/deactivated status, and role values `super_admin` and `camp_admin`.
-- Add protected API middleware for admin routes.
-- Add authorization helpers so only super admins can manage settings and users.
-- Build admin login/logout UI and a minimal authenticated admin shell.
-- Add super admin user management for creating admins, deactivating admins, and resetting passwords.
-- Add seed or setup tooling for the first super admin without exposing secrets in source control.
+- [ ] Inspect the repository and scaffold missing frontend, backend, database, test, lint, and build tooling using the stack in the spec.
+- [ ] Add environment configuration examples for database connection, auth secrets, and local development ports without committing real secrets.
+- [ ] Create the admin user data model with email, password hash, role, creator reference, and active status.
+- [ ] Implement secure password hashing and authentication endpoints for login, logout, and current-user lookup.
+- [ ] Add auth middleware that protects admin API routes and distinguishes `super_admin` from `camp_admin`.
+- [ ] Build a responsive admin layout with navigation placeholders for camp configuration, people, imports, dorms, check-in, and reports.
+- [ ] Implement super-admin user management for creating admins, deactivating admins, and resetting passwords.
+- [ ] Add seed or bootstrap behavior for the first super admin that is safe for local development and explicit for production.
+- [ ] Add tests for authentication success, failed login, inactive accounts, role authorization, and protected-route access.
 
-## Acceptance Criteria
+## Verification
 
-- An admin can log in, stay authenticated across page refreshes, and log out.
-- Protected API routes reject unauthenticated requests.
-- Camp admins and super admins are distinguishable in both API and UI code.
-- Super admins can create, deactivate, and reset passwords for other admin users.
-- No public self-service admin registration or public forgot-password flow exists.
-- Local setup documentation explains required environment variables without committing secret values.
+- [ ] Run dependency installation successfully.
+- [ ] Run database migrations or schema generation successfully.
+- [ ] Run the repository lint command.
+- [ ] Run the repository typecheck command.
+- [ ] Run the repository test command and confirm auth and authorization tests pass.
+- [ ] Run the repository build command.
+- [ ] Manually verify a super admin can sign in, create a camp admin, deactivate that admin, and block the deactivated account from signing in.
 
-## Master Spec References
+## Completion Criteria
 
-- [2. Technical Architecture](../../specs.md#2-technical-architecture) - stack, REST API, PostgreSQL, AWS hosting, and protected admin routes.
-- [3. User Roles & Authentication](../../specs.md#3-user-roles--authentication) - super admin and camp admin roles, email/password auth, password resets, and no public admin signup.
-- [Admin User](../../specs.md#admin-user) - admin user data model.
+- [ ] A developer can start the app locally and reach a protected admin interface.
+- [ ] Admin routes reject unauthenticated users.
+- [ ] Role checks prevent camp admins from performing super-admin-only user management.
+- [ ] No secrets are committed to source control.

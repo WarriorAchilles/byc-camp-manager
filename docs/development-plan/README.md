@@ -1,52 +1,111 @@
 # BYC Camp Manager Development Plan
 
-This folder breaks `docs/specs.md` into AI-agent-sized development steps. Each step is intended to be independently assignable, with a short human checklist at the top for decisions, credentials, configuration, or external setup that should not be guessed by an agent.
+Source spec: `docs/specs.md`
 
-## Phase 1 - Camp Management
+This plan is split into two independently useful phases. Phase 1 builds the protected camp operations system so camp staff can manage imported or manually entered data before public registration is available. Phase 2 adds public camper and worker registration, payment collection, and registration-time notifications.
 
-Build the protected admin/operations system first so camp can run even if public registration is handled elsewhere in the first year.
+## Recommended Execution Order
+
+### Phase 1: Camp Management
 
 1. `phase-1-camp-management/01-project-foundation-and-admin-auth.md`
-2. `phase-1-camp-management/02-camp-configuration.md`
-3. `phase-1-camp-management/03-people-records-admin-crud.md`
-4. `phase-1-camp-management/04-csv-import.md`
-5. `phase-1-camp-management/05-dorm-inventory-and-auto-assignment.md`
-6. `phase-1-camp-management/06-manual-dorm-management-and-rosters.md`
-7. `phase-1-camp-management/07-check-in-workflows.md`
-8. `phase-1-camp-management/08-reports-and-operational-email.md`
+2. `phase-1-camp-management/02-camp-configuration-and-people-data.md`
+3. `phase-1-camp-management/03-csv-import-and-admin-entry.md`
+4. `phase-1-camp-management/04-dorm-management-and-assignment.md`
+5. `phase-1-camp-management/05-check-in-and-arrival-dashboard.md`
+6. `phase-1-camp-management/06-operational-reports-and-exports.md`
+7. `phase-1-camp-management/07-phase-1-deployment-and-ops-readiness.md`
 
-## Phase 2 - Camper Registration
+### Phase 2: Camper Registration
 
-Add the public registration layer after the admin system is usable. This includes family camper registration, payment, merchandise, worker self-registration, and the non-MVP future items captured by the spec.
+1. `phase-2-camper-registration/01-registration-availability-and-public-shell.md`
+2. `phase-2-camper-registration/02-family-camper-registration-flow.md`
+3. `phase-2-camper-registration/03-pricing-merchandise-and-stripe-payments.md`
+4. `phase-2-camper-registration/04-worker-registration-flow.md`
+5. `phase-2-camper-registration/05-registration-confirmation-emails.md`
+6. `phase-2-camper-registration/06-phase-2-release-verification.md`
 
-1. `phase-2-camper-registration/01-public-registration-availability.md`
-2. `phase-2-camper-registration/02-family-and-camper-form.md`
-3. `phase-2-camper-registration/03-medical-release-and-merchandise.md`
-4. `phase-2-camper-registration/04-pricing-and-payment-choice.md`
-5. `phase-2-camper-registration/05-stripe-payments.md`
-6. `phase-2-camper-registration/06-registration-confirmation-qr-and-email.md`
-7. `phase-2-camper-registration/07-worker-registration.md`
-8. `phase-2-camper-registration/08-registration-admin-integration.md`
-9. `phase-2-camper-registration/09-future-scope-backlog.md`
+## Global Assumptions
 
-## Coverage Notes
+- The first production milestone prioritizes camp operations over public registration, matching the spec note that registration may not be used in the first year.
+- Phase 1 still includes worker and dorm leader records because check-in, dorm assignment, imports, and reports need them operationally. Public worker registration itself is deferred to Phase 2.
+- Phase 1 may create payment status fields and cash collection UI for imported/admin-entered campers, but Stripe and full online pricing are Phase 2 work.
+- The exact Node.js, React, database, and deployment scaffolding should follow the repository's conventions if an application exists by the time each step is executed.
+- Future wish-list items are explicitly deferred unless a later product decision moves them into scope.
 
-- Phase 1 covers the admin-only path described in the spec: authentication, camp configuration, camper/worker/dorm leader records, CSV import, dorm management, check-in, reports, and check-in email.
-- Phase 2 covers public camper and worker registration, registration availability windows, capacity blocking, merchandise pre-orders, Stripe and cash payment flows, registration confirmation emails, QR code delivery, and future backlog capture.
-- Outstanding human decisions from the spec are called out in the relevant step files: worker shirt checkout, report requirements, merchandise pricing, and check-in confirmation email contents.
+## Unresolved Product Questions
 
-## Spec Section Map
+- Worker t-shirt checkout: decide whether worker shirt selections ever collect Stripe payment or remain informational.
+- Reports: confirm which proposed reports beyond dorm rosters are required for the first release.
+- Merchandise pricing: define active merchandise items, options, and prices before Phase 2 payment release.
+- Check-in confirmation email: confirm final content beyond camper name and dorm assignment.
+- Worker matching strategy: confirm whether email + name + camp year is sufficient for duplicate detection.
+- Admin/CSV capacity enforcement: confirm whether over-cap admin actions should block or warn only.
 
-- Overview: Phase 1 establishes the independent admin/management path; Phase 2 adds the public registration path.
-- Technical Architecture: Step 1.01 covers foundation, API, database, auth, environment, and AWS decision points; Step 1.08 and Step 2.06 cover email and QR code infrastructure.
-- User Roles & Authentication: Step 1.01.
-- Registration System: Steps 2.01 through 2.08, with worker registration in Step 2.07.
-- Payment: Steps 2.04 and 2.05, with cash handling surfaced again in Step 1.07.
-- Camp Management: Steps 1.02 and 1.03.
-- Check-In: Step 1.07, with check-in email in Step 1.08.
-- Dorm Management: Steps 1.05 and 1.06.
-- Reports: Step 1.08.
-- Email Notifications: Step 1.08 for check-in email; Step 2.06 for family confirmation; Step 2.07 for worker confirmation.
-- CSV / Spreadsheet Import: Step 1.04, with registration integration notes in Step 2.08.
-- Data Model Overview: Spread across Steps 1.01 through 1.06 and Steps 2.03 through 2.08 where each entity is implemented.
-- Future / Wish-List Items: Step 2.09.
+## Coverage Checklist
+
+- [ ] `# BYC Camp Manager - Master Specification` - Covered across all Phase 1 and Phase 2 steps.
+- [ ] `Outstanding Items & TBD Questions` - Covered in Phase 1 step 6, Phase 1 step 7, Phase 2 step 3, Phase 2 step 4, and Phase 2 step 6.
+- [ ] `Table of Contents` - Covered by this index; no implementation work required.
+- [ ] `1. Overview` - Covered in Phase 1 step 1 and Phase 2 step 6.
+- [ ] `2. Technical Architecture` - Covered in Phase 1 step 1, Phase 1 step 7, and Phase 2 step 6.
+- [ ] `Stack` - Covered in Phase 1 step 1 and Phase 1 step 7.
+- [ ] `Key Technical Considerations` - Covered in Phase 1 step 5, Phase 1 step 7, Phase 2 step 1, Phase 2 step 2, and Phase 2 step 6.
+- [ ] `3. User Roles & Authentication` - Covered in Phase 1 step 1.
+- [ ] `Roles` - Covered in Phase 1 step 1.
+- [ ] `Authentication` - Covered in Phase 1 step 1.
+- [ ] `4. Registration System` - Covered in all Phase 2 steps.
+- [ ] `Registration Form Availability` - Covered in Phase 2 step 1.
+- [ ] `Family Registration Flow` - Covered in Phase 2 step 2.
+- [ ] `Step 1 - Parent / Guardian Information` - Covered in Phase 2 step 2.
+- [ ] `Step 2 - Camper Information (repeatable for each child)` - Covered in Phase 2 step 2.
+- [ ] `Step 3 - Medical Release & Legal Agreement` - Covered in Phase 2 step 2.
+- [ ] `Step 4 - Merchandise Pre-Order (Optional)` - Covered in Phase 2 step 3.
+- [ ] `Step 5 - Payment` - Covered in Phase 2 step 3.
+- [ ] `Post-Registration` - Covered in Phase 2 step 5.
+- [ ] `Camper fields (legacy parity)` - Covered in Phase 2 step 2 and Phase 2 step 6.
+- [ ] `Worker Registration Flow` - Covered in Phase 2 step 4.
+- [ ] `Collected fields (same semantics as the Google Form)` - Covered in Phase 2 step 4.
+- [ ] `Informational content (not form fields)` - Covered in Phase 2 step 4 and Phase 2 step 5.
+- [ ] `Post-worker registration` - Covered in Phase 2 step 4 and Phase 2 step 5.
+- [ ] `5. Payment` - Covered in Phase 1 step 5 and Phase 2 step 3.
+- [ ] `Stripe Integration` - Covered in Phase 2 step 3.
+- [ ] `Worker registration and money` - Covered in Phase 2 step 3 and Phase 2 step 4.
+- [ ] `Cash Payments` - Covered in Phase 1 step 5 and Phase 2 step 3.
+- [ ] `Multi-Child Discounts and Early / Late Pricing` - Covered in Phase 2 step 3.
+- [ ] `6. Camp Management` - Covered in Phase 1 step 2.
+- [ ] `Camp Configuration (Super Admin)` - Covered in Phase 1 step 2 and Phase 2 step 1.
+- [ ] `People in the System` - Covered in Phase 1 step 2.
+- [ ] `7. Check-In` - Covered in Phase 1 step 5.
+- [ ] `QR Code Check-In` - Covered in Phase 1 step 5.
+- [ ] `Manual Check-In (No QR Code)` - Covered in Phase 1 step 5.
+- [ ] `Worker & Dorm Leader Check-In` - Covered in Phase 1 step 5.
+- [ ] `Check-In Dashboard` - Covered in Phase 1 step 5.
+- [ ] `8. Dorm Management` - Covered in Phase 1 step 4.
+- [ ] `Dorm Configuration` - Covered in Phase 1 step 4.
+- [ ] `Auto-Assignment` - Covered in Phase 1 step 4.
+- [ ] `Manual Assignment (Drag and Drop)` - Covered in Phase 1 step 4.
+- [ ] `Dorm Roster View` - Covered in Phase 1 step 4 and Phase 1 step 6.
+- [ ] `9. Reports` - Covered in Phase 1 step 6.
+- [ ] `Dorm Report (Required)` - Covered in Phase 1 step 6.
+- [ ] `Additional Reports (TBD - Examples for Consideration)` - Covered in Phase 1 step 6 and Phase 2 step 6.
+- [ ] `10. Email Notifications` - Covered in Phase 1 step 5 and Phase 2 step 5.
+- [ ] `1. Family (camper) registration confirmation` - Covered in Phase 2 step 5.
+- [ ] `2. Worker registration confirmation` - Covered in Phase 2 step 5.
+- [ ] `3. Check-In Confirmation Email` - Covered in Phase 1 step 5.
+- [ ] `11. CSV / Spreadsheet Import` - Covered in Phase 1 step 3.
+- [ ] `Purpose` - Covered in Phase 1 step 3.
+- [ ] `Import Behavior` - Covered in Phase 1 step 3.
+- [ ] `Expected CSV Fields` - Covered in Phase 1 step 3.
+- [ ] `Worker CSV (optional)` - Covered in Phase 1 step 3.
+- [ ] `12. Data Model Overview` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 4, Phase 1 step 5, Phase 2 step 2, Phase 2 step 3, and Phase 2 step 4.
+- [ ] `Family Registration` - Covered in Phase 2 step 2 and Phase 2 step 3.
+- [ ] `Merchandise Order` - Covered in Phase 2 step 3.
+- [ ] `Merchandise Item (Admin-Configured)` - Covered in Phase 2 step 3.
+- [ ] `Camper` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, and Phase 2 step 2.
+- [ ] `Worker (volunteer / staff)` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, and Phase 2 step 4.
+- [ ] `Dorm Leader` - Covered in Phase 1 step 2, Phase 1 step 4, and Phase 1 step 5.
+- [ ] `Dorm` - Covered in Phase 1 step 4.
+- [ ] `Camp Configuration` - Covered in Phase 1 step 2, Phase 2 step 1, and Phase 2 step 3.
+- [ ] `Admin User` - Covered in Phase 1 step 1.
+- [ ] `13. Future / Wish-List Items` - Covered in Phase 1 step 7 and Phase 2 step 6 as deferred scope.
