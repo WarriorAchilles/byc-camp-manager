@@ -1,8 +1,10 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { AdminLayout } from "./pages/AdminLayout";
+import { CampConfigurationPage } from "./pages/CampConfigurationPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PeoplePage } from "./pages/PeoplePage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -30,6 +32,8 @@ export function App(): React.ReactElement {
           }
         >
           <Route index element={<DashboardPage />} />
+          <Route path="camp" element={<CampConfigurationPage />} />
+          <Route path="people" element={<PeoplePage />} />
           <Route path="users" element={<UsersAdminPage />} />
         </Route>
         <Route path="/" element={<Navigate to="/admin" replace />} />

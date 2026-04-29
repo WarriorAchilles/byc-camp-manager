@@ -10,8 +10,8 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { to: "/admin", label: "Overview", end: true, placeholder: false },
-  { to: "/admin/camp", label: "Camp configuration", placeholder: true },
-  { to: "/admin/people", label: "People", placeholder: true },
+  { to: "/admin/camp", label: "Camp configuration", placeholder: false },
+  { to: "/admin/people", label: "People", placeholder: false },
   { to: "/admin/imports", label: "Imports", placeholder: true },
   { to: "/admin/dorms", label: "Dorms", placeholder: true },
   { to: "/admin/check-in", label: "Check-in", placeholder: true },

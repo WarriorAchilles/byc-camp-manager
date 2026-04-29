@@ -1,5 +1,10 @@
 const apiBase = import.meta.env.VITE_API_URL ?? "";
 
+export type ApiHttpError = Error & {
+  status: number;
+  body: unknown;
+};
+
 export async function apiJson<T>(
   path: string,
   options: RequestInit = {},
@@ -25,7 +30,10 @@ export async function apiJson<T>(
       typeof (body as { error: unknown }).error === "string"
         ? (body as { error: string }).error
         : `Request failed (${response.status})`;
-    throw new Error(message);
+    const err = new Error(message) as ApiHttpError;
+    err.status = response.status;
+    err.body = body;
+    throw err;
   }
   return body as T;
 }

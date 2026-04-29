@@ -12,6 +12,39 @@ enum AdminRole {
   camp_admin
 }
 
+enum Gender {
+  male
+  female
+}
+
+enum ImportSource {
+  online_registration
+  csv_import
+  admin_entry
+}
+
+enum CamperPaymentStatus {
+  unpaid
+  paid_stripe
+  paid_cash
+}
+
+enum CheckInStatus {
+  not_checked_in
+  checked_in
+}
+
+enum DormPurpose {
+  camper
+  worker
+}
+
+enum DormGenderDesignation {
+  boys
+  girls
+  co_ed
+}
+
 model AdminUser {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -26,4 +59,165 @@ model AdminUser {
   createdAdmins AdminUser[] @relation("AdminCreatedBy")
 
   @@map("admin_users")
+}
+
+model CampYear {
+  id                          String    @id @default(uuid())
+  name                        String
+  yearLabel                   String    @map("year_label")
+  startDate                   DateTime  @map("start_date") @db.Date
+  endDate                     DateTime  @map("end_date") @db.Date
+  camperCapacity              Int?      @map("camper_capacity")
+  familyRegistrationOpensAt   DateTime? @map("family_registration_opens_at")
+  workerRegistrationOpensAt   DateTime? @map("worker_registration_opens_at")
+  feeCutoverAt                DateTime? @map("fee_cutover_at")
+  earlyCamperFeeCents         Int?      @map("early_camper_fee_cents")
+  lateCamperFeeCents          Int?      @map("late_camper_fee_cents")
+  thirdPlusCamperFeeCents     Int?      @map("third_plus_camper_fee_cents")
+  discountTierNotes           String?   @map("discount_tier_notes") @db.Text
+  merchandisePlaceholderNotes String? @map("merchandise_placeholder_notes") @db.Text
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  ageGroupBrackets AgeGroupBracket[]
+  dorms            Dorm[]
+  campers          Camper[]
+  workers          Worker[]
+  dormLeaders      DormLeader[]
+
+  @@map("camp_years")
+}
+
+model AgeGroupBracket {
+  id         String   @id @default(uuid())
+  campYearId String   @map("camp_year_id")
+  label      String
+  minAge     Int      @map("min_age")
+  maxAge     Int      @map("max_age")
+  sortOrder  Int      @map("sort_order")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  dorms    Dorm[]
+
+  @@index([campYearId])
+  @@map("age_group_brackets")
+}
+
+model Dorm {
+  id                  String                @id @default(uuid())
+  campYearId          String                @map("camp_year_id")
+  name                String
+  purpose             DormPurpose
+  genderDesignation   DormGenderDesignation @map("gender_designation")
+  bedCapacity         Int                   @map("bed_capacity")
+  ageGroupBracketId   String?               @map("age_group_bracket_id")
+
+  campYear          CampYear         @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  ageGroupBracket   AgeGroupBracket? @relation(fields: [ageGroupBracketId], references: [id], onDelete: SetNull)
+  campers           Camper[]
+  workers           Worker[]
+  dormLeaderAssignments DormLeader[]
+
+  @@index([campYearId])
+  @@map("dorms")
+}
+
+model Camper {
+  id                    String              @id @default(uuid())
+  campYearId            String              @map("camp_year_id")
+  familyRegistrationId  String?             @map("family_registration_id")
+  firstName             String              @map("first_name")
+  lastName              String              @map("last_name")
+  middleName            String?             @map("middle_name")
+  dateOfBirth           DateTime            @map("date_of_birth") @db.Date
+  gender                Gender
+  streetAddress         String?             @map("street_address")
+  city                  String?
+  stateOrProvince       String?             @map("state_or_province")
+  postalCode            String?             @map("postal_code")
+  country               String?
+  camperCellPhone       String?             @map("camper_cell_phone")
+  guardianName          String              @map("guardian_name")
+  guardianEmail         String              @map("guardian_email")
+  guardianPhone         String              @map("guardian_phone")
+  emergencyContactName  String?             @map("emergency_contact_name")
+  emergencyContactPhone String?             @map("emergency_contact_phone")
+  medicalNotes          String?             @map("medical_notes") @db.Text
+  dietaryRestrictions   String?             @map("dietary_restrictions") @db.Text
+  paymentStatus         CamperPaymentStatus @map("payment_status")
+  qrToken               String              @unique @map("qr_token")
+  dormId                String?             @map("dorm_id")
+  checkInStatus         CheckInStatus       @default(not_checked_in) @map("check_in_status")
+  checkedInAt           DateTime?           @map("checked_in_at")
+  medicalReleaseSigned  Boolean             @default(false) @map("medical_release_signed")
+  importSource          ImportSource        @map("import_source")
+  archivedAt            DateTime?           @map("archived_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
+
+  @@index([campYearId])
+  @@map("campers")
+}
+
+model Worker {
+  id                   String        @id @default(uuid())
+  campYearId           String        @map("camp_year_id")
+  email                String        @map("email")
+  firstName            String        @map("first_name")
+  lastName             String        @map("last_name")
+  dateOfBirth          DateTime?     @map("date_of_birth") @db.Date
+  gender               Gender
+  cellPhone            String        @map("cell_phone")
+  altPhone             String?       @map("alt_phone")
+  streetAddress        String        @map("street_address")
+  city                 String
+  stateOrProvince      String        @map("state_or_province")
+  postalCode           String        @map("postal_code")
+  country              String
+  taskPreferenceFirst  String?       @map("task_preference_first")
+  taskPreferenceSecond String?       @map("task_preference_second")
+  taskPreferenceThird  String?       @map("task_preference_third")
+  tShirtSize           String?       @map("t_shirt_size")
+  dormId               String?       @map("dorm_id")
+  checkInStatus        CheckInStatus @default(not_checked_in) @map("check_in_status")
+  checkedInAt          DateTime?     @map("checked_in_at")
+  importSource         ImportSource  @map("import_source")
+  archivedAt           DateTime?     @map("archived_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
+
+  @@unique([campYearId, email])
+  @@index([campYearId])
+  @@map("workers")
+}
+
+model DormLeader {
+  id                   String        @id @default(uuid())
+  campYearId           String        @map("camp_year_id")
+  firstName            String        @map("first_name")
+  lastName             String        @map("last_name")
+  gender               Gender
+  email                String        @map("email")
+  phone                String
+  roleLabel            String?       @map("role_label")
+  assignedCamperDormId String?       @map("assigned_camper_dorm_id")
+  checkInStatus        CheckInStatus @default(not_checked_in) @map("check_in_status")
+  checkedInAt          DateTime?     @map("checked_in_at")
+  importSource         ImportSource  @map("import_source")
+  archivedAt           DateTime?     @map("archived_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  campYear           CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  assignedCamperDorm Dorm?    @relation(fields: [assignedCamperDormId], references: [id], onDelete: SetNull)
+
+  @@index([campYearId])
+  @@map("dorm_leaders")
 }

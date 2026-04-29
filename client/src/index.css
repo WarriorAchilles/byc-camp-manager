@@ -148,9 +148,20 @@ label {
   color: var(--muted);
 }
 
+textarea {
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
 input[type="email"],
 input[type="password"],
 input[type="text"],
+input[type="date"],
+input[type="number"],
 select {
   width: 100%;
   max-width: 320px;

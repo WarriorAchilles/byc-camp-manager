@@ -2,6 +2,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { loadEnv } from "./config/env.js";
+import { adminCampYearsRouter } from "./routes/adminCampYears.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { authRouter } from "./routes/auth.js";
 import { requireAuth } from "./middleware/auth.js";
@@ -30,6 +31,7 @@ export function createApp(): express.Express {
   });
 
   app.use("/api/admin/users", adminUsersRouter);
+  app.use("/api/admin/camp-years", adminCampYearsRouter);
 
   return app;
 }

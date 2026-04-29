@@ -3,7 +3,7 @@
 ## Human Tasks Required
 
 - [ ] Confirm any preferred default age group brackets if the shipped seed defaults should differ from the agent's sensible defaults.
-- [ ] Decide whether admin-created campers and CSV imports should hard-block at camp capacity or warn while allowing an override.
+- [x] Decide whether admin-created campers and CSV imports should hard-block at camp capacity or warn while allowing an override. **Decision: warn and allow an explicit `confirmCapacityOverride` (admin entry + JSON import commit).**
 
 ## Spec References
 
