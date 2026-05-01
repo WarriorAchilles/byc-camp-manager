@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 
@@ -525,7 +526,8 @@ export function PeoplePage(): React.ReactElement {
           <form className="card stack" onSubmit={(event) => void handleCreateLeader(event)}>
             <h2 style={{ marginTop: 0 }}>Add dorm leader</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
-              Leaders are assigned to camper dorms for rosters and check-in.
+              Leaders are assigned to camper dorms for rosters and check-in. Worker task preferences apply only to
+              workers, not dorm leaders.
             </p>
             {leaderFormError ? <p className="error">{leaderFormError}</p> : null}
             <div className="row" style={{ gap: "1rem" }}>
@@ -687,8 +689,10 @@ export function PeoplePage(): React.ReactElement {
       </div>
 
       <p className="muted">
-        CSV bulk import for campers uses <code>POST /api/admin/camp-years/:id/campers/import</code> with{" "}
-        <code>confirmCapacityOverride</code> when over capacity (Step 03 UI).
+        Super admins bulk-import campers, workers, and dorm leaders from the <Link to="/admin/imports">Imports</Link>{" "}
+        page
+        (CSV preview, column mapping, and capacity override). JSON bulk camper import remains available at{" "}
+        <code>POST /api/admin/camp-years/:id/campers/import</code> for integrations.
       </p>
     </div>
   );

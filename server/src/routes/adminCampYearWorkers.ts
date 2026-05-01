@@ -113,34 +113,30 @@ router.post("/", async (req: AuthedRequest, res) => {
     ? new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`)
     : null;
 
-  try {
-    const created = await prisma.worker.create({
-      data: {
-        campYearId,
-        email: parsed.data.email.trim().toLowerCase(),
-        firstName: parsed.data.firstName.trim(),
-        lastName: parsed.data.lastName.trim(),
-        dateOfBirth: dob,
-        gender: parsed.data.gender,
-        cellPhone: parsed.data.cellPhone.trim(),
-        altPhone: parsed.data.altPhone?.trim() ?? null,
-        streetAddress: parsed.data.streetAddress.trim(),
-        city: parsed.data.city.trim(),
-        stateOrProvince: parsed.data.stateOrProvince.trim(),
-        postalCode: parsed.data.postalCode.trim(),
-        country: parsed.data.country.trim(),
-        taskPreferenceFirst: parsed.data.taskPreferenceFirst?.trim() ?? null,
-        taskPreferenceSecond: parsed.data.taskPreferenceSecond?.trim() ?? null,
-        taskPreferenceThird: parsed.data.taskPreferenceThird?.trim() ?? null,
-        tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
-        dormId: parsed.data.dormId ?? null,
-        importSource: ImportSource.admin_entry,
-      },
-    });
-    res.status(201).json(created);
-  } catch {
-    res.status(409).json({ error: "A worker with this email already exists for this camp year" });
-  }
+  const created = await prisma.worker.create({
+    data: {
+      campYearId,
+      email: parsed.data.email.trim().toLowerCase(),
+      firstName: parsed.data.firstName.trim(),
+      lastName: parsed.data.lastName.trim(),
+      dateOfBirth: dob,
+      gender: parsed.data.gender,
+      cellPhone: parsed.data.cellPhone.trim(),
+      altPhone: parsed.data.altPhone?.trim() ?? null,
+      streetAddress: parsed.data.streetAddress.trim(),
+      city: parsed.data.city.trim(),
+      stateOrProvince: parsed.data.stateOrProvince.trim(),
+      postalCode: parsed.data.postalCode.trim(),
+      country: parsed.data.country.trim(),
+      taskPreferenceFirst: parsed.data.taskPreferenceFirst?.trim() ?? null,
+      taskPreferenceSecond: parsed.data.taskPreferenceSecond?.trim() ?? null,
+      taskPreferenceThird: parsed.data.taskPreferenceThird?.trim() ?? null,
+      tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
+      dormId: parsed.data.dormId ?? null,
+      importSource: ImportSource.admin_entry,
+    },
+  });
+  res.status(201).json(created);
 });
 
 router.get("/:workerId", async (req: AuthedRequest, res) => {
@@ -265,15 +261,11 @@ router.patch("/:workerId", async (req: AuthedRequest, res) => {
     data.archivedAt = partial.archivedAt ? new Date(partial.archivedAt) : null;
   }
 
-  try {
-    const updated = await prisma.worker.update({
-      where: { id: workerId },
-      data,
-    });
-    res.json(updated);
-  } catch {
-    res.status(409).json({ error: "A worker with this email already exists for this camp year" });
-  }
+  const updated = await prisma.worker.update({
+    where: { id: workerId },
+    data,
+  });
+  res.json(updated);
 });
 
 export const adminCampYearWorkersRouter = router;

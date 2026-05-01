@@ -193,8 +193,8 @@ model Worker {
   campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
   dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
 
-  @@unique([campYearId, email])
   @@index([campYearId])
+  @@index([campYearId, email])
   @@map("workers")
 }
 

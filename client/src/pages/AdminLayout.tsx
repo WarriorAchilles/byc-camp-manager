@@ -12,7 +12,7 @@ const navItems: NavItem[] = [
   { to: "/admin", label: "Overview", end: true, placeholder: false },
   { to: "/admin/camp", label: "Camp configuration", placeholder: false },
   { to: "/admin/people", label: "People", placeholder: false },
-  { to: "/admin/imports", label: "Imports", placeholder: true },
+  { to: "/admin/imports", label: "Imports", placeholder: false },
   { to: "/admin/dorms", label: "Dorms", placeholder: true },
   { to: "/admin/check-in", label: "Check-in", placeholder: true },
   { to: "/admin/reports", label: "Reports", placeholder: true },
@@ -39,7 +39,10 @@ export function AdminLayout(): React.ReactElement {
               </span>
             );
           }
-          if (item.to === "/admin/users" && user?.role !== "super_admin") {
+          if (
+            (item.to === "/admin/users" || item.to === "/admin/imports") &&
+            user?.role !== "super_admin"
+          ) {
             return null;
           }
           return (

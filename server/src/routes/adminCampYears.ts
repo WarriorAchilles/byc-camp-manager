@@ -10,6 +10,7 @@ import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { adminCampYearCampersRouter } from "./adminCampYearCampers.js";
+import { adminCampYearCsvImportRouter } from "./adminCampYearCsvImport.js";
 import { adminCampYearDormLeadersRouter } from "./adminCampYearDormLeaders.js";
 import { adminCampYearWorkersRouter } from "./adminCampYearWorkers.js";
 
@@ -118,6 +119,7 @@ adminCampYearsRouter.post(
 adminCampYearsRouter.use("/:campYearId/campers", adminCampYearCampersRouter);
 adminCampYearsRouter.use("/:campYearId/workers", adminCampYearWorkersRouter);
 adminCampYearsRouter.use("/:campYearId/dorm-leaders", adminCampYearDormLeadersRouter);
+adminCampYearsRouter.use("/:campYearId/csv-import", adminCampYearCsvImportRouter);
 
 const ageBracketRouter = Router({ mergeParams: true });
 ageBracketRouter.use(requireAuth);
