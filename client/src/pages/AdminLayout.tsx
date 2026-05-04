@@ -28,49 +28,63 @@ export function AdminLayout(): React.ReactElement {
 
   return (
     <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-title">BYC Admin</div>
-        <div className="nav-section">Navigation</div>
-        {navItems.map((item) => {
-          if (item.placeholder) {
+      <a className="skip-link" href="#admin-main">
+        Skip to content
+      </a>
+      <aside className="sidebar" aria-label="Admin navigation">
+        <div className="sidebar-brand">
+          <img
+            className="sidebar-logo"
+            src="/byc-logo.png"
+            alt="Believers Youth Camp"
+            width={200}
+            height={48}
+            decoding="async"
+          />
+          <div className="sidebar-brand-meta">
+            <span className="sidebar-kicker">Camp operations</span>
+            <span className="sidebar-title-line">Admin console</span>
+          </div>
+        </div>
+        <div className="nav-section">Menu</div>
+        <nav className="sidebar-nav" aria-label="Primary">
+          {navItems.map((item) => {
+            if (item.placeholder) {
+              return (
+                <span key={item.to} className="nav-link disabled" title="Coming in a later step">
+                  {item.label}
+                </span>
+              );
+            }
+            if (
+              (item.to === "/admin/users" || item.to === "/admin/imports") &&
+              user?.role !== "super_admin"
+            ) {
+              return null;
+            }
             return (
-              <span key={item.to} className="nav-link disabled" title="Coming in a later step">
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+              >
                 {item.label}
-              </span>
+              </NavLink>
             );
-          }
-          if (
-            (item.to === "/admin/users" || item.to === "/admin/imports") &&
-            user?.role !== "super_admin"
-          ) {
-            return null;
-          }
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `nav-link${isActive ? " active" : ""}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          );
-        })}
-        <div style={{ flex: 1 }} />
+          })}
+        </nav>
+        <div className="sidebar-spacer" aria-hidden="true" />
         {user ? (
-          <div className="stack" style={{ width: "100%" }}>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>
-              {user.email}
-            </span>
+          <div className="sidebar-footer">
+            <div className="sidebar-user-email">{user.email}</div>
             <button type="button" className="btn secondary" onClick={() => void logout()}>
               Sign out
             </button>
           </div>
         ) : null}
       </aside>
-      <main>
+      <main id="admin-main">
         <Outlet />
       </main>
     </div>

@@ -12,7 +12,13 @@ import { UsersAdminPage } from "./pages/UsersAdminPage";
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.ReactElement {
   const { user, loading } = useAuth();
   if (loading) {
-    return <main className="muted">Loading…</main>;
+    return (
+      <main className="app-loading-shell" aria-busy="true" aria-live="polite">
+        <p className="app-loading-text">
+          Loading<span className="app-loading-dots">…</span>
+        </p>
+      </main>
+    );
   }
   if (!user) {
     return <Navigate to="/admin/login" replace />;

@@ -29,8 +29,20 @@ export function LoginPage(): React.ReactElement {
   return (
     <div className="login-page">
       <div className="card login-card">
-        <h1 style={{ marginTop: 0 }}>BYC Camp Manager</h1>
-        <p className="muted">Admin sign in</p>
+        <div className="login-brand">
+          <img
+            className="login-logo"
+            src="/byc-logo.png"
+            alt="Believers Youth Camp"
+            width={280}
+            height={64}
+            decoding="async"
+          />
+          <div>
+            <h1>Camp Manager</h1>
+            <p className="muted">Sign in to the admin console</p>
+          </div>
+        </div>
         <form className="stack" onSubmit={(event) => void onSubmit(event)}>
           <div className="stack">
             <label htmlFor="email">Email</label>
