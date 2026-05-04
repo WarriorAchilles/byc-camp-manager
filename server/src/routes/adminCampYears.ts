@@ -11,6 +11,7 @@ import { ageOnCampStartUtc, isCamperDormCoEdDisallowed } from "../lib/dormAssign
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { adminCampYearCampersRouter } from "./adminCampYearCampers.js";
+import { adminCampYearCheckInRouter } from "./adminCampYearCheckIn.js";
 import { adminCampYearCsvImportRouter } from "./adminCampYearCsvImport.js";
 import { adminCampYearDormAssignmentsRouter } from "./adminCampYearDormAssignments.js";
 import { adminCampYearDormLeadersRouter } from "./adminCampYearDormLeaders.js";
@@ -119,6 +120,7 @@ adminCampYearsRouter.post(
 );
 
 adminCampYearsRouter.use("/:campYearId/campers", adminCampYearCampersRouter);
+adminCampYearsRouter.use("/:campYearId/check-in", adminCampYearCheckInRouter);
 adminCampYearsRouter.use("/:campYearId/workers", adminCampYearWorkersRouter);
 adminCampYearsRouter.use("/:campYearId/dorm-leaders", adminCampYearDormLeadersRouter);
 adminCampYearsRouter.use("/:campYearId/csv-import", adminCampYearCsvImportRouter);

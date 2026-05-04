@@ -23,3 +23,32 @@ export async function allocateUniqueCamperQrToken(prisma: DbClient): Promise<str
   }
   throw new Error("Could not allocate a unique QR token");
 }
+
+const HEX32 = /^[a-f0-9]{32}$/i;
+
+/** Accepts raw hex token or common URL shapes embedding the 32-char hex token. */
+export function parseCamperQrTokenFromScan(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (HEX32.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  try {
+    const url = new URL(trimmed);
+    for (const key of ["token", "qr", "qrToken"]) {
+      const fromQuery = url.searchParams.get(key);
+      if (fromQuery && HEX32.test(fromQuery)) {
+        return fromQuery.toLowerCase();
+      }
+    }
+    const lastSegment = url.pathname.split("/").filter(Boolean).pop();
+    if (lastSegment && HEX32.test(lastSegment)) {
+      return lastSegment.toLowerCase();
+    }
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}

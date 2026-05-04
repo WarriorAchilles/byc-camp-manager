@@ -793,3 +793,204 @@ tbody tr:hover td {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
 }
+
+/* Check-in (arrival dashboard) */
+.check-in-page {
+  max-width: 52rem;
+}
+
+.check-in-toolbar {
+  margin-bottom: 1rem;
+}
+
+.check-in-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.check-in-stat {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.check-in-stat-warn {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+
+.check-in-stat-value {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.check-in-stat-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.check-in-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.check-in-tab {
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+.check-in-tab.active {
+  border-color: var(--brand-slate-600);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.check-in-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.check-in-subtabs .btn.secondary.active {
+  border-color: var(--brand-slate-600);
+  background: color-mix(in srgb, var(--brand-slate-600) 10%, var(--surface));
+}
+
+.check-in-qr-reader {
+  width: 100%;
+  max-width: 320px;
+  min-height: 240px;
+  margin: 0 auto 0.75rem;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #111;
+}
+
+.check-in-scan-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.check-in-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.check-in-search-row .field-control {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.check-in-result-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.check-in-result-list li + li {
+  margin-top: 0.35rem;
+}
+
+.check-in-result-btn {
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.check-in-result-btn:hover {
+  border-color: var(--border-strong);
+}
+
+.check-in-detail {
+  margin-top: 1rem;
+}
+
+.check-in-detail-title {
+  font-family: var(--font-display);
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+}
+
+.check-in-dl {
+  margin: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.check-in-dl dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.check-in-dl dd {
+  margin: 0.15rem 0 0;
+}
+
+.check-in-alert {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.check-in-alert p {
+  margin: 0.25rem 0 0;
+}
+
+.check-in-alert p:first-child {
+  margin-top: 0;
+}
+
+.check-in-cash-fieldset {
+  margin-top: 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+}
+
+.check-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  cursor: pointer;
+}
+
+.check-in-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+  justify-content: flex-end;
+}
+
+@media (min-width: 720px) {
+  .check-in-page {
+    max-width: 56rem;
+  }
+}

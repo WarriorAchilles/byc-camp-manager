@@ -25,14 +25,14 @@ The implementation will use **SMTP** against SendGrid’s relay ([SMTP relay doc
 
 **Environment variables for email** (to be documented in `server/.env.example` when implemented):
 
-| Variable | Purpose |
-| -------- | ------- |
+| Variable          | Purpose                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------- |
 | `EMAIL_TRANSPORT` | `smtp` for SendGrid (or any SMTP relay); `log` (or similar) for tests/CI without network |
-| `SMTP_HOST` | e.g. `smtp.sendgrid.net` |
-| `SMTP_PORT` | e.g. `587` |
-| `SMTP_USER` | For SendGrid: always `apikey` |
-| `SMTP_PASS` | For SendGrid: API key with Mail Send |
-| `EMAIL_FROM` | Verified sender (must match SendGrid single sender or domain auth) |
+| `SMTP_HOST`       | e.g. `smtp.sendgrid.net`                                                                 |
+| `SMTP_PORT`       | e.g. `587`                                                                               |
+| `SMTP_USER`       | For SendGrid: always `apikey`                                                            |
+| `SMTP_PASS`       | For SendGrid: API key with Mail Send                                                     |
+| `EMAIL_FROM`      | Verified sender (must match SendGrid single sender or domain auth)                       |
 
 Other SMTP providers can reuse the same variables with their own host, port, user, and password.
 
