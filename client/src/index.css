@@ -235,3 +235,57 @@ td {
   width: 100%;
   max-width: 380px;
 }
+
+.assign-bench {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.assign-column {
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: 280px;
+  padding: 0.65rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.assign-person-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.assign-person {
+  cursor: grab;
+  padding: 0.25rem 0;
+}
+
+.assign-move-select {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.15rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: min(90vh, 520px);
+  overflow: auto;
+  margin: 0;
+}

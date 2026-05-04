@@ -20,6 +20,15 @@ type CampYearRow = {
   activeCamperCount?: number;
 };
 
+type AgeGroupBracket = {
+  id: string;
+  label: string;
+  minAge: number;
+  maxAge: number;
+  sortOrder: number;
+  isActive: boolean;
+};
+
 function dateInputFromIso(isoDate: string): string {
   return isoDate.slice(0, 10);
 }
@@ -38,6 +47,20 @@ export function CampConfigurationPage(): React.ReactElement {
   const [createStart, setCreateStart] = useState("2026-07-01");
   const [createEnd, setCreateEnd] = useState("2026-07-07");
   const [createCapacity, setCreateCapacity] = useState("");
+
+  const [ageBrackets, setAgeBrackets] = useState<AgeGroupBracket[]>([]);
+  const [ageBracketsLoading, setAgeBracketsLoading] = useState(false);
+  const [bracketError, setBracketError] = useState<string | null>(null);
+  const [newBracketLabel, setNewBracketLabel] = useState("");
+  const [newBracketMin, setNewBracketMin] = useState("");
+  const [newBracketMax, setNewBracketMax] = useState("");
+  const [newBracketSort, setNewBracketSort] = useState("");
+  const [editingBracketId, setEditingBracketId] = useState<string | null>(null);
+  const [editBracketLabel, setEditBracketLabel] = useState("");
+  const [editBracketMin, setEditBracketMin] = useState("");
+  const [editBracketMax, setEditBracketMax] = useState("");
+  const [editBracketSort, setEditBracketSort] = useState("");
+  const [editBracketActive, setEditBracketActive] = useState(true);
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -61,7 +84,167 @@ export function CampConfigurationPage(): React.ReactElement {
     void load();
   }, [load]);
 
+  const loadAgeBrackets = useCallback(async (): Promise<void> => {
+    if (!superAdmin || !selectedId) {
+      setAgeBrackets([]);
+      return;
+    }
+    setAgeBracketsLoading(true);
+    setBracketError(null);
+    try {
+      const data = await apiJson<{ ageGroupBrackets: AgeGroupBracket[] }>(
+        `/api/admin/camp-years/${selectedId}/age-group-brackets`,
+      );
+      setAgeBrackets(data.ageGroupBrackets);
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not load age group brackets.";
+      setBracketError(message);
+      setAgeBrackets([]);
+    } finally {
+      setAgeBracketsLoading(false);
+    }
+  }, [superAdmin, selectedId]);
+
+  useEffect(() => {
+    void loadAgeBrackets();
+  }, [loadAgeBrackets]);
+
   const selected = campYears.find((year) => year.id === selectedId) ?? null;
+
+  const nextBracketSortOrder = (): number => {
+    if (ageBrackets.length === 0) {
+      return 1;
+    }
+    return Math.max(...ageBrackets.map((bracket) => bracket.sortOrder)) + 1;
+  };
+
+  const resetNewBracketForm = (): void => {
+    setNewBracketLabel("");
+    setNewBracketMin("");
+    setNewBracketMax("");
+    setNewBracketSort("");
+  };
+
+  const beginEditBracket = (bracket: AgeGroupBracket): void => {
+    setEditingBracketId(bracket.id);
+    setEditBracketLabel(bracket.label);
+    setEditBracketMin(String(bracket.minAge));
+    setEditBracketMax(String(bracket.maxAge));
+    setEditBracketSort(String(bracket.sortOrder));
+    setEditBracketActive(bracket.isActive);
+  };
+
+  const handleCreateBracket = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!superAdmin || !selectedId) {
+      return;
+    }
+    setBracketError(null);
+    const minParsed = Number.parseInt(newBracketMin, 10);
+    const maxParsed = Number.parseInt(newBracketMax, 10);
+    if (Number.isNaN(minParsed) || Number.isNaN(maxParsed)) {
+      setBracketError("Min and max age must be whole numbers.");
+      return;
+    }
+    if (minParsed > maxParsed) {
+      setBracketError("Min age cannot be greater than max age.");
+      return;
+    }
+    const sortRaw = newBracketSort.trim();
+    const sortParsed =
+      sortRaw === "" ? nextBracketSortOrder() : Number.parseInt(sortRaw, 10);
+    if (Number.isNaN(sortParsed)) {
+      setBracketError("Sort order must be a whole number.");
+      return;
+    }
+    try {
+      await apiJson(`/api/admin/camp-years/${selectedId}/age-group-brackets`, {
+        method: "POST",
+        body: JSON.stringify({
+          label: newBracketLabel.trim(),
+          minAge: minParsed,
+          maxAge: maxParsed,
+          sortOrder: sortParsed,
+          isActive: true,
+        }),
+      });
+      resetNewBracketForm();
+      await loadAgeBrackets();
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not create age group.";
+      setBracketError(message);
+    }
+  };
+
+  const handleSaveBracketEdit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!superAdmin || !selectedId || !editingBracketId) {
+      return;
+    }
+    setBracketError(null);
+    const minParsed = Number.parseInt(editBracketMin, 10);
+    const maxParsed = Number.parseInt(editBracketMax, 10);
+    if (Number.isNaN(minParsed) || Number.isNaN(maxParsed)) {
+      setBracketError("Min and max age must be whole numbers.");
+      return;
+    }
+    if (minParsed > maxParsed) {
+      setBracketError("Min age cannot be greater than max age.");
+      return;
+    }
+    const sortParsed = Number.parseInt(editBracketSort, 10);
+    if (Number.isNaN(sortParsed)) {
+      setBracketError("Sort order must be a whole number.");
+      return;
+    }
+    try {
+      await apiJson(
+        `/api/admin/camp-years/${selectedId}/age-group-brackets/${editingBracketId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            label: editBracketLabel.trim(),
+            minAge: minParsed,
+            maxAge: maxParsed,
+            sortOrder: sortParsed,
+            isActive: editBracketActive,
+          }),
+        },
+      );
+      setEditingBracketId(null);
+      await loadAgeBrackets();
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not update age group.";
+      setBracketError(message);
+    }
+  };
+
+  const patchBracketActive = async (
+    bracket: AgeGroupBracket,
+    isActive: boolean,
+  ): Promise<void> => {
+    if (!superAdmin || !selectedId) {
+      return;
+    }
+    setBracketError(null);
+    try {
+      await apiJson(
+        `/api/admin/camp-years/${selectedId}/age-group-brackets/${bracket.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ isActive }),
+        },
+      );
+      await loadAgeBrackets();
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not update age group.";
+      setBracketError(message);
+    }
+  };
 
   const handleCreate = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -136,8 +319,8 @@ export function CampConfigurationPage(): React.ReactElement {
     <div>
       <h1 style={{ marginTop: 0 }}>Camp configuration</h1>
       <p className="muted">
-        Super admins edit camp-wide settings for each year. Camp admins can review counts but cannot
-        change fee placeholders or capacity here.
+        Super admins edit camp-wide settings and age groups for each year. Camp admins can review counts
+        but cannot change fee placeholders, capacity, or age brackets here.
       </p>
 
       {loading ? <p className="muted">Loading…</p> : null}
@@ -224,6 +407,182 @@ export function CampConfigurationPage(): React.ReactElement {
             Create camp year
           </button>
         </form>
+      ) : null}
+
+      {superAdmin && selectedId ? (
+        <div className="card stack">
+          <h2 style={{ marginTop: 0 }}>Age groups ({selected?.yearLabel ?? "camp year"})</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Used for camper dorm auto-assignment and labels. Ages are measured at camp start (same rule
+            as dorm assignment).
+          </p>
+          {bracketError ? <p className="error">{bracketError}</p> : null}
+          {ageBracketsLoading ? <p className="muted">Loading age groups…</p> : null}
+
+          <form className="stack" onSubmit={handleCreateBracket}>
+            <h3 style={{ margin: 0, fontSize: "1rem" }}>Add age group</h3>
+            <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+              <label className="stack" style={{ flex: "1 1 140px" }}>
+                Label
+                <input
+                  value={newBracketLabel}
+                  onChange={(event) => setNewBracketLabel(event.target.value)}
+                  placeholder="e.g. Juniors"
+                  required
+                />
+              </label>
+              <label className="stack" style={{ flex: "0 0 88px" }}>
+                Min age
+                <input
+                  inputMode="numeric"
+                  value={newBracketMin}
+                  onChange={(event) => setNewBracketMin(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="stack" style={{ flex: "0 0 88px" }}>
+                Max age
+                <input
+                  inputMode="numeric"
+                  value={newBracketMax}
+                  onChange={(event) => setNewBracketMax(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="stack" style={{ flex: "0 0 100px" }}>
+                Sort order
+                <input
+                  inputMode="numeric"
+                  value={newBracketSort}
+                  onChange={(event) => setNewBracketSort(event.target.value)}
+                  placeholder={`default ${nextBracketSortOrder()}`}
+                />
+              </label>
+              <button type="submit" className="btn">
+                Add
+              </button>
+            </div>
+          </form>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Ages</th>
+                  <th>Sort</th>
+                  <th>Active</th>
+                  <th>Edit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ageBrackets.length === 0 && !ageBracketsLoading ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No age groups yet. Add one above for dorm auto-assignment.
+                    </td>
+                  </tr>
+                ) : null}
+                {ageBrackets.map((bracket) => (
+                  <tr key={bracket.id}>
+                    <td>{bracket.label}</td>
+                    <td>
+                      {bracket.minAge}–{bracket.maxAge}
+                    </td>
+                    <td>{bracket.sortOrder}</td>
+                    <td>
+                      <label className="row" style={{ gap: "0.35rem" }}>
+                        <input
+                          type="checkbox"
+                          checked={bracket.isActive}
+                          onChange={(event) =>
+                            void patchBracketActive(bracket, event.target.checked)
+                          }
+                          aria-label={`Active: ${bracket.label}`}
+                        />
+                        <span className="muted" style={{ fontSize: "0.8rem" }}>
+                          {bracket.isActive ? "yes" : "no"}
+                        </span>
+                      </label>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => beginEditBracket(bracket)}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {editingBracketId ? (
+            <form className="stack" onSubmit={handleSaveBracketEdit}>
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>Edit age group</h3>
+              <label className="stack">
+                Label
+                <input
+                  value={editBracketLabel}
+                  onChange={(event) => setEditBracketLabel(event.target.value)}
+                  required
+                />
+              </label>
+              <div className="row" style={{ flexWrap: "wrap" }}>
+                <label className="stack" style={{ flex: "0 0 120px" }}>
+                  Min age
+                  <input
+                    inputMode="numeric"
+                    value={editBracketMin}
+                    onChange={(event) => setEditBracketMin(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="stack" style={{ flex: "0 0 120px" }}>
+                  Max age
+                  <input
+                    inputMode="numeric"
+                    value={editBracketMax}
+                    onChange={(event) => setEditBracketMax(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="stack" style={{ flex: "0 0 120px" }}>
+                  Sort order
+                  <input
+                    inputMode="numeric"
+                    value={editBracketSort}
+                    onChange={(event) => setEditBracketSort(event.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+              <label className="row" style={{ gap: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={editBracketActive}
+                  onChange={(event) => setEditBracketActive(event.target.checked)}
+                />
+                <span>Active</span>
+              </label>
+              <div className="row">
+                <button type="submit" className="btn">
+                  Save age group
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setEditingBracketId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </div>
       ) : null}
 
       {superAdmin && selected ? (

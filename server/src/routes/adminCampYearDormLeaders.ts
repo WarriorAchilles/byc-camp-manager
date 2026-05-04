@@ -75,6 +75,9 @@ router.get("/", async (req: AuthedRequest, res) => {
   const dormLeaders = await prisma.dormLeader.findMany({
     where: { campYearId, archivedAt: null },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    include: {
+      assignedCamperDorm: { select: { id: true, name: true } },
+    },
   });
   res.json({ dormLeaders });
 });

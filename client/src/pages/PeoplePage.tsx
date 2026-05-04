@@ -37,6 +37,8 @@ type DormLeaderRow = {
   phone: string;
   gender: string;
   importSource: string;
+  assignedCamperDormId: string | null;
+  assignedCamperDorm: { id: string; name: string } | null;
 };
 
 type DormOption = {
@@ -105,7 +107,6 @@ export function PeoplePage(): React.ReactElement {
   const [dlEmail, setDlEmail] = useState("leader@example.com");
   const [dlPhone, setDlPhone] = useState("5551112222");
   const [dlRoleLabel, setDlRoleLabel] = useState<string>("");
-  const [dlCamperDormId, setDlCamperDormId] = useState<string>("");
 
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
@@ -276,7 +277,6 @@ export function PeoplePage(): React.ReactElement {
       email: dlEmail.trim(),
       phone: dlPhone.trim(),
       ...(dlRoleLabel.trim() !== "" ? { roleLabel: dlRoleLabel.trim() } : {}),
-      ...(dlCamperDormId ? { assignedCamperDormId: dlCamperDormId } : {}),
     };
     try {
       await apiJson(`/api/admin/camp-years/${campYearId}/dorm-leaders`, {
@@ -433,7 +433,8 @@ export function PeoplePage(): React.ReactElement {
               </label>
             ) : (
               <p className="muted">
-                No camper dorms yet. A super admin can add dorms under Camp configuration.
+                No camper dorms yet. A super admin can add dorms on the{" "}
+                <Link to="/admin/dorms">Dorms</Link> page.
               </p>
             )}
             <button type="submit" className="btn">
@@ -516,7 +517,10 @@ export function PeoplePage(): React.ReactElement {
                 </select>
               </label>
             ) : (
-              <p className="muted">No worker dorms yet. Add a dorm with purpose “worker” in Camp configuration.</p>
+              <p className="muted">
+                No worker dorms yet. Add a dorm with purpose “worker” on the{" "}
+                <Link to="/admin/dorms">Dorms</Link> page.
+              </p>
             )}
             <button type="submit" className="btn">
               Add worker
@@ -526,7 +530,8 @@ export function PeoplePage(): React.ReactElement {
           <form className="card stack" onSubmit={(event) => void handleCreateLeader(event)}>
             <h2 style={{ marginTop: 0 }}>Add dorm leader</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
-              Leaders are assigned to camper dorms for rosters and check-in. Worker task preferences apply only to
+              Assign leaders to camper dorms on the{" "}
+              <Link to="/admin/dorms">Dorms</Link> page (Assignments tab). Worker task preferences apply only to
               workers, not dorm leaders.
             </p>
             {leaderFormError ? <p className="error">{leaderFormError}</p> : null}
@@ -567,24 +572,6 @@ export function PeoplePage(): React.ReactElement {
                 placeholder="e.g. Lead counselor"
               />
             </label>
-            {camperDorms.length > 0 ? (
-              <label>
-                Assigned camper dorm (optional)
-                <select
-                  value={dlCamperDormId}
-                  onChange={(event) => setDlCamperDormId(event.target.value)}
-                >
-                  <option value="">— Unassigned —</option>
-                  {camperDorms.map((dorm) => (
-                    <option key={dorm.id} value={dorm.id}>
-                      {dorm.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p className="muted">Add camper dorms under Camp configuration to assign a dorm leader here.</p>
-            )}
             <button type="submit" className="btn">
               Add dorm leader
             </button>
@@ -656,8 +643,13 @@ export function PeoplePage(): React.ReactElement {
         )}
       </div>
 
-      <div className="card">
+      <div className="card stack">
         <h2 style={{ marginTop: 0 }}>Dorm leaders</h2>
+        {dormLeaders.length > 0 ? (
+          <p className="muted" style={{ margin: 0 }}>
+            Camper dorm assignment: <Link to="/admin/dorms">Dorms → Assignments</Link>.
+          </p>
+        ) : null}
         {dormLeaders.length === 0 ? (
           <p className="muted">No dorm leaders yet for this year.</p>
         ) : (
@@ -668,6 +660,7 @@ export function PeoplePage(): React.ReactElement {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
+                  <th>Camper dorm</th>
                   <th>Source</th>
                 </tr>
               </thead>
@@ -679,6 +672,7 @@ export function PeoplePage(): React.ReactElement {
                     </td>
                     <td>{leader.email}</td>
                     <td>{leader.phone}</td>
+                    <td>{leader.assignedCamperDorm?.name ?? "—"}</td>
                     <td>{leader.importSource}</td>
                   </tr>
                 ))}

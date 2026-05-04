@@ -7,10 +7,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
+import { ageOnCampStartUtc, isCamperDormCoEdDisallowed } from "../lib/dormAssignmentCore.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { adminCampYearCampersRouter } from "./adminCampYearCampers.js";
 import { adminCampYearCsvImportRouter } from "./adminCampYearCsvImport.js";
+import { adminCampYearDormAssignmentsRouter } from "./adminCampYearDormAssignments.js";
 import { adminCampYearDormLeadersRouter } from "./adminCampYearDormLeaders.js";
 import { adminCampYearWorkersRouter } from "./adminCampYearWorkers.js";
 
@@ -220,11 +222,13 @@ ageBracketRouter.patch("/:bracketId", async (req: AuthedRequest, res) => {
 
 adminCampYearsRouter.use("/:campYearId/age-group-brackets", ageBracketRouter);
 
-const dormRouter = Router({ mergeParams: true });
-dormRouter.use(requireAuth);
-dormRouter.use(requireRole(AdminRole.super_admin));
+adminCampYearsRouter.use("/:campYearId/dorm-assignments", adminCampYearDormAssignmentsRouter);
 
-dormRouter.get("/", async (req: AuthedRequest, res) => {
+const dormReadRouter = Router({ mergeParams: true });
+dormReadRouter.use(requireAuth);
+dormReadRouter.use(requireRole(AdminRole.super_admin, AdminRole.camp_admin));
+
+dormReadRouter.get("/", async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -241,7 +245,129 @@ dormRouter.get("/", async (req: AuthedRequest, res) => {
   res.json({ dorms });
 });
 
-dormRouter.post("/", async (req: AuthedRequest, res) => {
+dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const dormId = pathParam(req.params.dormId);
+  if (!dormId || !z.string().uuid().safeParse(dormId).success) {
+    res.status(400).json({ error: "Invalid dorm id" });
+    return;
+  }
+
+  const year = await prisma.campYear.findUnique({
+    where: { id: campYearId },
+    select: { id: true, startDate: true },
+  });
+  if (!year) {
+    res.status(404).json({ error: "Camp year not found" });
+    return;
+  }
+
+  const dorm = await prisma.dorm.findFirst({
+    where: { id: dormId, campYearId },
+    include: { ageGroupBracket: true },
+  });
+  if (!dorm) {
+    res.status(404).json({ error: "Dorm not found" });
+    return;
+  }
+
+  const dormLeaders = await prisma.dormLeader.findMany({
+    where: { campYearId, assignedCamperDormId: dormId, archivedAt: null },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      email: true,
+      checkInStatus: true,
+    },
+  });
+
+  if (dorm.purpose === DormPurpose.camper) {
+    const campers = await prisma.camper.findMany({
+      where: { dormId, campYearId, archivedAt: null },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
+    const medicalNotesSummaryLines: string[] = [];
+    const camperRows = campers.map((camper) => {
+      const age = ageOnCampStartUtc(camper.dateOfBirth, year.startDate);
+      const detailParts: string[] = [];
+      if (camper.medicalNotes) {
+        detailParts.push(`Medical: ${camper.medicalNotes}`);
+      }
+      if (camper.dietaryRestrictions) {
+        detailParts.push(`Dietary: ${camper.dietaryRestrictions}`);
+      }
+      if (detailParts.length > 0) {
+        medicalNotesSummaryLines.push(`${camper.firstName} ${camper.lastName}: ${detailParts.join("; ")}`);
+      }
+      return {
+        id: camper.id,
+        firstName: camper.firstName,
+        lastName: camper.lastName,
+        age,
+        checkInStatus: camper.checkInStatus,
+        medicalNotes: camper.medicalNotes,
+        dietaryRestrictions: camper.dietaryRestrictions,
+        guardianName: camper.guardianName,
+        guardianPhone: camper.guardianPhone,
+      };
+    });
+
+    res.json({
+      dorm: {
+        id: dorm.id,
+        name: dorm.name,
+        purpose: dorm.purpose,
+        genderDesignation: dorm.genderDesignation,
+        bedCapacity: dorm.bedCapacity,
+        ageGroupBracket: dorm.ageGroupBracket,
+      },
+      occupantCount: campers.length,
+      dormLeaders,
+      campers: camperRows,
+      medicalNotesSummaryLines,
+    });
+    return;
+  }
+
+  const workers = await prisma.worker.findMany({
+    where: { dormId, campYearId, archivedAt: null },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+  const workerRows = workers.map((worker) => ({
+    id: worker.id,
+    firstName: worker.firstName,
+    lastName: worker.lastName,
+    age: worker.dateOfBirth ? ageOnCampStartUtc(worker.dateOfBirth, year.startDate) : null,
+    checkInStatus: worker.checkInStatus,
+  }));
+
+  res.json({
+    dorm: {
+      id: dorm.id,
+      name: dorm.name,
+      purpose: dorm.purpose,
+      genderDesignation: dorm.genderDesignation,
+      bedCapacity: dorm.bedCapacity,
+      ageGroupBracket: dorm.ageGroupBracket,
+    },
+    occupantCount: workers.length,
+    dormLeaders,
+    workers: workerRows,
+    medicalNotesSummaryLines: [] as string[],
+  });
+});
+
+const dormMutationRouter = Router({ mergeParams: true });
+dormMutationRouter.use(requireAuth);
+dormMutationRouter.use(requireRole(AdminRole.super_admin));
+
+dormMutationRouter.post("/", async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -271,6 +397,11 @@ dormRouter.post("/", async (req: AuthedRequest, res) => {
     }
   }
 
+  if (isCamperDormCoEdDisallowed(parsed.data.purpose, parsed.data.genderDesignation)) {
+    res.status(400).json({ error: "Camper dorms cannot be co-ed" });
+    return;
+  }
+
   const created = await prisma.dorm.create({
     data: {
       campYearId,
@@ -285,7 +416,7 @@ dormRouter.post("/", async (req: AuthedRequest, res) => {
   res.status(201).json(created);
 });
 
-dormRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
+dormMutationRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -328,6 +459,12 @@ dormRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
     ageGroupBracketId = null;
   }
 
+  const nextGender = parsed.data.genderDesignation ?? existing.genderDesignation;
+  if (isCamperDormCoEdDisallowed(nextPurpose, nextGender)) {
+    res.status(400).json({ error: "Camper dorms cannot be co-ed" });
+    return;
+  }
+
   const updated = await prisma.dorm.update({
     where: { id: dormId },
     data: {
@@ -343,7 +480,11 @@ dormRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
   res.json(updated);
 });
 
-adminCampYearsRouter.use("/:campYearId/dorms", dormRouter);
+adminCampYearsRouter.use(
+  "/:campYearId/dorms",
+  dormReadRouter,
+  dormMutationRouter,
+);
 
 adminCampYearsRouter.get(
   "/:campYearId",
