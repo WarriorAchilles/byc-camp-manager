@@ -780,18 +780,27 @@ tbody tr:hover td {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: color-mix(in srgb, var(--brand-slate-950) 45%, transparent);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--brand-slate-950) 58%, transparent);
+  backdrop-filter: blur(4px);
 }
 
 .modal-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 420px;
   max-height: min(90vh, 520px);
   overflow: auto;
   margin: 0;
+  padding: clamp(1.25rem, 3vw, 1.65rem);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-strong);
+  /* Opaque panel so dashboard content never shows through the dialog */
+  background-color: var(--surface);
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--brand-slate-950) 6%, transparent);
+  color: var(--text);
 }
 
 /* Check-in (arrival dashboard) */
@@ -993,4 +1002,34 @@ tbody tr:hover td {
   .check-in-page {
     max-width: 56rem;
   }
+}
+
+.check-in-done-modal {
+  max-width: 28rem;
+}
+
+.check-in-modal-title {
+  font-family: var(--font-display);
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+}
+
+.check-in-modal-lead {
+  margin: 0 0 0.65rem;
+  line-height: 1.5;
+}
+
+.check-in-modal-dorm {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.check-in-modal-hint {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.check-in-modal-actions {
+  display: flex;
+  justify-content: flex-end;
 }

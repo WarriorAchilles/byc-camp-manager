@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
+import { autoAssignCamperDormIfUnassigned } from "../lib/checkInDormAssignment.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { parseCamperQrTokenFromScan } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
@@ -367,7 +368,10 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const year = await prisma.campYear.findUnique({ where: { id: campYearId }, select: { id: true } });
+  const year = await prisma.campYear.findUnique({
+    where: { id: campYearId },
+    select: { id: true, startDate: true },
+  });
   if (!year) {
     res.status(404).json({ error: "Camp year not found" });
     return;
@@ -377,7 +381,7 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
   let transitionedToCheckedIn = false;
   let emailResult: Awaited<ReturnType<typeof sendCheckInConfirmationMail>> | null = null;
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     const existing = await tx.camper.findFirst({
       where: { id: camperId, campYearId, archivedAt: null },
       select: camperCheckInSelect,
@@ -387,6 +391,7 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
     }
 
     const wasCheckedIn = existing.checkInStatus === CheckInStatus.checked_in;
+    let dormAutoAssigned = false;
 
     if (parsed.data.markPaidCashForGuardianFamily) {
       await tx.camper.updateMany({
@@ -406,6 +411,14 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
     }
 
     if (!wasCheckedIn) {
+      dormAutoAssigned = await autoAssignCamperDormIfUnassigned(tx, {
+        campYearId,
+        campStart: year.startDate,
+        camperId,
+      });
+    }
+
+    if (!wasCheckedIn) {
       await tx.camper.update({
         where: { id: camperId },
         data: {
@@ -420,33 +433,34 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
       where: { id: camperId, campYearId },
       select: camperCheckInSelect,
     });
-    return camper;
+    return { camper, dormAutoAssigned };
   });
 
-  if (!updated) {
+  if (!txResult) {
     res.status(404).json({ error: "Camper not found" });
     return;
   }
 
+  const { camper: finalCamper, dormAutoAssigned } = txResult;
+
   if (transitionedToCheckedIn) {
-    const dormLabel = updated.dorm?.name ?? "unassigned";
-    const fullName = [updated.firstName, updated.middleName, updated.lastName].filter(Boolean).join(" ");
+    const dormLabel = finalCamper.dorm?.name ?? "unassigned";
+    const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
+      .filter(Boolean)
+      .join(" ");
     emailResult = await sendCheckInConfirmationMail({
-      to: updated.guardianEmail,
+      to: finalCamper.guardianEmail,
       camperFullName: fullName,
       dormLabel,
       checkedInAt: now,
     });
   }
 
-  const camper = await prisma.camper.findFirstOrThrow({
-    where: { id: camperId, campYearId },
-    select: camperCheckInSelect,
-  });
-
   res.json({
-    camper: serializeCamperCheckIn(camper),
+    camper: serializeCamperCheckIn(finalCamper),
     alreadyCheckedIn: !transitionedToCheckedIn,
+    checkInCompletedThisRequest: transitionedToCheckedIn,
+    dormAutoAssigned,
     checkInConfirmationEmail: emailResult,
   });
 });

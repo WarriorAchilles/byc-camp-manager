@@ -56,6 +56,21 @@ type DormLeaderCheckIn = {
 type PersonTab = "camper" | "worker" | "dorm_leader";
 type CamperMode = "scan" | "search";
 
+type CamperCheckInPostResponse = {
+  camper: CamperCheckIn;
+  alreadyCheckedIn: boolean;
+  checkInCompletedThisRequest?: boolean;
+  dormAutoAssigned?: boolean;
+};
+
+type CamperCheckInDoneModal = {
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+  dormLabel: string;
+  dormAutoAssigned: boolean;
+};
+
 export function CheckInPage(): React.ReactElement {
   const readerId = useId().replace(/:/g, "");
   const readerElementId = `check-in-qr-${readerId}`;
@@ -85,6 +100,8 @@ export function CheckInPage(): React.ReactElement {
 
   const [scannerRunning, setScannerRunning] = useState(false);
   const html5QrRef = useRef<Html5Qrcode | null>(null);
+
+  const [camperCheckInModal, setCamperCheckInModal] = useState<CamperCheckInDoneModal | null>(null);
 
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
@@ -134,6 +151,19 @@ export function CheckInPage(): React.ReactElement {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!camperCheckInModal) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setCamperCheckInModal(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [camperCheckInModal]);
 
   const stopScanner = useCallback(async (): Promise<void> => {
     const instance = html5QrRef.current;
@@ -289,13 +319,25 @@ export function CheckInPage(): React.ReactElement {
     setBusy(true);
     setActionError(null);
     try {
-      await apiJson(`/api/admin/camp-years/${campYearId}/check-in/campers/${selectedCamper.id}/check-in`, {
-        method: "POST",
-        body: JSON.stringify({
-          markPaidCashForCamper: markPaidCamper || undefined,
-          markPaidCashForGuardianFamily: markPaidFamily || undefined,
-        }),
-      });
+      const data = await apiJson<CamperCheckInPostResponse>(
+        `/api/admin/camp-years/${campYearId}/check-in/campers/${selectedCamper.id}/check-in`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            markPaidCashForCamper: markPaidCamper || undefined,
+            markPaidCashForGuardianFamily: markPaidFamily || undefined,
+          }),
+        },
+      );
+      if (data.checkInCompletedThisRequest) {
+        setCamperCheckInModal({
+          firstName: data.camper.firstName,
+          lastName: data.camper.lastName,
+          middleName: data.camper.middleName,
+          dormLabel: data.camper.dormAssignment ?? "Unassigned",
+          dormAutoAssigned: data.dormAutoAssigned ?? false,
+        });
+      }
       setSelectedCamper(null);
       setMarkPaidCamper(false);
       setMarkPaidFamily(false);
@@ -359,8 +401,9 @@ export function CheckInPage(): React.ReactElement {
         <p className="page-header-eyebrow">Arrival</p>
         <h1>Check-in</h1>
         <p className="page-header-lead">
-          Scan camper QR codes or search by name. Mark cash payments when collecting fees. Workers and
-          dorm leaders use name search.
+          Scan camper QR codes or search by name. Unassigned campers are placed in a matching camper dorm
+          automatically when they check in (same rules as dorm auto-assign). Mark cash payments when
+          collecting fees. Workers and dorm leaders use name search.
         </p>
       </header>
 
@@ -811,6 +854,48 @@ export function CheckInPage(): React.ReactElement {
             >
               {selectedLeader.checkInStatus === "checked_in" ? "Already checked in" : "Confirm check-in"}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {camperCheckInModal ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setCamperCheckInModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camper-check-in-done-title"
+            className="modal-card check-in-done-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="camper-check-in-done-title" className="check-in-modal-title">
+              Camper checked in
+            </h2>
+            <p className="check-in-modal-lead">
+              <strong>
+                {[camperCheckInModal.firstName, camperCheckInModal.middleName, camperCheckInModal.lastName]
+                  .filter(Boolean)
+                  .join(" ")}
+              </strong>{" "}
+              has been checked in.
+            </p>
+            <p className="check-in-modal-dorm">
+              <strong>Dorm assignment:</strong> {camperCheckInModal.dormLabel}
+              {camperCheckInModal.dormAutoAssigned ? (
+                <span className="muted"> (placed automatically)</span>
+              ) : null}
+            </p>
+            <p className="muted check-in-modal-hint">
+              You can still move this camper on the Dorms page if the assignment needs to change.
+            </p>
+            <div className="check-in-modal-actions">
+              <button type="button" className="btn primary" onClick={() => setCamperCheckInModal(null)}>
+                OK
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

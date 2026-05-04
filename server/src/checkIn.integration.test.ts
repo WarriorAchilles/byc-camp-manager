@@ -216,6 +216,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       .send({});
     expect(first.status).toBe(200);
     expect(first.body.alreadyCheckedIn).toBe(false);
+    expect(first.body.checkInCompletedThisRequest).toBe(true);
+    expect(first.body.dormAutoAssigned).toBe(false);
     expect(first.body.checkInConfirmationEmail?.status).toBe("skipped_log");
     expect(first.body.camper.checkInStatus).toBe(CheckInStatus.checked_in);
     expect(first.body.camper.checkedInAt).toBeTruthy();
@@ -226,9 +228,42 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       .send({});
     expect(second.status).toBe(200);
     expect(second.body.alreadyCheckedIn).toBe(true);
+    expect(second.body.checkInCompletedThisRequest).toBe(false);
     expect(second.body.checkInConfirmationEmail).toBeNull();
 
     expect(logSpy.mock.calls.some((c) => String(c[0]).includes("guard-checkin@example.com"))).toBe(true);
+  });
+
+  it("auto-assigns a camper dorm at check-in when unassigned and a matching dorm is available", async () => {
+    const header = await authHeader();
+    const create = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", header)
+      .send({
+        firstName: "Auto",
+        lastName: "Placed",
+        dateOfBirth: "2085-06-15",
+        gender: Gender.male,
+        guardianName: "G",
+        guardianEmail: "auto-placed@example.com",
+        guardianPhone: "555",
+        paymentStatus: CamperPaymentStatus.unpaid,
+      });
+    expect(create.status).toBe(201);
+    const camperId = create.body.id as string;
+    expect(create.body.dormId).toBeNull();
+
+    const checkIn = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${camperId}/check-in`)
+      .set("Authorization", header)
+      .send({});
+    expect(checkIn.status).toBe(200);
+    expect(checkIn.body.checkInCompletedThisRequest).toBe(true);
+    expect(checkIn.body.dormAutoAssigned).toBe(true);
+    expect(checkIn.body.camper.dormAssignment).toBe("Camper Hall A");
+
+    const row = await prisma.camper.findUniqueOrThrow({ where: { id: camperId } });
+    expect(row.dormId).toBe(camperDormId);
   });
 
   it("mark paid cash for camper updates payment and dashboard unpaid count", async () => {
