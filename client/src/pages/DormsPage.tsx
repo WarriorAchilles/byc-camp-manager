@@ -128,6 +128,12 @@ function camperAssignExceptionMessages(
 }
 
 type RosterResponse = {
+  campYear?: {
+    id: string;
+    name: string;
+    yearLabel: string;
+    startDate: string;
+  };
   dorm: {
     id: string;
     name: string;
@@ -149,6 +155,7 @@ type RosterResponse = {
     id: string;
     firstName: string;
     lastName: string;
+    gender?: string;
     age: number;
     checkInStatus: string;
     medicalNotes: string | null;

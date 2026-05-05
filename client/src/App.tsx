@@ -8,6 +8,7 @@ import { DormsPage } from "./pages/DormsPage";
 import { ImportsPage } from "./pages/ImportsPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { PeoplePage } from "./pages/PeoplePage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -46,6 +47,7 @@ export function App(): React.ReactElement {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="dorms" element={<DormsPage />} />
           <Route path="check-in" element={<CheckInPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="users" element={<UsersAdminPage />} />
         </Route>
         <Route path="/" element={<Navigate to="/admin" replace />} />

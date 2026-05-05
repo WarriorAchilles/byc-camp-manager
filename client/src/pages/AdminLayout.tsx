@@ -15,7 +15,7 @@ const navItems: NavItem[] = [
   { to: "/admin/imports", label: "Imports", placeholder: false },
   { to: "/admin/dorms", label: "Dorms", placeholder: false },
   { to: "/admin/check-in", label: "Check-in", placeholder: false },
-  { to: "/admin/reports", label: "Reports", placeholder: true },
+  { to: "/admin/reports", label: "Reports", placeholder: false },
   { to: "/admin/users", label: "Admin users", placeholder: false },
 ];
 

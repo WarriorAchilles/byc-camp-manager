@@ -1,7 +1,9 @@
 import {
   AdminRole,
+  CheckInStatus,
   DormGenderDesignation,
   DormPurpose,
+  Gender,
 } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
@@ -56,6 +58,13 @@ const dormCreateBody = z.object({
 });
 
 const dormPatchBody = dormCreateBody.partial();
+
+/** Optional filters for GET …/dorms/:dormId/roster (query string). */
+const dormRosterQuerySchema = z.object({
+  checkInStatus: z.nativeEnum(CheckInStatus).optional(),
+  gender: z.nativeEnum(Gender).optional(),
+  ageGroupBracketId: z.string().uuid().optional(),
+});
 
 export const adminCampYearsRouter = Router();
 
@@ -127,9 +136,8 @@ adminCampYearsRouter.use("/:campYearId/csv-import", adminCampYearCsvImportRouter
 
 const ageBracketRouter = Router({ mergeParams: true });
 ageBracketRouter.use(requireAuth);
-ageBracketRouter.use(requireRole(AdminRole.super_admin));
 
-ageBracketRouter.get("/", async (req: AuthedRequest, res) => {
+ageBracketRouter.get("/", requireRole(AdminRole.super_admin, AdminRole.camp_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -146,7 +154,7 @@ ageBracketRouter.get("/", async (req: AuthedRequest, res) => {
   res.json({ ageGroupBrackets: brackets });
 });
 
-ageBracketRouter.post("/", async (req: AuthedRequest, res) => {
+ageBracketRouter.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -178,7 +186,7 @@ ageBracketRouter.post("/", async (req: AuthedRequest, res) => {
   res.status(201).json(created);
 });
 
-ageBracketRouter.patch("/:bracketId", async (req: AuthedRequest, res) => {
+ageBracketRouter.patch("/:bracketId", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
@@ -258,9 +266,20 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
     return;
   }
 
+  const rosterQueryParsed = dormRosterQuerySchema.safeParse({
+    checkInStatus: typeof req.query.checkInStatus === "string" ? req.query.checkInStatus : undefined,
+    gender: typeof req.query.gender === "string" ? req.query.gender : undefined,
+    ageGroupBracketId: typeof req.query.ageGroupBracketId === "string" ? req.query.ageGroupBracketId : undefined,
+  });
+  if (!rosterQueryParsed.success) {
+    res.status(400).json({ error: "Invalid roster query" });
+    return;
+  }
+  const rosterFilters = rosterQueryParsed.data;
+
   const year = await prisma.campYear.findUnique({
     where: { id: campYearId },
-    select: { id: true, startDate: true },
+    select: { id: true, name: true, yearLabel: true, startDate: true },
   });
   if (!year) {
     res.status(404).json({ error: "Camp year not found" });
@@ -294,23 +313,13 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       where: { dormId, campYearId, archivedAt: null },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
-    const medicalNotesSummaryLines: string[] = [];
     const camperRows = campers.map((camper) => {
       const age = ageOnCampStartUtc(camper.dateOfBirth, year.startDate);
-      const detailParts: string[] = [];
-      if (camper.medicalNotes) {
-        detailParts.push(`Medical: ${camper.medicalNotes}`);
-      }
-      if (camper.dietaryRestrictions) {
-        detailParts.push(`Dietary: ${camper.dietaryRestrictions}`);
-      }
-      if (detailParts.length > 0) {
-        medicalNotesSummaryLines.push(`${camper.firstName} ${camper.lastName}: ${detailParts.join("; ")}`);
-      }
       return {
         id: camper.id,
         firstName: camper.firstName,
         lastName: camper.lastName,
+        gender: camper.gender,
         age,
         checkInStatus: camper.checkInStatus,
         medicalNotes: camper.medicalNotes,
@@ -320,7 +329,52 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       };
     });
 
+    let ageBracketFilter: { minAge: number; maxAge: number } | null = null;
+    if (rosterFilters.ageGroupBracketId) {
+      const bracket = await prisma.ageGroupBracket.findFirst({
+        where: { id: rosterFilters.ageGroupBracketId, campYearId },
+      });
+      if (!bracket) {
+        res.status(400).json({ error: "Age group bracket not found for this camp year" });
+        return;
+      }
+      ageBracketFilter = { minAge: bracket.minAge, maxAge: bracket.maxAge };
+    }
+
+    const filteredCampers = camperRows.filter((row) => {
+      if (rosterFilters.checkInStatus && row.checkInStatus !== rosterFilters.checkInStatus) {
+        return false;
+      }
+      if (rosterFilters.gender && row.gender !== rosterFilters.gender) {
+        return false;
+      }
+      if (ageBracketFilter && (row.age < ageBracketFilter.minAge || row.age > ageBracketFilter.maxAge)) {
+        return false;
+      }
+      return true;
+    });
+
+    const medicalNotesSummaryLines: string[] = [];
+    for (const row of filteredCampers) {
+      const detailParts: string[] = [];
+      if (row.medicalNotes) {
+        detailParts.push(`Medical: ${row.medicalNotes}`);
+      }
+      if (row.dietaryRestrictions) {
+        detailParts.push(`Dietary: ${row.dietaryRestrictions}`);
+      }
+      if (detailParts.length > 0) {
+        medicalNotesSummaryLines.push(`${row.firstName} ${row.lastName}: ${detailParts.join("; ")}`);
+      }
+    }
+
     res.json({
+      campYear: {
+        id: year.id,
+        name: year.name,
+        yearLabel: year.yearLabel,
+        startDate: year.startDate.toISOString().slice(0, 10),
+      },
       dorm: {
         id: dorm.id,
         name: dorm.name,
@@ -331,7 +385,7 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       },
       occupantCount: campers.length,
       dormLeaders,
-      campers: camperRows,
+      campers: filteredCampers,
       medicalNotesSummaryLines,
     });
     return;
@@ -350,6 +404,12 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
   }));
 
   res.json({
+    campYear: {
+      id: year.id,
+      name: year.name,
+      yearLabel: year.yearLabel,
+      startDate: year.startDate.toISOString().slice(0, 10),
+    },
     dorm: {
       id: dorm.id,
       name: dorm.name,

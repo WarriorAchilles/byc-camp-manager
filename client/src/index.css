@@ -1033,3 +1033,153 @@ tbody tr:hover td {
   display: flex;
   justify-content: flex-end;
 }
+
+/* —— Reports (step 06) —— */
+.reports-page {
+  max-width: 56rem;
+}
+
+.reports-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.reports-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reports-tab-row .btn.secondary.active {
+  border-color: var(--brand-orange-500);
+  color: var(--brand-orange-700);
+  background: var(--brand-orange-soft);
+}
+
+.reports-card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.reports-filters {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .reports-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.report-print-header {
+  margin-bottom: 1rem;
+}
+
+.report-print-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+}
+
+.report-print-meta {
+  margin: 0.15rem 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.report-print-muted {
+  color: var(--muted);
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0 1rem;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.report-table th,
+.report-table td {
+  border: 1px solid var(--border-strong);
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-table th {
+  background: var(--surface-muted);
+  font-weight: 600;
+}
+
+.report-cell-text {
+  max-width: 14rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.report-summary-block {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.report-summary-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.report-summary-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.deferred-reports-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+@media print {
+  .print-hidden {
+    display: none !important;
+  }
+
+  .layout > .sidebar {
+    display: none !important;
+  }
+
+  #admin-main {
+    padding: 0.5rem 0.75rem !important;
+    max-width: none !important;
+    background: white !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .report-print-document {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .report-table th {
+    print-color-adjust: exact;
+    background: #eee !important;
+  }
+
+  .report-table th,
+  .report-table td {
+    border-color: #222 !important;
+  }
+
+  .report-cell-text {
+    max-width: none;
+  }
+}
