@@ -196,7 +196,7 @@ button {
   .sidebar {
     position: sticky;
     top: 0;
-    z-index: 40;
+    z-index: 1001;
   }
 }
 
@@ -209,6 +209,9 @@ button {
     padding: 1.35rem 1.1rem 1.15rem;
     min-height: 100vh;
     box-shadow: 4px 0 24px color-mix(in srgb, var(--brand-slate-950) 14%, transparent);
+    /* Stay above any fixed modal backdrops rendered in the main content */
+    position: relative;
+    z-index: 1001;
   }
 }
 
@@ -275,8 +278,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  flex: 1;
-  min-height: 0;
 }
 
 @media (max-width: 899px) {
@@ -373,6 +374,7 @@ button {
 .sidebar-spacer {
   flex: 1;
   min-height: 0.5rem;
+  pointer-events: none;
 }
 
 @media (max-width: 899px) {
