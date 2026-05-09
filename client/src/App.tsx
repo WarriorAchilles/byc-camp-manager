@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { DormsPage } from "./pages/DormsPage";
 import { ImportsPage } from "./pages/ImportsPage";
+import { CamperSelfCheckInPage } from "./pages/CamperSelfCheckInPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -32,6 +33,7 @@ export function App(): React.ReactElement {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/self-check-in/:token" element={<CamperSelfCheckInPage />} />
         <Route path="/admin/login" element={<LoginPage />} />
         <Route
           path="/admin"

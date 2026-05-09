@@ -1,11 +1,13 @@
 import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import QRCode from "qrcode";
 import { apiJson, type ApiHttpError } from "../api";
 
 type CampYearOption = {
   id: string;
   name: string;
   yearLabel: string;
+  selfCheckInToken?: string | null;
 };
 
 type CheckInSummary = {
@@ -103,6 +105,18 @@ export function CheckInPage(): React.ReactElement {
 
   const [camperCheckInModal, setCamperCheckInModal] = useState<CamperCheckInDoneModal | null>(null);
 
+  const kioskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const kioskPrintImgRef = useRef<HTMLImageElement | null>(null);
+  const [kioskBusy, setKioskBusy] = useState(false);
+  const [kioskError, setKioskError] = useState<string | null>(null);
+
+  const selectedCampYear = campYears.find((year) => year.id === campYearId);
+  const kioskToken = selectedCampYear?.selfCheckInToken ?? null;
+  const kioskPublicUrl =
+    typeof globalThis.window !== "undefined" && kioskToken
+      ? `${globalThis.window.location.origin}/self-check-in/${kioskToken}`
+      : null;
+
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
     setCampYears(data.campYears);
@@ -138,8 +152,32 @@ export function CheckInPage(): React.ReactElement {
   }, [loadCampYears]);
 
   useEffect(() => {
+    setKioskError(null);
+  }, [campYearId]);
+
+  useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
+
+  useEffect(() => {
+    const canvas = kioskCanvasRef.current;
+    if (!kioskPublicUrl || !canvas) {
+      return;
+    }
+    void QRCode.toCanvas(canvas, kioskPublicUrl, { width: 240, margin: 2 }).catch(() => {
+      /* draw failure — leave canvas blank */
+    });
+  }, [kioskPublicUrl]);
+
+  useEffect(() => {
+    const img = kioskPrintImgRef.current;
+    if (!kioskPublicUrl || !img) {
+      return;
+    }
+    void QRCode.toDataURL(kioskPublicUrl, { width: 560, margin: 2 }).then((dataUrl) => {
+      img.src = dataUrl;
+    });
+  }, [kioskPublicUrl]);
 
   useEffect(() => {
     return () => {
@@ -373,6 +411,62 @@ export function CheckInPage(): React.ReactElement {
     }
   };
 
+  const issueKioskToken = async (): Promise<void> => {
+    if (!campYearId) {
+      return;
+    }
+    setKioskBusy(true);
+    setKioskError(null);
+    try {
+      await apiJson(`/api/admin/camp-years/${campYearId}/self-check-in/token`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadCampYears();
+    } catch (err) {
+      setKioskError(err instanceof Error ? err.message : "Could not create kiosk link.");
+    } finally {
+      setKioskBusy(false);
+    }
+  };
+
+  const regenerateKioskToken = async (): Promise<void> => {
+    if (!campYearId) {
+      return;
+    }
+    const ok = globalThis.confirm(
+      "Replace this kiosk link? Printed QR codes and shared links will stop working.",
+    );
+    if (!ok) {
+      return;
+    }
+    setKioskBusy(true);
+    setKioskError(null);
+    try {
+      await apiJson(`/api/admin/camp-years/${campYearId}/self-check-in/token/regenerate`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadCampYears();
+    } catch (err) {
+      setKioskError(err instanceof Error ? err.message : "Could not replace kiosk link.");
+    } finally {
+      setKioskBusy(false);
+    }
+  };
+
+  const copyKioskUrl = async (): Promise<void> => {
+    if (!kioskPublicUrl || !globalThis.navigator?.clipboard?.writeText) {
+      setKioskError("Clipboard is not available in this browser.");
+      return;
+    }
+    try {
+      await globalThis.navigator.clipboard.writeText(kioskPublicUrl);
+    } catch {
+      setKioskError("Could not copy to clipboard.");
+    }
+  };
+
   const confirmLeaderCheckIn = async (): Promise<void> => {
     if (!campYearId || !selectedLeader) {
       return;
@@ -424,6 +518,80 @@ export function CheckInPage(): React.ReactElement {
           ))}
         </select>
       </div>
+
+      <section className="card check-in-kiosk-card no-print">
+        <h2>Camper self check-in kiosk</h2>
+        <p className="muted check-in-kiosk-lead">
+          Generate a QR code and post it for arrival day. Scanning opens a page where campers search their own
+          name and check in (dorm placement uses the same auto-assign rules as staff check-in). Regenerating
+          invalidates old QR prints.
+        </p>
+        {kioskError ? (
+          <p className="form-error" role="alert">
+            {kioskError}
+          </p>
+        ) : null}
+        <div className="check-in-kiosk-actions">
+          {!kioskToken ? (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!campYearId || kioskBusy}
+              onClick={() => void issueKioskToken()}
+            >
+              Generate kiosk QR
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => void copyKioskUrl()}>
+                Copy link
+              </button>
+              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => window.print()}>
+                Print QR
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={kioskBusy}
+                onClick={() => void regenerateKioskToken()}
+              >
+                Replace link…
+              </button>
+            </>
+          )}
+        </div>
+        {kioskToken && kioskPublicUrl ? (
+          <div className="check-in-kiosk-body">
+            <label className="field-label" htmlFor="check-in-kiosk-url">
+              Self check-in URL
+            </label>
+            <input id="check-in-kiosk-url" className="field-control check-in-kiosk-url-input" readOnly value={kioskPublicUrl} />
+            <div className="check-in-kiosk-qr-preview">
+              <canvas ref={kioskCanvasRef} className="check-in-kiosk-canvas" width={240} height={240} />
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {kioskToken ? (
+        <div className="kiosk-print-root">
+          <div className="kiosk-print-sheet">
+            <p className="kiosk-print-eyebrow">Camper check-in</p>
+            <h2 className="kiosk-print-title">{selectedCampYear?.name ?? "Camp"}</h2>
+            <p className="kiosk-print-meta">{selectedCampYear ? `${selectedCampYear.yearLabel}` : ""}</p>
+            <p className="kiosk-print-lead">
+              Scan with your phone, search for your name, then tap Check in for your dorm assignment.
+            </p>
+            <img
+              ref={kioskPrintImgRef}
+              className="kiosk-print-qr-img"
+              alt="QR code linking to the camper self check-in page"
+              width={560}
+              height={560}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {summaryError ? (
         <p className="form-error" role="alert">

@@ -1,9 +1,14 @@
 import { AdminRole, CamperPaymentStatus, CheckInStatus, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import {
+  camperCheckInSelect,
+  runCamperCheckInInTransaction,
+  serializeCamperCheckIn,
+} from "../lib/camperCheckInTx.js";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
-import { autoAssignCamperDormIfUnassigned } from "../lib/checkInDormAssignment.js";
+import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { parseCamperQrTokenFromScan } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
@@ -13,61 +18,6 @@ const router = Router({ mergeParams: true });
 
 router.use(requireAuth);
 router.use(requireRole(AdminRole.super_admin, AdminRole.camp_admin));
-
-const camperCheckInSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  middleName: true,
-  dateOfBirth: true,
-  gender: true,
-  guardianName: true,
-  guardianEmail: true,
-  guardianPhone: true,
-  medicalNotes: true,
-  dietaryRestrictions: true,
-  paymentStatus: true,
-  checkInStatus: true,
-  checkedInAt: true,
-  qrToken: true,
-  dorm: { select: { id: true, name: true } },
-} satisfies Prisma.CamperSelect;
-
-type CamperCheckInRow = Prisma.CamperGetPayload<{ select: typeof camperCheckInSelect }>;
-
-function serializeCamperCheckIn(camper: CamperCheckInRow) {
-  const dormAssignment = camper.dorm?.name ?? null;
-  return {
-    id: camper.id,
-    firstName: camper.firstName,
-    lastName: camper.lastName,
-    middleName: camper.middleName,
-    dateOfBirth: camper.dateOfBirth.toISOString().slice(0, 10),
-    gender: camper.gender,
-    guardianName: camper.guardianName,
-    guardianEmail: camper.guardianEmail,
-    guardianPhone: camper.guardianPhone,
-    medicalNotes: camper.medicalNotes,
-    dietaryRestrictions: camper.dietaryRestrictions,
-    paymentStatus: camper.paymentStatus,
-    checkInStatus: camper.checkInStatus,
-    checkedInAt: camper.checkedInAt?.toISOString() ?? null,
-    qrToken: camper.qrToken,
-    dormAssignment,
-    flags: {
-      hasMedicalNotes: !!(camper.medicalNotes && camper.medicalNotes.trim()),
-      hasDietaryRestrictions: !!(camper.dietaryRestrictions && camper.dietaryRestrictions.trim()),
-    },
-  };
-}
-
-function nameSearchTokens(query: string): string[] {
-  return query
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-}
 
 /** Dashboard aggregates for arrival day. */
 router.get("/summary", async (req: AuthedRequest, res) => {
@@ -161,36 +111,7 @@ router.get("/search/campers", async (req: AuthedRequest, res) => {
     return;
   }
 
-  let where: Prisma.CamperWhereInput = { campYearId, archivedAt: null };
-  if (tokens.length >= 2) {
-    const [a, b] = [tokens[0], tokens[1]];
-    where = {
-      ...where,
-      AND: [
-        {
-          OR: [
-            { firstName: { contains: a, mode: "insensitive" } },
-            { lastName: { contains: a, mode: "insensitive" } },
-          ],
-        },
-        {
-          OR: [
-            { firstName: { contains: b, mode: "insensitive" } },
-            { lastName: { contains: b, mode: "insensitive" } },
-          ],
-        },
-      ],
-    };
-  } else {
-    const t = tokens[0];
-    where = {
-      ...where,
-      OR: [
-        { firstName: { contains: t, mode: "insensitive" } },
-        { lastName: { contains: t, mode: "insensitive" } },
-      ],
-    };
-  }
+  const where = camperWhereForNameTokens(campYearId, tokens);
 
   const campers = await prisma.camper.findMany({
     where,
@@ -378,70 +299,27 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
   }
 
   const now = new Date();
-  let transitionedToCheckedIn = false;
   let emailResult: Awaited<ReturnType<typeof sendCheckInConfirmationMail>> | null = null;
 
-  const txResult = await prisma.$transaction(async (tx) => {
-    const existing = await tx.camper.findFirst({
-      where: { id: camperId, campYearId, archivedAt: null },
-      select: camperCheckInSelect,
-    });
-    if (!existing) {
-      return null;
-    }
-
-    const wasCheckedIn = existing.checkInStatus === CheckInStatus.checked_in;
-    let dormAutoAssigned = false;
-
-    if (parsed.data.markPaidCashForGuardianFamily) {
-      await tx.camper.updateMany({
-        where: {
-          campYearId,
-          archivedAt: null,
-          guardianEmail: existing.guardianEmail,
-          paymentStatus: CamperPaymentStatus.unpaid,
-        },
-        data: { paymentStatus: CamperPaymentStatus.paid_cash },
-      });
-    } else if (parsed.data.markPaidCashForCamper) {
-      await tx.camper.updateMany({
-        where: { id: camperId, paymentStatus: CamperPaymentStatus.unpaid },
-        data: { paymentStatus: CamperPaymentStatus.paid_cash },
-      });
-    }
-
-    if (!wasCheckedIn) {
-      dormAutoAssigned = await autoAssignCamperDormIfUnassigned(tx, {
-        campYearId,
-        campStart: year.startDate,
-        camperId,
-      });
-    }
-
-    if (!wasCheckedIn) {
-      await tx.camper.update({
-        where: { id: camperId },
-        data: {
-          checkInStatus: CheckInStatus.checked_in,
-          checkedInAt: now,
-        },
-      });
-      transitionedToCheckedIn = true;
-    }
-
-    const camper = await tx.camper.findFirstOrThrow({
-      where: { id: camperId, campYearId },
-      select: camperCheckInSelect,
-    });
-    return { camper, dormAutoAssigned };
-  });
+  const txResult = await prisma.$transaction(async (tx) =>
+    runCamperCheckInInTransaction(tx, {
+      campYearId,
+      camperId,
+      campStart: year.startDate,
+      now,
+      payments: {
+        markPaidCashForCamper: parsed.data.markPaidCashForCamper,
+        markPaidCashForGuardianFamily: parsed.data.markPaidCashForGuardianFamily,
+      },
+    }),
+  );
 
   if (!txResult) {
     res.status(404).json({ error: "Camper not found" });
     return;
   }
 
-  const { camper: finalCamper, dormAutoAssigned } = txResult;
+  const { camper: finalCamper, dormAutoAssigned, transitionedToCheckedIn } = txResult;
 
   if (transitionedToCheckedIn) {
     const dormLabel = finalCamper.dorm?.name ?? "unassigned";

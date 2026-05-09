@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Express } from "express";
 import request from "supertest";
@@ -404,5 +405,123 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       .set("Authorization", header);
     expect(summary.body.workersCheckedIn).toBe(1);
     expect(summary.body.dormLeadersCheckedIn).toBe(1);
+  });
+
+  describe("public kiosk self check-in", () => {
+    it("public meta rejects bad token shape", async () => {
+      const res = await request(app).get("/api/public/self-check-in/not-hex/meta");
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid_token");
+    });
+
+    it("public meta returns 404 when token is not mapped to any camp year", async () => {
+      const orphan = `${"fa".repeat(16)}`;
+      const res = await request(app).get(`/api/public/self-check-in/${orphan}/meta`);
+      expect(res.status).toBe(404);
+    });
+
+    it("admin issues token then public meta, search, check-in succeed; search exposes no guardian or qr fields", async () => {
+      const header = await authHeader();
+      const issue = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      expect(issue.status).toBe(200);
+      const kioskToken = issue.body.token as string;
+      expect(kioskToken).toMatch(/^[a-f0-9]{32}$/);
+
+      const meta = await request(app).get(`/api/public/self-check-in/${kioskToken}/meta`);
+      expect(meta.status).toBe(200);
+      expect(meta.body.campYear.name).toBe("Check-In Camp");
+
+      const create = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/campers`)
+        .set("Authorization", header)
+        .send({
+          firstName: "PublicKi",
+          lastName: "OskTester",
+          middleName: "Mid",
+          dateOfBirth: "2014-06-15",
+          gender: Gender.male,
+          guardianName: "G",
+          guardianEmail: "kiosk-public@example.com",
+          guardianPhone: "555",
+          paymentStatus: CamperPaymentStatus.unpaid,
+        });
+      expect(create.status).toBe(201);
+      const camperId = create.body.id as string;
+
+      const search = await request(app)
+        .get(`/api/public/self-check-in/${kioskToken}/search`)
+        .query({ q: "PublicKi Osk" });
+      expect(search.status).toBe(200);
+      expect(search.body.campers.length).toBe(1);
+      const row = search.body.campers[0];
+      expect(row).toMatchObject({
+        id: camperId,
+        firstName: "PublicKi",
+        lastName: "OskTester",
+        middleInitial: "M",
+        checkInStatus: CheckInStatus.not_checked_in,
+      });
+      expect(row).not.toHaveProperty("guardianEmail");
+      expect(row).not.toHaveProperty("qrToken");
+      expect(row).not.toHaveProperty("paymentStatus");
+
+      const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+      const chk = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
+        .send({});
+      expect(chk.status).toBe(200);
+      expect(chk.body.checkInCompletedThisRequest).toBe(true);
+      expect(chk.body.dormAutoAssigned).toBe(true);
+      expect(chk.body.camper.dormAssignment).toBe("Camper Hall A");
+      expect(chk.body).not.toHaveProperty("checkInConfirmationEmail");
+      expect(logSpy.mock.calls.some((c) => String(c[0]).includes("kiosk-public@example.com"))).toBe(true);
+
+      const again = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
+        .send({});
+      expect(again.status).toBe(200);
+      expect(again.body.alreadyCheckedIn).toBe(true);
+      expect(again.body.checkInCompletedThisRequest).toBe(false);
+      logSpy.mockRestore();
+    });
+
+    it("public check-in rejects unknown camper id", async () => {
+      const header = await authHeader();
+      await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      const yearRow = await prisma.campYear.findUniqueOrThrow({ where: { id: campYearId } });
+      const kioskToken = yearRow.selfCheckInToken!;
+      const chk = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/campers/${randomUUID()}/check-in`)
+        .send({});
+      expect(chk.status).toBe(404);
+    });
+
+    it("regenerating kiosk token invalidates the previous QR URL", async () => {
+      const header = await authHeader();
+      const first = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      const t1 = first.body.token as string;
+      const reg = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token/regenerate`)
+        .set("Authorization", header)
+        .send({});
+      expect(reg.status).toBe(200);
+      const t2 = reg.body.token as string;
+      expect(t2).not.toBe(t1);
+
+      const oldMeta = await request(app).get(`/api/public/self-check-in/${t1}/meta`);
+      expect(oldMeta.status).toBe(404);
+
+      const newMeta = await request(app).get(`/api/public/self-check-in/${t2}/meta`);
+      expect(newMeta.status).toBe(200);
+    });
   });
 });

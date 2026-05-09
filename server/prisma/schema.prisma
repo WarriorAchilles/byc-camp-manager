@@ -76,6 +76,8 @@ model CampYear {
   thirdPlusCamperFeeCents     Int?      @map("third_plus_camper_fee_cents")
   discountTierNotes           String?   @map("discount_tier_notes") @db.Text
   merchandisePlaceholderNotes String? @map("merchandise_placeholder_notes") @db.Text
+  /** Opaque hex token for camper self-service check-in kiosk URL / QR (nullable until issued). */
+  selfCheckInToken            String?   @unique @map("self_check_in_token")
   createdAt                   DateTime  @default(now()) @map("created_at")
   updatedAt                   DateTime  @updatedAt @map("updated_at")
 

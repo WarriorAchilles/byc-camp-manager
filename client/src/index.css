@@ -1034,6 +1034,206 @@ tbody tr:hover td {
   justify-content: flex-end;
 }
 
+.check-in-kiosk-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.check-in-kiosk-lead {
+  margin: 0 0 1rem;
+}
+
+.check-in-kiosk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.check-in-kiosk-body {
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.check-in-kiosk-url-input {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.check-in-kiosk-qr-preview {
+  margin-top: 1rem;
+}
+
+.check-in-kiosk-canvas {
+  display: block;
+  margin: 0 auto;
+}
+
+.self-check-in-page {
+  min-height: 100vh;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.self-check-in-card {
+  width: min(34rem, 100%);
+}
+
+.self-check-in-header {
+  margin-bottom: 0.85rem;
+}
+
+.self-check-in-title {
+  margin: 0.15rem 0 0;
+}
+
+.self-check-in-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+}
+
+.self-check-in-lead {
+  margin: 0 0 1rem;
+}
+
+.self-check-in-search .field-label {
+  margin-bottom: 0.35rem;
+}
+
+.self-check-in-results li {
+  list-style: none;
+}
+
+.self-check-in-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.self-check-in-name {
+  font-weight: 600;
+}
+
+.self-check-in-badge {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.self-check-in-badge-done {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.self-check-in-success-message {
+  font-size: 1.08rem;
+  margin: 0 0 0.75rem;
+}
+
+.self-check-in-dorm {
+  margin: 0 0 0.85rem;
+  padding: 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.self-check-in-dorm-label {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.self-check-in-dorm-value {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.25rem;
+  font-family: var(--font-display);
+}
+
+.self-check-in-hint {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.kiosk-print-root {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+}
+
+.kiosk-print-sheet {
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.kiosk-print-eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.kiosk-print-title {
+  margin: 0.5rem 0 0;
+  font-size: 1.75rem;
+}
+
+.kiosk-print-meta {
+  margin: 0.15rem 0 0;
+}
+
+.kiosk-print-lead {
+  margin: 1rem 0 1.25rem;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.kiosk-print-qr-img {
+  display: block;
+  width: 14rem;
+  height: auto;
+  margin: 0 auto;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .kiosk-print-root,
+  .kiosk-print-root * {
+    visibility: visible;
+  }
+
+  .kiosk-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 2rem 1rem;
+  }
+
+  .kiosk-print-qr-img {
+    width: min(76vw, 18cm);
+    max-height: none;
+    height: auto;
+  }
+
+  .kiosk-print-sheet {
+    text-align: center;
+  }
+}
+
 /* —— Reports (step 06) —— */
 .reports-page {
   max-width: 56rem;

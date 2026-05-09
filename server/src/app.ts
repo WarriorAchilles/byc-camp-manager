@@ -5,6 +5,7 @@ import { loadEnv } from "./config/env.js";
 import { adminCampYearsRouter } from "./routes/adminCampYears.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { authRouter } from "./routes/auth.js";
+import { publicSelfCheckInRouter } from "./routes/publicSelfCheckIn.js";
 import { requireAuth } from "./middleware/auth.js";
 
 export function createApp(): express.Express {
@@ -25,6 +26,8 @@ export function createApp(): express.Express {
   });
 
   app.use("/api/auth", authRouter);
+
+  app.use("/api/public/self-check-in", publicSelfCheckInRouter);
 
   app.get("/api/admin/ping", requireAuth, (_req, res) => {
     res.json({ ok: true });

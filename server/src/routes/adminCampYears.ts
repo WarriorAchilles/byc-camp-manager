@@ -9,6 +9,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
+import { allocateUniqueCampYearSelfCheckInToken } from "../lib/qrToken.js";
 import { ageOnCampStartUtc, isCamperDormCoEdDisallowed } from "../lib/dormAssignmentCore.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -125,6 +126,59 @@ adminCampYearsRouter.post(
       },
     });
     res.status(201).json(created);
+  },
+);
+
+adminCampYearsRouter.post(
+  "/:campYearId/self-check-in/token",
+  requireRole(AdminRole.super_admin, AdminRole.camp_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) {
+      return;
+    }
+    const year = await prisma.campYear.findUnique({
+      where: { id: campYearId },
+      select: { id: true, selfCheckInToken: true },
+    });
+    if (!year) {
+      res.status(404).json({ error: "Camp year not found" });
+      return;
+    }
+    let token = year.selfCheckInToken;
+    if (!token) {
+      token = await allocateUniqueCampYearSelfCheckInToken(prisma);
+      await prisma.campYear.update({
+        where: { id: campYearId },
+        data: { selfCheckInToken: token },
+      });
+    }
+    res.json({ token });
+  },
+);
+
+adminCampYearsRouter.post(
+  "/:campYearId/self-check-in/token/regenerate",
+  requireRole(AdminRole.super_admin, AdminRole.camp_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) {
+      return;
+    }
+    const year = await prisma.campYear.findUnique({
+      where: { id: campYearId },
+      select: { id: true },
+    });
+    if (!year) {
+      res.status(404).json({ error: "Camp year not found" });
+      return;
+    }
+    const token = await allocateUniqueCampYearSelfCheckInToken(prisma);
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: { selfCheckInToken: token },
+    });
+    res.json({ token });
   },
 );
 

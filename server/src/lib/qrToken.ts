@@ -24,6 +24,21 @@ export async function allocateUniqueCamperQrToken(prisma: DbClient): Promise<str
   throw new Error("Could not allocate a unique QR token");
 }
 
+/** Kiosk URLs use the same 32-character hex alphabet as camper QR tokens. */
+export async function allocateUniqueCampYearSelfCheckInToken(prisma: DbClient): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = newQrToken();
+    const clash = await prisma.campYear.findUnique({
+      where: { selfCheckInToken: candidate },
+      select: { id: true },
+    });
+    if (!clash) {
+      return candidate;
+    }
+  }
+  throw new Error("Could not allocate a unique self check-in token");
+}
+
 const HEX32 = /^[a-f0-9]{32}$/i;
 
 /** Accepts raw hex token or common URL shapes embedding the 32-char hex token. */
@@ -51,4 +66,13 @@ export function parseCamperQrTokenFromScan(raw: string): string | null {
     /* not a URL */
   }
   return null;
+}
+
+/** Validates kiosk `:token` path segment (same format as camper `qr_token`). */
+export function parseSelfCheckInTokenParam(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!HEX32.test(trimmed)) {
+    return null;
+  }
+  return trimmed.toLowerCase();
 }
