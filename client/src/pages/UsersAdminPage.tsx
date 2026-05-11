@@ -27,7 +27,7 @@ export function UsersAdminPage(): React.ReactElement {
   }, [loadUsers]);
 
   if (user?.role !== "super_admin") {
-    return <Navigate to="/admin" replace />;
+    return <Navigate to="/admin/people" replace />;
   }
 
   async function onCreate(event: FormEvent): Promise<void> {

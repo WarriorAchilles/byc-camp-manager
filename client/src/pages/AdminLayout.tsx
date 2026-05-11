@@ -9,15 +9,22 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { to: "/admin", label: "Overview", end: true, placeholder: false },
+  { to: "/admin", label: "Check-in", end: true, placeholder: false },
   { to: "/admin/camp", label: "Camp configuration", placeholder: false },
   { to: "/admin/people", label: "People", placeholder: false },
   { to: "/admin/imports", label: "Imports", placeholder: false },
   { to: "/admin/dorms", label: "Dorms", placeholder: false },
-  { to: "/admin/check-in", label: "Check-in", placeholder: false },
   { to: "/admin/reports", label: "Reports", placeholder: false },
   { to: "/admin/users", label: "Admin users", placeholder: false },
 ];
+
+/** Sidebar entries camp admins may access (operational areas only). */
+const campAdminNavPaths = new Set<string>([
+  "/admin",
+  "/admin/people",
+  "/admin/dorms",
+  "/admin/reports",
+]);
 
 export function AdminLayout(): React.ReactElement {
   const { user, logout, loading } = useAuth();
@@ -60,6 +67,9 @@ export function AdminLayout(): React.ReactElement {
               (item.to === "/admin/users" || item.to === "/admin/imports") &&
               user?.role !== "super_admin"
             ) {
+              return null;
+            }
+            if (user?.role === "camp_admin" && !campAdminNavPaths.has(item.to)) {
               return null;
             }
             return (

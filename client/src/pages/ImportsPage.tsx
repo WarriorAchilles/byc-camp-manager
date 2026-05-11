@@ -240,7 +240,7 @@ export function ImportsPage(): ReactElement {
   }
 
   if (user?.role !== "super_admin") {
-    return <Navigate to="/admin" replace />;
+    return <Navigate to="/admin/people" replace />;
   }
 
   const canCommit =

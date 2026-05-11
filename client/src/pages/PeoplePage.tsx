@@ -57,7 +57,7 @@ type CapacityBody = {
 
 export function PeoplePage(): React.ReactElement {
   const { user } = useAuth();
-  const canManage = user?.role === "super_admin" || user?.role === "camp_admin";
+  const canAddPeople = user?.role === "super_admin";
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState<string>("");
@@ -194,7 +194,7 @@ export function PeoplePage(): React.ReactElement {
 
   const handleCreateCamper = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!canManage || !campYearId) {
+    if (!canAddPeople || !campYearId) {
       return;
     }
     setCamperFormError(null);
@@ -231,7 +231,7 @@ export function PeoplePage(): React.ReactElement {
 
   const handleCreateWorker = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!canManage || !campYearId) {
+    if (!canAddPeople || !campYearId) {
       return;
     }
     setWorkerFormError(null);
@@ -266,7 +266,7 @@ export function PeoplePage(): React.ReactElement {
 
   const handleCreateLeader = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!canManage || !campYearId) {
+    if (!canAddPeople || !campYearId) {
       return;
     }
     setLeaderFormError(null);
@@ -297,9 +297,18 @@ export function PeoplePage(): React.ReactElement {
     <div>
       <h1 style={{ marginTop: 0 }}>People</h1>
       <p className="muted">
-        Add campers, workers, and dorm leaders for the selected camp year. Campers use camp capacity as a
-        soft limit (warn, then optional override). Workers and dorm leaders do not count toward camper
-        capacity.
+        {canAddPeople ? (
+          <>
+            Add campers, workers, and dorm leaders for the selected camp year. Campers use camp capacity as a
+            soft limit (warn, then optional override). Workers and dorm leaders do not count toward camper
+            capacity.
+          </>
+        ) : (
+          <>
+            View campers, workers, and dorm leaders for the selected camp year. Only super admins can add
+            people here or via Imports.
+          </>
+        )}
       </p>
 
       {loading ? <p className="muted">Loading…</p> : null}
@@ -336,7 +345,7 @@ export function PeoplePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {canManage && campYearId ? (
+      {canAddPeople && campYearId ? (
         <>
           <form className="card stack" onSubmit={(event) => void handleCreateCamper(event)}>
             <h2 style={{ marginTop: 0 }}>Add camper</h2>
@@ -682,12 +691,13 @@ export function PeoplePage(): React.ReactElement {
         )}
       </div>
 
-      <p className="muted">
-        Super admins bulk-import campers, workers, and dorm leaders from the <Link to="/admin/imports">Imports</Link>{" "}
-        page
-        (CSV preview, column mapping, and capacity override). JSON bulk camper import remains available at{" "}
-        <code>POST /api/admin/camp-years/:id/campers/import</code> for integrations.
-      </p>
+      {canAddPeople ? (
+        <p className="muted">
+          Super admins bulk-import campers, workers, and dorm leaders from the{" "}
+          <Link to="/admin/imports">Imports</Link> page (CSV preview, column mapping, and capacity override). JSON bulk
+          camper import remains available at <code>POST /api/admin/camp-years/:id/campers/import</code> for integrations.
+        </p>
+      ) : null}
     </div>
   );
 }

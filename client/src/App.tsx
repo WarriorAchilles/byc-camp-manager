@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { AdminLayout } from "./pages/AdminLayout";
 import { CampConfigurationPage } from "./pages/CampConfigurationPage";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { DormsPage } from "./pages/DormsPage";
 import { ImportsPage } from "./pages/ImportsPage";
@@ -12,21 +11,36 @@ import { PeoplePage } from "./pages/PeoplePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 
+function FullPageAuthLoading(): React.ReactElement {
+  return (
+    <main className="app-loading-shell" aria-busy="true" aria-live="polite">
+      <p className="app-loading-text">
+        Loading<span className="app-loading-dots">…</span>
+      </p>
+    </main>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }): React.ReactElement {
   const { user, loading } = useAuth();
   if (loading) {
-    return (
-      <main className="app-loading-shell" aria-busy="true" aria-live="polite">
-        <p className="app-loading-text">
-          Loading<span className="app-loading-dots">…</span>
-        </p>
-      </main>
-    );
+    return <FullPageAuthLoading />;
   }
   if (!user) {
     return <Navigate to="/admin/login" replace />;
   }
   return <>{children}</>;
+}
+
+function SuperAdminRoute({ children }: { children: React.ReactElement }): React.ReactElement {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <FullPageAuthLoading />;
+  }
+  if (user?.role !== "super_admin") {
+    return <Navigate to="/admin/people" replace />;
+  }
+  return children;
 }
 
 export function App(): React.ReactElement {
@@ -43,12 +57,19 @@ export function App(): React.ReactElement {
             </ProtectedRoute>
           }
         >
-          <Route index element={<DashboardPage />} />
-          <Route path="camp" element={<CampConfigurationPage />} />
+          <Route index element={<CheckInPage />} />
+          <Route path="check-in" element={<Navigate to="/admin" replace />} />
+          <Route
+            path="camp"
+            element={
+              <SuperAdminRoute>
+                <CampConfigurationPage />
+              </SuperAdminRoute>
+            }
+          />
           <Route path="people" element={<PeoplePage />} />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="dorms" element={<DormsPage />} />
-          <Route path="check-in" element={<CheckInPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="users" element={<UsersAdminPage />} />
         </Route>

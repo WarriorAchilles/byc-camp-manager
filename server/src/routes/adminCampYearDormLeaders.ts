@@ -82,7 +82,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   res.json({ dormLeaders });
 });
 
-router.post("/", async (req: AuthedRequest, res) => {
+router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {
     return;
