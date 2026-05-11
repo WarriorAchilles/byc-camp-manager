@@ -17,6 +17,8 @@ type CampYearRow = {
   thirdPlusCamperFeeCents: number | null;
   discountTierNotes: string | null;
   merchandisePlaceholderNotes: string | null;
+  /** When false, staff Check-in hides camera scan for camper QR codes. */
+  checkInCamperQrScanEnabled?: boolean;
   activeCamperCount?: number;
 };
 
@@ -305,6 +307,7 @@ export function CampConfigurationPage(): React.ReactElement {
           discountTierNotes: String(formData.get("discountTierNotes") ?? "").trim() || null,
           merchandisePlaceholderNotes:
             String(formData.get("merchandisePlaceholderNotes") ?? "").trim() || null,
+          checkInCamperQrScanEnabled: formData.get("checkInCamperQrScanEnabled") === "on",
         }),
       });
       await load();
@@ -640,6 +643,17 @@ export function CampConfigurationPage(): React.ReactElement {
               defaultValue={selected.merchandisePlaceholderNotes ?? ""}
               style={{ width: "100%", maxWidth: "480px" }}
             />
+          </label>
+          <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="checkInCamperQrScanEnabled"
+              defaultChecked={selected.checkInCamperQrScanEnabled !== false}
+            />
+            <span>
+              Show <strong>Scan QR</strong> for campers on the staff Check-in page (camera scan of
+              camper wristband / card codes). Self check-in kiosk QR below is not affected.
+            </span>
           </label>
           <button type="submit" className="btn">
             Save changes

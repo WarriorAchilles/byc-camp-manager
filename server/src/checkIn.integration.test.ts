@@ -441,7 +441,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
           firstName: "PublicKi",
           lastName: "OskTester",
           middleName: "Mid",
-          dateOfBirth: "2014-06-15",
+          dateOfBirth: "2085-06-15",
           gender: Gender.male,
           guardianName: "G",
           guardianEmail: "kiosk-public@example.com",

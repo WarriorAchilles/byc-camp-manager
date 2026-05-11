@@ -78,6 +78,8 @@ model CampYear {
   merchandisePlaceholderNotes String? @map("merchandise_placeholder_notes") @db.Text
   /** Opaque hex token for camper self-service check-in kiosk URL / QR (nullable until issued). */
   selfCheckInToken            String?   @unique @map("self_check_in_token")
+  /** When false, staff Check-in page hides the camera-based camper QR scan (name search and kiosk QR unchanged). */
+  checkInCamperQrScanEnabled  Boolean   @default(true) @map("check_in_camper_qr_scan_enabled")
   createdAt                   DateTime  @default(now()) @map("created_at")
   updatedAt                   DateTime  @updatedAt @map("updated_at")
 

@@ -8,6 +8,7 @@ type CampYearOption = {
   name: string;
   yearLabel: string;
   selfCheckInToken?: string | null;
+  checkInCamperQrScanEnabled?: boolean;
 };
 
 type CheckInSummary = {
@@ -111,6 +112,7 @@ export function CheckInPage(): React.ReactElement {
   const [kioskError, setKioskError] = useState<string | null>(null);
 
   const selectedCampYear = campYears.find((year) => year.id === campYearId);
+  const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled !== false;
   const kioskToken = selectedCampYear?.selfCheckInToken ?? null;
   const kioskPublicUrl =
     typeof globalThis.window !== "undefined" && kioskToken
@@ -218,6 +220,13 @@ export function CheckInPage(): React.ReactElement {
     html5QrRef.current = null;
     setScannerRunning(false);
   }, []);
+
+  useEffect(() => {
+    if (!camperQrScanEnabled && camperMode === "scan") {
+      void stopScanner();
+      setCamperMode("search");
+    }
+  }, [camperQrScanEnabled, camperMode, stopScanner]);
 
   const startScanner = useCallback(async (): Promise<void> => {
     setActionError(null);
@@ -495,9 +504,12 @@ export function CheckInPage(): React.ReactElement {
         <p className="page-header-eyebrow">Arrival</p>
         <h1>Check-in</h1>
         <p className="page-header-lead">
-          Scan camper QR codes or search by name. Unassigned campers are placed in a matching camper dorm
-          automatically when they check in (same rules as dorm auto-assign). Mark cash payments when
-          collecting fees. Workers and dorm leaders use name search.
+          {camperQrScanEnabled
+            ? "Scan camper QR codes or search by name."
+            : "Search campers by name."}{" "}
+          Unassigned campers are placed in a matching camper dorm automatically when they check in (same
+          rules as dorm auto-assign). Mark cash payments when collecting fees. Workers and dorm leaders use
+          name search.
         </p>
       </header>
 
@@ -518,80 +530,6 @@ export function CheckInPage(): React.ReactElement {
           ))}
         </select>
       </div>
-
-      <section className="card check-in-kiosk-card no-print">
-        <h2>Camper self check-in kiosk</h2>
-        <p className="muted check-in-kiosk-lead">
-          Generate a QR code and post it for arrival day. Scanning opens a page where campers search their own
-          name and check in (dorm placement uses the same auto-assign rules as staff check-in). Regenerating
-          invalidates old QR prints.
-        </p>
-        {kioskError ? (
-          <p className="form-error" role="alert">
-            {kioskError}
-          </p>
-        ) : null}
-        <div className="check-in-kiosk-actions">
-          {!kioskToken ? (
-            <button
-              type="button"
-              className="btn primary"
-              disabled={!campYearId || kioskBusy}
-              onClick={() => void issueKioskToken()}
-            >
-              Generate kiosk QR
-            </button>
-          ) : (
-            <>
-              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => void copyKioskUrl()}>
-                Copy link
-              </button>
-              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => window.print()}>
-                Print QR
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={kioskBusy}
-                onClick={() => void regenerateKioskToken()}
-              >
-                Replace link…
-              </button>
-            </>
-          )}
-        </div>
-        {kioskToken && kioskPublicUrl ? (
-          <div className="check-in-kiosk-body">
-            <label className="field-label" htmlFor="check-in-kiosk-url">
-              Self check-in URL
-            </label>
-            <input id="check-in-kiosk-url" className="field-control check-in-kiosk-url-input" readOnly value={kioskPublicUrl} />
-            <div className="check-in-kiosk-qr-preview">
-              <canvas ref={kioskCanvasRef} className="check-in-kiosk-canvas" width={240} height={240} />
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      {kioskToken ? (
-        <div className="kiosk-print-root">
-          <div className="kiosk-print-sheet">
-            <p className="kiosk-print-eyebrow">Camper check-in</p>
-            <h2 className="kiosk-print-title">{selectedCampYear?.name ?? "Camp"}</h2>
-            <p className="kiosk-print-meta">{selectedCampYear ? `${selectedCampYear.yearLabel}` : ""}</p>
-            <p className="kiosk-print-lead">
-              Scan with your phone, search for your name, then tap Check in for your dorm assignment.
-            </p>
-            <img
-              ref={kioskPrintImgRef}
-              className="kiosk-print-qr-img"
-              alt="QR code linking to the camper self check-in page"
-              width={560}
-              height={560}
-            />
-          </div>
-        </div>
-      ) : null}
 
       {summaryError ? (
         <p className="form-error" role="alert">
@@ -681,27 +619,29 @@ export function CheckInPage(): React.ReactElement {
 
       {personTab === "camper" ? (
         <div className="card">
-          <div className="check-in-subtabs">
-            <button
-              type="button"
-              className={`btn secondary${camperMode === "scan" ? " active" : ""}`}
-              onClick={() => setCamperMode("scan")}
-            >
-              Scan QR
-            </button>
-            <button
-              type="button"
-              className={`btn secondary${camperMode === "search" ? " active" : ""}`}
-              onClick={() => {
-                void stopScanner();
-                setCamperMode("search");
-              }}
-            >
-              Search name
-            </button>
-          </div>
+          {camperQrScanEnabled ? (
+            <div className="check-in-subtabs">
+              <button
+                type="button"
+                className={`btn secondary${camperMode === "scan" ? " active" : ""}`}
+                onClick={() => setCamperMode("scan")}
+              >
+                Scan QR
+              </button>
+              <button
+                type="button"
+                className={`btn secondary${camperMode === "search" ? " active" : ""}`}
+                onClick={() => {
+                  void stopScanner();
+                  setCamperMode("search");
+                }}
+              >
+                Search name
+              </button>
+            </div>
+          ) : null}
 
-          {camperMode === "scan" ? (
+          {camperQrScanEnabled && camperMode === "scan" ? (
             <div className="check-in-scan-block">
               <p className="muted" style={{ marginTop: 0 }}>
                 Use a phone or laptop camera. Grant permission when prompted. Point at the camper QR
@@ -857,6 +797,80 @@ export function CheckInPage(): React.ReactElement {
               ))}
             </ul>
           </form>
+        </div>
+      ) : null}
+
+      <section className="card check-in-kiosk-card no-print">
+        <h2>Camper self check-in kiosk</h2>
+        <p className="muted check-in-kiosk-lead">
+          Generate a QR code and post it for arrival day. Scanning opens a page where campers search their own
+          name and check in (dorm placement uses the same auto-assign rules as staff check-in). Regenerating
+          invalidates old QR prints.
+        </p>
+        {kioskError ? (
+          <p className="form-error" role="alert">
+            {kioskError}
+          </p>
+        ) : null}
+        <div className="check-in-kiosk-actions">
+          {!kioskToken ? (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!campYearId || kioskBusy}
+              onClick={() => void issueKioskToken()}
+            >
+              Generate kiosk QR
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => void copyKioskUrl()}>
+                Copy link
+              </button>
+              <button type="button" className="btn secondary" disabled={kioskBusy} onClick={() => window.print()}>
+                Print QR
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={kioskBusy}
+                onClick={() => void regenerateKioskToken()}
+              >
+                Replace link…
+              </button>
+            </>
+          )}
+        </div>
+        {kioskToken && kioskPublicUrl ? (
+          <div className="check-in-kiosk-body">
+            <label className="field-label" htmlFor="check-in-kiosk-url">
+              Self check-in URL
+            </label>
+            <input id="check-in-kiosk-url" className="field-control check-in-kiosk-url-input" readOnly value={kioskPublicUrl} />
+            <div className="check-in-kiosk-qr-preview">
+              <canvas ref={kioskCanvasRef} className="check-in-kiosk-canvas" width={240} height={240} />
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {kioskToken ? (
+        <div className="kiosk-print-root">
+          <div className="kiosk-print-sheet">
+            <p className="kiosk-print-eyebrow">Camper check-in</p>
+            <h2 className="kiosk-print-title">{selectedCampYear?.name ?? "Camp"}</h2>
+            <p className="kiosk-print-meta">{selectedCampYear ? `${selectedCampYear.yearLabel}` : ""}</p>
+            <p className="kiosk-print-lead">
+              Scan with your phone, search for your name, then tap Check in for your dorm assignment.
+            </p>
+            <img
+              ref={kioskPrintImgRef}
+              className="kiosk-print-qr-img"
+              alt="QR code linking to the camper self check-in page"
+              width={560}
+              height={560}
+            />
+          </div>
         </div>
       ) : null}
 
