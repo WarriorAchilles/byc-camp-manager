@@ -8,6 +8,7 @@ import {
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { allocateUniqueCampYearSelfCheckInToken } from "../lib/qrToken.js";
 import { ageOnCampStartUtc, isCamperDormCoEdDisallowed } from "../lib/dormAssignmentCore.js";
@@ -76,6 +77,7 @@ adminCampYearsRouter.get("/", requireRole(AdminRole.super_admin, AdminRole.camp_
   const campYears = await prisma.campYear.findMany({
     orderBy: { startDate: "desc" },
   });
+  const activeCampYearId = await getActiveCampYearId(prisma);
   const counts = await prisma.camper.groupBy({
     by: ["campYearId"],
     where: { archivedAt: null },
@@ -87,6 +89,7 @@ adminCampYearsRouter.get("/", requireRole(AdminRole.super_admin, AdminRole.camp_
       ...year,
       activeCamperCount: countByYear.get(year.id) ?? 0,
     })),
+    activeCampYearId,
   });
 });
 

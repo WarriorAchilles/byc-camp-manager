@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState, type ReactElement } from "react";
 import { Navigate } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
+import { resolveCampYearSelection } from "../campYearSelection";
 import { useAuth } from "../auth";
 
 type CampYearOption = {
@@ -94,14 +95,14 @@ export function ImportsPage(): ReactElement {
 
   const loadCampYears = useCallback(async () => {
     try {
-      const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
+      const data = await apiJson<{
+        campYears: CampYearOption[];
+        activeCampYearId: string | null;
+      }>("/api/admin/camp-years");
       setCampYears(data.campYears);
-      setCampYearId((previous) => {
-        if (previous) {
-          return previous;
-        }
-        return data.campYears[0]?.id ?? "";
-      });
+      setCampYearId((previous) =>
+        resolveCampYearSelection(data.campYears, data.activeCampYearId, previous),
+      );
     } catch {
       setError("Could not load camp years.");
     }

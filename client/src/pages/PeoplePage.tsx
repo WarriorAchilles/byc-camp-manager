@@ -2,6 +2,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
+import { CampYearReadOnly } from "../components/CampYearReadOnly";
+import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
   id: string;
@@ -57,7 +59,8 @@ type CapacityBody = {
 
 export function PeoplePage(): React.ReactElement {
   const { user } = useAuth();
-  const canAddPeople = user?.role === "super_admin";
+  const superAdmin = user?.role === "super_admin";
+  const canAddPeople = superAdmin;
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState<string>("");
@@ -109,14 +112,14 @@ export function PeoplePage(): React.ReactElement {
   const [dlRoleLabel, setDlRoleLabel] = useState<string>("");
 
   const loadCampYears = useCallback(async (): Promise<void> => {
-    const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
+    const data = await apiJson<{
+      campYears: CampYearOption[];
+      activeCampYearId: string | null;
+    }>("/api/admin/camp-years");
     setCampYears(data.campYears);
-    setCampYearId((previous) => {
-      if (previous) {
-        return previous;
-      }
-      return data.campYears.length > 0 ? data.campYears[0].id : "";
-    });
+    setCampYearId((previous) =>
+      resolveCampYearSelection(data.campYears, data.activeCampYearId, previous),
+    );
   }, []);
 
   const loadPeopleData = async (yearId: string): Promise<void> => {
@@ -315,21 +318,27 @@ export function PeoplePage(): React.ReactElement {
       {listError ? <p className="error">{listError}</p> : null}
 
       <div className="card stack">
-        <label htmlFor="peopleCampYear">Camp year</label>
-        <select
-          id="peopleCampYear"
-          value={campYearId}
-          onChange={(event) => {
-            resetCapacityUi();
-            setCampYearId(event.target.value);
-          }}
-        >
-          {campYears.map((year) => (
-            <option key={year.id} value={year.id}>
-              {year.name} ({year.yearLabel})
-            </option>
-          ))}
-        </select>
+        {superAdmin ? (
+          <>
+            <label htmlFor="peopleCampYear">Camp year</label>
+            <select
+              id="peopleCampYear"
+              value={campYearId}
+              onChange={(event) => {
+                resetCapacityUi();
+                setCampYearId(event.target.value);
+              }}
+            >
+              {campYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name} ({year.yearLabel})
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <CampYearReadOnly campYears={campYears} campYearId={campYearId} />
+        )}
         {selectedYear ? (
           <p className="muted">
             Camper headcount {selectedYear.activeCamperCount ?? "—"}

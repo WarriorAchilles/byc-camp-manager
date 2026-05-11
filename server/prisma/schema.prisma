@@ -61,6 +61,18 @@ model AdminUser {
   @@map("admin_users")
 }
 
+/** Singleton row (`id` = `default`) for organization-wide UI defaults. */
+model AppSettings {
+  id               String   @id @default("default")
+  /** Camp year pre-selected for staff on People, Dorms, Check-in, Imports, and Reports. */
+  activeCampYearId String?  @unique @map("active_camp_year_id")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  activeCampYear CampYear? @relation(fields: [activeCampYearId], references: [id], onDelete: SetNull)
+
+  @@map("app_settings")
+}
+
 model CampYear {
   id                          String    @id @default(uuid())
   name                        String
@@ -88,6 +100,7 @@ model CampYear {
   campers          Camper[]
   workers          Worker[]
   dormLeaders      DormLeader[]
+  appSettingsAsActiveCampYear AppSettings?
 
   @@map("camp_years")
 }

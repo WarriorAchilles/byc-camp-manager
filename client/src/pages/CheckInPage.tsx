@@ -2,6 +2,9 @@ import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "reac
 import { Html5Qrcode } from "html5-qrcode";
 import QRCode from "qrcode";
 import { apiJson, type ApiHttpError } from "../api";
+import { useAuth } from "../auth";
+import { CampYearReadOnly } from "../components/CampYearReadOnly";
+import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
   id: string;
@@ -75,6 +78,9 @@ type CamperCheckInDoneModal = {
 };
 
 export function CheckInPage(): React.ReactElement {
+  const { user } = useAuth();
+  const superAdmin = user?.role === "super_admin";
+
   const readerId = useId().replace(/:/g, "");
   const readerElementId = `check-in-qr-${readerId}`;
 
@@ -120,14 +126,14 @@ export function CheckInPage(): React.ReactElement {
       : null;
 
   const loadCampYears = useCallback(async (): Promise<void> => {
-    const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
+    const data = await apiJson<{
+      campYears: CampYearOption[];
+      activeCampYearId: string | null;
+    }>("/api/admin/camp-years");
     setCampYears(data.campYears);
-    setCampYearId((previous) => {
-      if (previous && data.campYears.some((y) => y.id === previous)) {
-        return previous;
-      }
-      return data.campYears.length > 0 ? data.campYears[0].id : "";
-    });
+    setCampYearId((previous) =>
+      resolveCampYearSelection(data.campYears, data.activeCampYearId, previous),
+    );
   }, []);
 
   const loadSummary = useCallback(async (): Promise<void> => {
@@ -514,21 +520,27 @@ export function CheckInPage(): React.ReactElement {
       </header>
 
       <div className="card check-in-toolbar">
-        <label className="field-label" htmlFor="check-in-year">
-          Camp year
-        </label>
-        <select
-          id="check-in-year"
-          className="field-control"
-          value={campYearId}
-          onChange={(event) => setCampYearId(event.target.value)}
-        >
-          {campYears.map((year) => (
-            <option key={year.id} value={year.id}>
-              {year.name} ({year.yearLabel})
-            </option>
-          ))}
-        </select>
+        {superAdmin ? (
+          <>
+            <label className="field-label" htmlFor="check-in-year">
+              Camp year
+            </label>
+            <select
+              id="check-in-year"
+              className="field-control"
+              value={campYearId}
+              onChange={(event) => setCampYearId(event.target.value)}
+            >
+              {campYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name} ({year.yearLabel})
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <CampYearReadOnly campYears={campYears} campYearId={campYearId} />
+        )}
       </div>
 
       {summaryError ? (

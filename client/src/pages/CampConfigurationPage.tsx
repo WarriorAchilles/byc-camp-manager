@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiJson } from "../api";
 import { useAuth } from "../auth";
+import { resolveCampYearSelectionNullable } from "../campYearSelection";
 
 type CampYearRow = {
   id: string;
@@ -64,17 +65,21 @@ export function CampConfigurationPage(): React.ReactElement {
   const [editBracketSort, setEditBracketSort] = useState("");
   const [editBracketActive, setEditBracketActive] = useState(true);
 
+  const [staffDefaultCampYearId, setStaffDefaultCampYearId] = useState("");
+  const [staffDefaultSaving, setStaffDefaultSaving] = useState(false);
+
   const load = useCallback(async (): Promise<void> => {
     setError(null);
     try {
-      const data = await apiJson<{ campYears: CampYearRow[] }>("/api/admin/camp-years");
+      const data = await apiJson<{
+        campYears: CampYearRow[];
+        activeCampYearId: string | null;
+      }>("/api/admin/camp-years");
       setCampYears(data.campYears);
-      setSelectedId((previous) => {
-        if (previous) {
-          return previous;
-        }
-        return data.campYears.length > 0 ? data.campYears[0].id : null;
-      });
+      setStaffDefaultCampYearId(data.activeCampYearId ?? "");
+      setSelectedId((previous) =>
+        resolveCampYearSelectionNullable(data.campYears, data.activeCampYearId, previous),
+      );
     } catch {
       setError("Could not load camp years.");
     } finally {
@@ -318,6 +323,30 @@ export function CampConfigurationPage(): React.ReactElement {
     }
   };
 
+  const handleSaveStaffDefault = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!superAdmin) {
+      return;
+    }
+    setError(null);
+    setStaffDefaultSaving(true);
+    try {
+      await apiJson<{ activeCampYearId: string | null }>("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          activeCampYearId: staffDefaultCampYearId === "" ? null : staffDefaultCampYearId,
+        }),
+      });
+      await load();
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not save staff default camp year.";
+      setError(message);
+    } finally {
+      setStaffDefaultSaving(false);
+    }
+  };
+
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Camp configuration</h1>
@@ -329,8 +358,35 @@ export function CampConfigurationPage(): React.ReactElement {
       {loading ? <p className="muted">Loading…</p> : null}
       {error ? <p className="error">{error}</p> : null}
 
+      {superAdmin ? (
+        <form className="card stack" onSubmit={(event) => void handleSaveStaffDefault(event)}>
+          <h2 style={{ marginTop: 0 }}>Staff default camp year</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Camp admins and super admins see this year pre-selected on People, Dorms, Check-in, Imports, and
+            Reports (each screen can still switch). Choose automatic to use the newest start date in the
+            list.
+          </p>
+          <label htmlFor="staffDefaultCampYear">Default for operational pages</label>
+          <select
+            id="staffDefaultCampYear"
+            value={staffDefaultCampYearId}
+            onChange={(event) => setStaffDefaultCampYearId(event.target.value)}
+          >
+            <option value="">Newest by start date (automatic)</option>
+            {campYears.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name} ({year.yearLabel})
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn" disabled={staffDefaultSaving}>
+            {staffDefaultSaving ? "Saving…" : "Save default"}
+          </button>
+        </form>
+      ) : null}
+
       <div className="card stack">
-        <label htmlFor="campYearPick">Active camp year</label>
+        <label htmlFor="campYearPick">Camp year to configure</label>
         <select
           id="campYearPick"
           value={selectedId ?? ""}

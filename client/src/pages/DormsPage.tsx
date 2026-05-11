@@ -9,6 +9,8 @@ import {
 } from "react";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
+import { CampYearReadOnly } from "../components/CampYearReadOnly";
+import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
   id: string;
@@ -258,14 +260,14 @@ export function DormsPage(): React.ReactElement {
 
   const loadCampYears = useCallback(async () => {
     try {
-      const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
+      const data = await apiJson<{
+        campYears: CampYearOption[];
+        activeCampYearId: string | null;
+      }>("/api/admin/camp-years");
       setCampYears(data.campYears);
-      setCampYearId((previous) => {
-        if (previous) {
-          return previous;
-        }
-        return data.campYears.length > 0 ? data.campYears[0].id : "";
-      });
+      setCampYearId((previous) =>
+        resolveCampYearSelection(data.campYears, data.activeCampYearId, previous),
+      );
     } catch {
       setInventoryError("Could not load camp years.");
     }
@@ -673,22 +675,31 @@ export function DormsPage(): React.ReactElement {
 
       <div className="row">
         <label className="stack" style={{ flex: "1 1 200px" }}>
-          Camp year
-          <select
-            value={campYearId}
-            onChange={(event) => {
-              setCampYearId(event.target.value);
-              setRosterDormId("");
-              setRoster(null);
-            }}
-          >
-            {campYears.length === 0 ? <option value="">No camp years</option> : null}
-            {campYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name} ({year.yearLabel})
-              </option>
-            ))}
-          </select>
+          <span>Camp year</span>
+          {superAdmin ? (
+            <select
+              value={campYearId}
+              onChange={(event) => {
+                setCampYearId(event.target.value);
+                setRosterDormId("");
+                setRoster(null);
+              }}
+            >
+              {campYears.length === 0 ? <option value="">No camp years</option> : null}
+              {campYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name} ({year.yearLabel})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <CampYearReadOnly
+              showLabel={false}
+              campYears={campYears}
+              campYearId={campYearId}
+              valueStyle={{ marginTop: "0.25rem" }}
+            />
+          )}
         </label>
       </div>
 

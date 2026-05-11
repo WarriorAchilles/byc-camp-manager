@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson } from "../api";
+import { useAuth } from "../auth";
+import { CampYearReadOnly } from "../components/CampYearReadOnly";
+import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
   id: string;
@@ -110,6 +113,9 @@ function dormGenderLabel(designation: string): string {
 }
 
 export function ReportsPage(): React.ReactElement {
+  const { user } = useAuth();
+  const superAdmin = user?.role === "super_admin";
+
   const [reportKind, setReportKind] = useState<"dorm" | "checkin">("dorm");
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState("");
@@ -136,14 +142,14 @@ export function ReportsPage(): React.ReactElement {
   const [checkInBracketFilter, setCheckInBracketFilter] = useState("");
 
   const loadCampYears = useCallback(async () => {
-    const data = await apiJson<{ campYears: CampYearOption[] }>("/api/admin/camp-years");
+    const data = await apiJson<{
+      campYears: CampYearOption[];
+      activeCampYearId: string | null;
+    }>("/api/admin/camp-years");
     setCampYears(data.campYears);
-    setCampYearId((previous) => {
-      if (previous) {
-        return previous;
-      }
-      return data.campYears.length > 0 ? data.campYears[0].id : "";
-    });
+    setCampYearId((previous) =>
+      resolveCampYearSelection(data.campYears, data.activeCampYearId, previous),
+    );
   }, []);
 
   useEffect(() => {
@@ -347,25 +353,31 @@ export function ReportsPage(): React.ReactElement {
 
       <div className="card print-hidden">
         <div className="reports-toolbar">
-          <label className="field-label" htmlFor="reports-camp-year">
-            Camp year
-          </label>
-          <select
-            id="reports-camp-year"
-            className="field-control"
-            value={campYearId}
-            onChange={(event) => {
-              setCampYearId(event.target.value);
-              setDormId("");
-            }}
-          >
-            {campYears.length === 0 ? <option value="">No camp years</option> : null}
-            {campYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name} ({year.yearLabel})
-              </option>
-            ))}
-          </select>
+          {superAdmin ? (
+            <>
+              <label className="field-label" htmlFor="reports-camp-year">
+                Camp year
+              </label>
+              <select
+                id="reports-camp-year"
+                className="field-control"
+                value={campYearId}
+                onChange={(event) => {
+                  setCampYearId(event.target.value);
+                  setDormId("");
+                }}
+              >
+                {campYears.length === 0 ? <option value="">No camp years</option> : null}
+                {campYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name} ({year.yearLabel})
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <CampYearReadOnly campYears={campYears} campYearId={campYearId} />
+          )}
 
           <div className="reports-tab-row" role="tablist" aria-label="Report type">
             <button
