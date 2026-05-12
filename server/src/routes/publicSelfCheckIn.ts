@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
 import { runCamperCheckInInTransaction } from "../lib/camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import { parseSelfCheckInTokenParam } from "../lib/qrToken.js";
 import { pathParam } from "../lib/campYearParams.js";
 
@@ -123,15 +124,26 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
   const { camper: finalCamper, transitionedToCheckedIn, dormAutoAssigned } = txResult;
 
   if (transitionedToCheckedIn) {
+    writeOpsLog("camper_check_in_self_service", {
+      campYearId,
+      camperId,
+      dormAutoAssigned,
+    });
     const dormLabel = finalCamper.dorm?.name ?? "unassigned";
     const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
       .filter(Boolean)
       .join(" ");
-    await sendCheckInConfirmationMail({
+    const emailResult = await sendCheckInConfirmationMail({
       to: finalCamper.guardianEmail,
       camperFullName: fullName,
       dormLabel,
       checkedInAt: now,
+    });
+    writeOpsLog("check_in_confirmation_email", {
+      campYearId,
+      camperId,
+      channel: "self_service",
+      result: emailResult.status,
     });
   }
 

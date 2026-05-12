@@ -10,6 +10,7 @@ import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import { parseCamperQrTokenFromScan } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -322,6 +323,12 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
   const { camper: finalCamper, dormAutoAssigned, transitionedToCheckedIn } = txResult;
 
   if (transitionedToCheckedIn) {
+    writeOpsLog("camper_check_in_admin", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      camperId,
+      dormAutoAssigned,
+    });
     const dormLabel = finalCamper.dorm?.name ?? "unassigned";
     const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
       .filter(Boolean)
@@ -331,6 +338,12 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
       camperFullName: fullName,
       dormLabel,
       checkedInAt: now,
+    });
+    writeOpsLog("check_in_confirmation_email", {
+      campYearId,
+      camperId,
+      channel: "admin",
+      result: emailResult.status,
     });
   }
 
@@ -394,6 +407,14 @@ router.post("/workers/:workerId/check-in", async (req: AuthedRequest, res) => {
   if (!row) {
     res.status(404).json({ error: "Worker not found" });
     return;
+  }
+
+  if (transitioned) {
+    writeOpsLog("worker_check_in_admin", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      workerId,
+    });
   }
 
   res.json({
@@ -460,6 +481,14 @@ router.post("/dorm-leaders/:dormLeaderId/check-in", async (req: AuthedRequest, r
   if (!row) {
     res.status(404).json({ error: "Dorm leader not found" });
     return;
+  }
+
+  if (transitioned) {
+    writeOpsLog("dorm_leader_check_in_admin", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      dormLeaderId,
+    });
   }
 
   res.json({

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { loadEnv } from "../config/env.js";
 import { prisma } from "../db.js";
 import { getCookieName, signAuthToken } from "../lib/authToken.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import { verifyPassword } from "../lib/password.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -22,14 +23,17 @@ authRouter.post("/login", async (req, res) => {
   const email = parsed.data.email.trim().toLowerCase();
   const user = await prisma.adminUser.findUnique({ where: { email } });
   if (!user || !user.isActive) {
+    writeOpsLog("admin_login_failed", { reason: "invalid_credentials" });
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
   const valid = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!valid) {
+    writeOpsLog("admin_login_failed", { reason: "invalid_credentials" });
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
+  writeOpsLog("admin_login_succeeded", { adminUserId: user.id, role: user.role });
   const token = signAuthToken({ sub: user.id, role: user.role });
   const env = loadEnv();
   const isProduction = env.NODE_ENV === "production";

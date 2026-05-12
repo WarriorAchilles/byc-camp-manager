@@ -16,6 +16,7 @@ import {
   WORKER_COLUMN_KEYS,
   type CsvImportKind,
 } from "../lib/csvImportCore.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -244,6 +245,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         }
         return out;
       });
+      writeOpsLog("csv_import_committed", {
+        actorAdminUserId: req.adminUser?.id,
+        campYearId,
+        kind: "camper",
+        importedCount: created.length,
+        skippedInvalidRows,
+      });
       res.status(201).json({
         imported: created.length,
         kind: "camper",
@@ -311,6 +319,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         }
         return out;
       });
+      writeOpsLog("csv_import_committed", {
+        actorAdminUserId: req.adminUser?.id,
+        campYearId,
+        kind: "worker",
+        importedCount: created.length,
+        skippedInvalidRows,
+      });
       res.status(201).json({
         imported: created.length,
         kind: "worker",
@@ -353,6 +368,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         out.push(leader);
       }
       return out;
+    });
+    writeOpsLog("csv_import_committed", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      kind: "dorm_leader",
+      importedCount: created.length,
+      skippedInvalidRows,
     });
     res.status(201).json({
       imported: created.length,

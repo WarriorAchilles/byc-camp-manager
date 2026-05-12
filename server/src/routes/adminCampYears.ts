@@ -12,6 +12,7 @@ import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { allocateUniqueCampYearSelfCheckInToken } from "../lib/qrToken.js";
 import { ageOnCampStartUtc, isCamperDormCoEdDisallowed } from "../lib/dormAssignmentCore.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { adminCampYearCampersRouter } from "./adminCampYearCampers.js";
@@ -429,6 +430,17 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       }
     }
 
+    writeOpsLog("dorm_roster_viewed", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      dormId,
+      dormPurpose: dorm.purpose,
+      filterCheckInStatus: rosterFilters.checkInStatus ?? null,
+      filterGender: rosterFilters.gender ?? null,
+      filterAgeGroupBracketId: rosterFilters.ageGroupBracketId ?? null,
+      occupantCount: filteredCampers.length,
+    });
+
     res.json({
       campYear: {
         id: year.id,
@@ -463,6 +475,17 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
     age: worker.dateOfBirth ? ageOnCampStartUtc(worker.dateOfBirth, year.startDate) : null,
     checkInStatus: worker.checkInStatus,
   }));
+
+  writeOpsLog("dorm_roster_viewed", {
+    actorAdminUserId: req.adminUser?.id,
+    campYearId,
+    dormId,
+    dormPurpose: dorm.purpose,
+    filterCheckInStatus: rosterFilters.checkInStatus ?? null,
+    filterGender: rosterFilters.gender ?? null,
+    filterAgeGroupBracketId: rosterFilters.ageGroupBracketId ?? null,
+    occupantCount: workers.length,
+  });
 
   res.json({
     campYear: {

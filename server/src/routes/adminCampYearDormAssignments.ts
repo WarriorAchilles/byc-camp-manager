@@ -12,6 +12,7 @@ import {
   warningsAfterWorkerAssignedToWorkerDorm,
 } from "../lib/dormAssignmentCore.js";
 import { campYearIdFromParams } from "../lib/campYearParams.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -207,6 +208,13 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
     }
   });
 
+  writeOpsLog("dorm_auto_assign_completed", {
+    actorAdminUserId: req.adminUser?.id,
+    campYearId,
+    assignedCampers: camperAssignments.length,
+    assignedWorkers: workerAssignments.length,
+  });
+
   res.json({
     assignedCampers: camperAssignments.length,
     assignedWorkers: workerAssignments.length,
@@ -249,6 +257,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
         where: { id: personId },
         data: { assignedCamperDormId: null },
       });
+      writeOpsLog("dorm_manual_assign", {
+        actorAdminUserId: req.adminUser?.id,
+        campYearId,
+        personKind: "dorm_leader",
+        personId,
+        dormId: null,
+      });
       res.json({ warnings: [] as string[] });
       return;
     }
@@ -269,6 +284,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       where: { id: personId },
       data: { assignedCamperDormId: dormId },
     });
+    writeOpsLog("dorm_manual_assign", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      personKind: "dorm_leader",
+      personId,
+      dormId,
+    });
     res.json({ warnings: [] as string[] });
     return;
   }
@@ -286,6 +308,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       await prisma.camper.update({
         where: { id: personId },
         data: { dormId: null },
+      });
+      writeOpsLog("dorm_manual_assign", {
+        actorAdminUserId: req.adminUser?.id,
+        campYearId,
+        personKind: "camper",
+        personId,
+        dormId: null,
       });
       res.json({ warnings: [] as string[] });
       return;
@@ -335,6 +364,14 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       where: { id: personId },
       data: { dormId },
     });
+    writeOpsLog("dorm_manual_assign", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      personKind: "camper",
+      personId,
+      dormId,
+      warningCount: warnings.length,
+    });
     res.json({ warnings });
     return;
   }
@@ -351,6 +388,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     await prisma.worker.update({
       where: { id: personId },
       data: { dormId: null },
+    });
+    writeOpsLog("dorm_manual_assign", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      personKind: "worker",
+      personId,
+      dormId: null,
     });
     res.json({ warnings: [] as string[] });
     return;
@@ -389,6 +433,14 @@ router.post("/assign", async (req: AuthedRequest, res) => {
   await prisma.worker.update({
     where: { id: personId },
     data: { dormId },
+  });
+  writeOpsLog("dorm_manual_assign", {
+    actorAdminUserId: req.adminUser?.id,
+    campYearId,
+    personKind: "worker",
+    personId,
+    dormId,
+    warningCount: warnings.length,
   });
   res.json({ warnings });
 });

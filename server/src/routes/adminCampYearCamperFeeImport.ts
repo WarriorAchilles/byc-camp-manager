@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams } from "../lib/campYearParams.js";
 import { CAMPER_FEE_COLUMN_KEYS, runCamperFeeImportPreview } from "../lib/camperFeeCsv.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -135,6 +136,12 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         }),
       ),
     );
+    writeOpsLog("camper_fee_csv_import_committed", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      updatedCount: preview.payloads.length,
+      skippedInvalidRows,
+    });
     res.status(200).json({
       updated: preview.payloads.length,
       records: preview.payloads.map((payload) => ({
