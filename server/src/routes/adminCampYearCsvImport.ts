@@ -30,6 +30,8 @@ const csvImportBody = z.object({
   csvText: z.string(),
   columnMap: z.record(z.union([z.string(), z.null()])).optional(),
   confirmCapacityOverride: z.boolean().optional(),
+  /** When true, rows with validation errors are omitted; only valid rows are imported. */
+  skipInvalidRows: z.boolean().optional(),
 });
 
 function logicalFieldsForKind(kind: CsvImportKind): readonly string[] {
@@ -133,8 +135,9 @@ router.post("/commit", async (req: AuthedRequest, res) => {
     return;
   }
 
+  const skipInvalidRows = parsed.data.skipInvalidRows === true;
   const rowsWithErrors = preview.previewRows.filter((row) => row.errors.length > 0);
-  if (rowsWithErrors.length > 0) {
+  if (rowsWithErrors.length > 0 && !skipInvalidRows) {
     res.status(400).json({
       error: "commit_blocked_row_errors",
       rowErrors: rowsWithErrors.map((row) => ({
@@ -144,6 +147,19 @@ router.post("/commit", async (req: AuthedRequest, res) => {
     });
     return;
   }
+
+  if (preview.payloads.length === 0) {
+    res.status(400).json({
+      error: "no_valid_rows_to_commit",
+      message:
+        skipInvalidRows && rowsWithErrors.length > 0
+          ? "Every data row has errors; nothing to import. Fix the file or column mapping and try again."
+          : "No valid rows to import.",
+    });
+    return;
+  }
+
+  const skippedInvalidRows = skipInvalidRows ? rowsWithErrors.length : 0;
 
   if (parsed.data.kind === "camper") {
     const payloads = preview.payloads as Array<{
@@ -228,7 +244,12 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         }
         return out;
       });
-      res.status(201).json({ imported: created.length, kind: "camper", records: created });
+      res.status(201).json({
+        imported: created.length,
+        kind: "camper",
+        records: created,
+        ...(skippedInvalidRows > 0 ? { skippedInvalidRows } : {}),
+      });
     } catch {
       res.status(500).json({ error: "import_transaction_failed" });
     }
@@ -290,7 +311,12 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         }
         return out;
       });
-      res.status(201).json({ imported: created.length, kind: "worker", records: created });
+      res.status(201).json({
+        imported: created.length,
+        kind: "worker",
+        records: created,
+        ...(skippedInvalidRows > 0 ? { skippedInvalidRows } : {}),
+      });
     } catch {
       res.status(500).json({ error: "import_transaction_failed" });
     }
@@ -328,7 +354,12 @@ router.post("/commit", async (req: AuthedRequest, res) => {
       }
       return out;
     });
-    res.status(201).json({ imported: created.length, kind: "dorm_leader", records: created });
+    res.status(201).json({
+      imported: created.length,
+      kind: "dorm_leader",
+      records: created,
+      ...(skippedInvalidRows > 0 ? { skippedInvalidRows } : {}),
+    });
   } catch {
     res.status(500).json({ error: "import_transaction_failed" });
   }

@@ -162,6 +162,10 @@ model Camper {
   emergencyContactPhone String?             @map("emergency_contact_phone")
   medicalNotes          String?             @map("medical_notes") @db.Text
   dietaryRestrictions   String?             @map("dietary_restrictions") @db.Text
+  /** Camper fee import / accounting: amount due in cents (nullable until set). */
+  feeDueCents           Int?                @map("fee_due_cents")
+  /** Camper fee import / accounting: amount paid in cents (nullable until set). */
+  feePaidCents          Int?                @map("fee_paid_cents")
   paymentStatus         CamperPaymentStatus @map("payment_status")
   qrToken               String              @unique @map("qr_token")
   dormId                String?             @map("dorm_id")

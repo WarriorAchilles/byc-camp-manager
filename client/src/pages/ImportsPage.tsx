@@ -73,11 +73,36 @@ const FIELD_LABELS: Record<string, string> = {
   taskPreferences: "Task preferences (workers only; comma-separated, top 3)",
   tShirtSize: "T-shirt size",
   roleLabel: "Age group to lead with (leader form; not worker task preferences)",
+  feeDue: "Fees due (dollars or cents)",
+  feePaid: "Fees paid (dollars or cents)",
 };
 
 function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key;
 }
+
+type FeePreviewRow = {
+  rowNumber: number;
+  errors: string[];
+  warnings: string[];
+  rawSubset: Record<string, string>;
+  camperId: string | null;
+  feeDueCents: number | null;
+  feePaidCents: number | null;
+};
+
+type FeePreviewResponse = {
+  headers: string[];
+  suggestedColumnMap: Record<string, string | null>;
+  columnMap: Record<string, string | null>;
+  mapError: string | null;
+  previewRows: FeePreviewRow[];
+  validRowCount: number;
+  invalidRowCount: number;
+  rowWarningsFlat: string[];
+  globalWarnings: string[];
+  logicalFields: string[];
+};
 
 export function ImportsPage(): ReactElement {
   const { user } = useAuth();
@@ -92,6 +117,16 @@ export function ImportsPage(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [confirmCapacityOverride, setConfirmCapacityOverride] = useState(false);
   const [commitMessage, setCommitMessage] = useState<string | null>(null);
+  const [skipInvalidRows, setSkipInvalidRows] = useState(false);
+
+  const [feeCsvText, setFeeCsvText] = useState("");
+  const [feeFileName, setFeeFileName] = useState<string | null>(null);
+  const [feeColumnMap, setFeeColumnMap] = useState<Record<string, string | null>>({});
+  const [feePreview, setFeePreview] = useState<FeePreviewResponse | null>(null);
+  const [feeLoading, setFeeLoading] = useState(false);
+  const [feeError, setFeeError] = useState<string | null>(null);
+  const [feeCommitMessage, setFeeCommitMessage] = useState<string | null>(null);
+  const [feeSkipInvalidRows, setFeeSkipInvalidRows] = useState(false);
 
   const loadCampYears = useCallback(async () => {
     try {
@@ -136,6 +171,7 @@ export function ImportsPage(): ReactElement {
         );
         setPreview(response);
         setColumnMap(response.columnMap);
+        setSkipInvalidRows(false);
       } catch (caught) {
         setPreview(null);
         setError(caught instanceof Error ? caught.message : "Preview failed");
@@ -152,12 +188,24 @@ export function ImportsPage(): ReactElement {
     setCommitMessage(null);
     setColumnMap({});
     setError(null);
+    setSkipInvalidRows(false);
   }, [kind, campYearId]);
+
+  useEffect(() => {
+    setFeePreview(null);
+    setFeeCommitMessage(null);
+    setFeeColumnMap({});
+    setFeeError(null);
+    setFeeCsvText("");
+    setFeeFileName(null);
+    setFeeSkipInvalidRows(false);
+  }, [campYearId]);
 
   async function onFileSelected(file: File | null): Promise<void> {
     setError(null);
     setCommitMessage(null);
     setPreview(null);
+    setSkipInvalidRows(false);
     if (!file) {
       setCsvText("");
       setFileName(null);
@@ -183,7 +231,7 @@ export function ImportsPage(): ReactElement {
     setError(null);
     setCommitMessage(null);
     try {
-      await apiJson<{ imported: number; kind: string }>(
+      const result = await apiJson<{ imported: number; kind: string; skippedInvalidRows?: number }>(
         `/api/admin/camp-years/${campYearId}/csv-import/commit`,
         {
           method: "POST",
@@ -194,10 +242,17 @@ export function ImportsPage(): ReactElement {
             ...(kind === "camper" && confirmCapacityOverride
               ? { confirmCapacityOverride: true }
               : {}),
+            ...(skipInvalidRows ? { skipInvalidRows: true } : {}),
           }),
         },
       );
-      setCommitMessage(`Imported ${KIND_LABELS[kind].toLowerCase()} successfully.`);
+      const skipped = result.skippedInvalidRows ?? 0;
+      setCommitMessage(
+        skipped > 0
+          ? `Imported ${result.imported} ${KIND_LABELS[kind].toLowerCase()} (${skipped} row(s) with errors skipped).`
+          : `Imported ${result.imported} ${KIND_LABELS[kind].toLowerCase()}.`,
+      );
+      setSkipInvalidRows(false);
       setCsvText("");
       setFileName(null);
       setPreview(null);
@@ -218,18 +273,25 @@ export function ImportsPage(): ReactElement {
         httpErr.status === 400 &&
         typeof httpErr.body === "object" &&
         httpErr.body !== null &&
+        (httpErr.body as { error?: string }).error === "no_valid_rows_to_commit"
+      ) {
+        const body = httpErr.body as { message?: string };
+        setError(body.message ?? "No valid rows to import.");
+      } else if (
+        httpErr.status === 400 &&
+        typeof httpErr.body === "object" &&
+        httpErr.body !== null &&
         (httpErr.body as { error?: string }).error === "commit_blocked_row_errors"
       ) {
         const rowErrors = (httpErr.body as { rowErrors?: { rowNumber: number; errors: string[] }[] })
           .rowErrors;
         const detail =
           rowErrors?.map((row) => `Row ${row.rowNumber}: ${row.errors.join("; ")}`).join(" ") ??
-          "Fix row errors before committing.";
+          "Fix row errors before committing, or enable “Skip rows with errors”.";
         setError(detail);
       } else {
         setError(httpErr instanceof Error ? httpErr.message : "Commit failed");
       }
-    } finally {
       setLoading(false);
     }
   }
@@ -240,16 +302,155 @@ export function ImportsPage(): ReactElement {
     setColumnMap(next);
   }
 
+  const runFeePreview = useCallback(
+    async (mapOverride: Record<string, string | null> | undefined) => {
+      if (!campYearId || !feeCsvText.trim()) {
+        setFeeError("Choose a camp year and fee CSV file first.");
+        return;
+      }
+      setFeeLoading(true);
+      setFeeError(null);
+      setFeeCommitMessage(null);
+      try {
+        const response = await apiJson<FeePreviewResponse>(
+          `/api/admin/camp-years/${campYearId}/camper-fee-csv/preview`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              csvText: feeCsvText,
+              ...(mapOverride ? { columnMap: mapOverride } : {}),
+            }),
+          },
+        );
+        setFeePreview(response);
+        setFeeColumnMap(response.columnMap);
+        setFeeSkipInvalidRows(false);
+      } catch (caught) {
+        setFeePreview(null);
+        setFeeError(caught instanceof Error ? caught.message : "Fee preview failed");
+      } finally {
+        setFeeLoading(false);
+      }
+    },
+    [campYearId, feeCsvText],
+  );
+
+  async function onFeeFileSelected(file: File | null): Promise<void> {
+    setFeeError(null);
+    setFeeCommitMessage(null);
+    setFeePreview(null);
+    setFeeSkipInvalidRows(false);
+    if (!file) {
+      setFeeCsvText("");
+      setFeeFileName(null);
+      return;
+    }
+    const text = await file.text();
+    setFeeCsvText(text);
+    setFeeFileName(file.name);
+  }
+
+  async function onFeeRefreshPreview(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    await runFeePreview(feeColumnMap);
+  }
+
+  async function onFeeCommit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!campYearId || !feeCsvText.trim()) {
+      setFeeError("Choose a camp year and fee CSV file first.");
+      return;
+    }
+    setFeeLoading(true);
+    setFeeError(null);
+    setFeeCommitMessage(null);
+    try {
+      const result = await apiJson<{ updated: number; skippedInvalidRows?: number }>(
+        `/api/admin/camp-years/${campYearId}/camper-fee-csv/commit`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            csvText: feeCsvText,
+            columnMap: feeColumnMap,
+            ...(feeSkipInvalidRows ? { skipInvalidRows: true } : {}),
+          }),
+        },
+      );
+      const skipped = result.skippedInvalidRows ?? 0;
+      setFeeCommitMessage(
+        skipped > 0
+          ? `Updated fees for ${result.updated} camper(s) (${skipped} row(s) with errors skipped).`
+          : `Updated fees for ${result.updated} camper(s).`,
+      );
+      setFeeSkipInvalidRows(false);
+      setFeeCsvText("");
+      setFeeFileName(null);
+      setFeePreview(null);
+      setFeeColumnMap({});
+      await loadCampYears();
+    } catch (caught) {
+      const httpErr = caught as ApiHttpError;
+      if (
+        httpErr.status === 400 &&
+        typeof httpErr.body === "object" &&
+        httpErr.body !== null &&
+        (httpErr.body as { error?: string }).error === "commit_blocked_row_errors"
+      ) {
+        const rowErrors = (httpErr.body as { rowErrors?: { rowNumber: number; errors: string[] }[] }).rowErrors;
+        const detail =
+          rowErrors?.map((row) => `Row ${row.rowNumber}: ${row.errors.join("; ")}`).join(" ") ??
+          "Fix row errors before committing, or enable “Skip rows with errors”.";
+        setFeeError(detail);
+      } else if (
+        httpErr.status === 400 &&
+        typeof httpErr.body === "object" &&
+        httpErr.body !== null &&
+        (httpErr.body as { error?: string }).error === "no_valid_rows_to_commit"
+      ) {
+        const body = httpErr.body as { message?: string };
+        setFeeError(body.message ?? "No valid rows to import.");
+      } else {
+        setFeeError(httpErr instanceof Error ? httpErr.message : "Fee commit failed");
+      }
+    } finally {
+      setFeeLoading(false);
+    }
+  }
+
+  function updateFeeColumnMap(logicalKey: string, headerValue: string): void {
+    const next =
+      headerValue === "__none__"
+        ? { ...feeColumnMap, [logicalKey]: null }
+        : { ...feeColumnMap, [logicalKey]: headerValue };
+    setFeeColumnMap(next);
+  }
+
+  function formatCentsForPreview(cents: number | null): string {
+    if (cents === null) {
+      return "—";
+    }
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100);
+  }
+
   if (user?.role !== "super_admin") {
     return <Navigate to="/admin/people" replace />;
   }
 
   const canCommit =
-    preview &&
+    preview !== null &&
     !preview.mapError &&
     preview.previewRows.length > 0 &&
-    preview.invalidRowCount === 0 &&
+    preview.validRowCount > 0 &&
+    (preview.invalidRowCount === 0 || skipInvalidRows) &&
     !loading;
+
+  const canFeeCommit =
+    feePreview !== null &&
+    !feePreview.mapError &&
+    feePreview.previewRows.length > 0 &&
+    feePreview.validRowCount > 0 &&
+    (feePreview.invalidRowCount === 0 || feeSkipInvalidRows) &&
+    !feeLoading;
 
   return (
     <div className="stack" style={{ gap: "1.25rem", maxWidth: "960px" }}>
@@ -257,7 +458,8 @@ export function ImportsPage(): ReactElement {
         <h1 style={{ marginTop: 0 }}>CSV import</h1>
         <p className="muted">
           One-time bulk import for campers, workers, and dorm leaders. Preview and fix column mappings before
-          committing. Invalid rows block the entire commit.
+          committing. By default, any row with errors blocks the commit; you can opt in to skip error rows and import
+          only valid rows.
         </p>
       </div>
 
@@ -459,6 +661,22 @@ export function ImportsPage(): ReactElement {
             </div>
           </div>
 
+          {preview.invalidRowCount > 0 ? (
+            <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start", maxWidth: "40rem" }}>
+              <input
+                type="checkbox"
+                checked={skipInvalidRows}
+                onChange={(event) => {
+                  setSkipInvalidRows(event.target.checked);
+                }}
+              />
+              <span>
+                Skip {preview.invalidRowCount} row(s) with errors and import only the {preview.validRowCount} valid
+                row(s).
+              </span>
+            </label>
+          ) : null}
+
           <form onSubmit={onCommit}>
             <button
               type="submit"
@@ -475,6 +693,185 @@ export function ImportsPage(): ReactElement {
       ) : null}
 
       {loading ? <p className="muted">Working…</p> : null}
+
+      <div className="card stack" style={{ gap: "1rem", marginTop: "2rem" }}>
+        <div>
+          <h2 style={{ marginTop: 0 }}>Camper fees (update existing)</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Import a short CSV with first name, last name, fees due, and fees paid. Rows must match exactly one
+            non-archived camper in the selected camp year (case-insensitive name match). Amounts may include $ and
+            commas. Payment status is updated from the amounts when appropriate (Stripe-paid campers are never
+            downgraded to unpaid by this import). Rows with errors block commit unless you choose to skip them.
+          </p>
+        </div>
+
+        <form className="stack" style={{ gap: "0.75rem" }} onSubmit={onFeeRefreshPreview}>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            <span>Fee CSV file</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => void onFeeFileSelected(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          {feeFileName ? <span className="muted">Selected: {feeFileName}</span> : null}
+
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={!feeCsvText.trim() || feeLoading}
+              onClick={() => void runFeePreview(undefined)}
+            >
+              Auto-map &amp; preview
+            </button>
+            <button type="submit" className="btn" disabled={!feeCsvText.trim() || feeLoading}>
+              Apply column mapping &amp; preview
+            </button>
+          </div>
+        </form>
+
+        {feeError ? (
+          <div className="card error" role="alert">
+            {feeError}
+          </div>
+        ) : null}
+        {feeCommitMessage ? (
+          <div className="card" role="status">
+            {feeCommitMessage}
+          </div>
+        ) : null}
+
+        {feePreview?.mapError ? (
+          <div className="card error" role="alert">
+            {feePreview.mapError}
+          </div>
+        ) : null}
+
+        {feePreview && feePreview.headers.length > 0 ? (
+          <div className="stack" style={{ gap: "0.75rem" }}>
+            <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Fee column mapping</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              All four fields must be mapped to CSV columns.
+            </p>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Field</th>
+                    <th>CSV column</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feePreview.logicalFields.map((logicalKey) => (
+                    <tr key={logicalKey}>
+                      <td>{fieldLabel(logicalKey)}</td>
+                      <td>
+                        <select
+                          value={feeColumnMap[logicalKey] ?? "__none__"}
+                          onChange={(event) => {
+                            updateFeeColumnMap(logicalKey, event.target.value);
+                          }}
+                        >
+                          <option value="__none__">— Unmapped —</option>
+                          {feePreview.headers.map((header) => (
+                            <option key={header} value={header}>
+                              {header}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {feePreview.globalWarnings.length > 0 ? (
+              <div className="card">
+                <strong>Warnings</strong>
+                <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+                  {feePreview.globalWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="stack" style={{ gap: "0.5rem" }}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Fee row preview</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                {feePreview.validRowCount} valid row(s), {feePreview.invalidRowCount} row(s) with errors.
+              </p>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Status</th>
+                      <th>Match / amounts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feePreview.previewRows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td>{row.rowNumber}</td>
+                        <td>
+                          {row.errors.length > 0 ? (
+                            <span style={{ color: "var(--danger)" }}>{row.errors.join(" ")}</span>
+                          ) : (
+                            <span style={{ color: "var(--muted)" }}>OK</span>
+                          )}
+                          {row.warnings.length > 0 ? (
+                            <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                              {row.warnings.join(" ")}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={{ fontSize: "0.85rem", maxWidth: "28rem", wordBreak: "break-word" }}>
+                          {row.camperId ? <span>Camper ID: {row.camperId} · </span> : null}
+                          Due {formatCentsForPreview(row.feeDueCents)} · Paid {formatCentsForPreview(row.feePaidCents)}
+                          {Object.keys(row.rawSubset).length > 0 ? (
+                            <div className="muted" style={{ marginTop: "0.25rem" }}>
+                              {Object.entries(row.rawSubset)
+                                .map(([columnHeader, value]) => `${columnHeader}: ${value}`)
+                                .join(" · ")}
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {feePreview.invalidRowCount > 0 ? (
+              <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start", maxWidth: "40rem" }}>
+                <input
+                  type="checkbox"
+                  checked={feeSkipInvalidRows}
+                  onChange={(event) => {
+                    setFeeSkipInvalidRows(event.target.checked);
+                  }}
+                />
+                <span>
+                  Skip {feePreview.invalidRowCount} row(s) with errors and update fees for only the{" "}
+                  {feePreview.validRowCount} valid row(s).
+                </span>
+              </label>
+            ) : null}
+
+            <form onSubmit={onFeeCommit}>
+              <button type="submit" className="btn" disabled={!canFeeCommit}>
+                Commit fee updates
+              </button>
+            </form>
+          </div>
+        ) : null}
+
+        {feeLoading ? <p className="muted">Working…</p> : null}
+      </div>
     </div>
   );
 }

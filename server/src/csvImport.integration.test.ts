@@ -180,4 +180,47 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     expect(campers.every((camper) => camper.importSource === "csv_import")).toBe(true);
     expect(campers.every((camper) => camper.qrToken.length > 0)).toBe(true);
   });
+
+  it("blocks worker commit when a row has errors unless skipInvalidRows is true", async () => {
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const token = signAuthToken({ sub: admin.id, role: admin.role });
+    const csvText = [
+      "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
+      "good@example.com,A,B,Male,5551234567,1 Main,X,Y,12345,USA",
+      ",C,D,Male,5551234567,2 Oak,X,Y,12345,USA",
+    ].join("\n");
+
+    const blocked = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/csv-import/commit`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ kind: "worker", csvText });
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.error).toBe("commit_blocked_row_errors");
+
+    const allowed = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/csv-import/commit`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ kind: "worker", csvText, skipInvalidRows: true });
+    expect(allowed.status).toBe(201);
+    expect(allowed.body.imported).toBe(1);
+    expect(allowed.body.skippedInvalidRows).toBe(1);
+    const workerCount = await prisma.worker.count({ where: { campYearId } });
+    expect(workerCount).toBe(1);
+  });
+
+  it("returns no_valid_rows_to_commit when skipInvalidRows is true but every row has errors", async () => {
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const token = signAuthToken({ sub: admin.id, role: admin.role });
+    const csvText = [
+      "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
+      ",A,B,Male,5551234567,1 Main,X,Y,12345,USA",
+    ].join("\n");
+
+    const response = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/csv-import/commit`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ kind: "worker", csvText, skipInvalidRows: true });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("no_valid_rows_to_commit");
+  });
 });

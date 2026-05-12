@@ -20,6 +20,8 @@ type CamperRow = {
   guardianEmail: string;
   paymentStatus: string;
   importSource: string;
+  feeDueCents: number | null;
+  feePaidCents: number | null;
 };
 
 type WorkerRow = {
@@ -56,6 +58,13 @@ type CapacityBody = {
   capacity: number;
   additionalCampers: number;
 };
+
+function formatUsdFromCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) {
+    return "—";
+  }
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100);
+}
 
 export function PeoplePage(): React.ReactElement {
   const { user } = useAuth();
@@ -608,6 +617,8 @@ export function PeoplePage(): React.ReactElement {
                 <tr>
                   <th>Name</th>
                   <th>Guardian email</th>
+                  <th>Fee due</th>
+                  <th>Fee paid</th>
                   <th>Payment</th>
                   <th>Source</th>
                 </tr>
@@ -619,6 +630,8 @@ export function PeoplePage(): React.ReactElement {
                       {camper.firstName} {camper.lastName}
                     </td>
                     <td>{camper.guardianEmail}</td>
+                    <td>{formatUsdFromCents(camper.feeDueCents)}</td>
+                    <td>{formatUsdFromCents(camper.feePaidCents)}</td>
                     <td>{camper.paymentStatus}</td>
                     <td>{camper.importSource}</td>
                   </tr>
