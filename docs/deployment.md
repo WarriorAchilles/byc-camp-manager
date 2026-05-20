@@ -98,7 +98,16 @@ The master spec lists **AWS** as hosting with services TBD. This repository ship
 - **Docker**: see `deploy/Dockerfile` (multi-stage build; run with `DATABASE_URL`, `JWT_SECRET`, and optional `CLIENT_DIST_PATH` / SMTP vars).
 - **IaC pointers**: see `infra/README.md` for where to plug health checks, secrets, and RDS.
 
-No cloud resources are provisioned from this repo alone — **Human Tasks** (account, RDS, DNS, secrets) remain with the operator.
+No cloud resources are provisioned from this repo alone — **Human Tasks** (account, RDS, DNS, secrets) remain with the operator unless you run the CDK app below.
+
+## AWS CDK (programmatic dev / staging)
+
+The CDK app under [`infra/cdk/`](../infra/cdk/) provisions VPC, RDS PostgreSQL, Secrets Manager entries, an ECS Fargate service behind an ALB, and (by default) builds the app image from [`deploy/Dockerfile`](../deploy/Dockerfile).
+
+1. Bootstrap and deploy: see [`infra/cdk/README.md`](../infra/cdk/README.md).
+2. **Migrations** are not run automatically: use the documented **ECS RunTask** one-off command after deploy.
+3. Set `CORS_ORIGIN` with `-c corsOrigin=https://admin.example.org` when serving the UI from a custom domain; otherwise the stack defaults to the ALB DNS origin.
+4. **Synth without Docker** (CI or quick validation): `cd infra/cdk && npx cdk synth -c usePlaceholderImage=true`.
 
 ## Phase 1 smoke test
 

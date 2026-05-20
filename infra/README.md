@@ -1,27 +1,33 @@
-# AWS infrastructure (reference)
+# AWS infrastructure
 
-This folder does **not** contain a full turnkey CloudFormation or Terraform stack. The product spec leaves **specific AWS services TBD** (`docs/specs.md`). Use this file as a **checklist** when you add IaC in your org’s standard tool.
+## CDK application (dev / staging)
 
-## Recommended starting point
+The **AWS CDK** app in [`cdk/`](cdk/) deploys a single stack (`BycCampDevStack`) with:
 
-1. **PostgreSQL**: Amazon RDS for PostgreSQL (Multi-AZ for production if policy requires).
-2. **Application**: Container from `deploy/Dockerfile` on **ECS Fargate** or **App Runner**, or Elastic Beanstalk “Docker” mode.
-3. **Secrets**: `DATABASE_URL`, `JWT_SECRET`, SMTP credentials in **AWS Secrets Manager** (or SSM Parameter Store) injected as task env vars.
-4. **Load balancer / TLS**: Application Load Balancer + ACM certificate; health check path **`/api/health`** (liveness) and/or **`/api/health/ready`** (stricter).
-5. **Observability**: CloudWatch Logs for container stdout (structured ops JSON + Prisma / Node errors).
+- VPC (2 AZs, public subnets for ALB + Fargate, isolated private subnets for RDS, **no NAT**)
+- RDS PostgreSQL (`t3.micro`, single-AZ, dev-friendly removal policies)
+- Secrets Manager: RDS master secret, Prisma `DATABASE_URL` secret (filled by a custom resource), JWT secret
+- ECS Fargate service + internet-facing ALB (HTTP :80) → container port **4000**
+- Docker image from [`../deploy/Dockerfile`](../deploy/Dockerfile) (monorepo root as build context) unless you use the placeholder context below
+
+See [`cdk/README.md`](cdk/README.md) for bootstrap, deploy, synth, and migration commands.
+
+## Checklist (conceptual)
+
+1. **PostgreSQL**: RDS in the CDK stack; enable backups in the console or extend CDK for retention policies.
+2. **Application**: ECS Fargate + ALB from CDK; health check `GET /api/health`.
+3. **Secrets**: `DATABASE_URL` and `JWT_SECRET` from Secrets Manager on the task; optional SMTP vars can be added later in the task definition.
+4. **TLS**: first revision uses HTTP on port 80. Add an ACM certificate and an HTTPS listener when you have a domain in Route 53.
+5. **Observability**: CloudWatch Logs for the app container and the database URL sync Lambda.
 
 ## Database backups
 
-Enable RDS automated backups; retention and cross-region copy are **policy decisions** (see development plan step 07 Human Tasks). Document restore drills in your camp runbook; technical steps are in `docs/deployment.md`.
+Enable RDS automated backups in the AWS console (or add `backupRetention` on the instance in CDK). Restore drills: `docs/deployment.md`.
 
 ## Static front end (optional split)
 
-If the SPA is hosted on **S3 + CloudFront** while the API is separate:
+The default Docker image serves the SPA from the API (`CLIENT_DIST_PATH`). To host static files on S3 + CloudFront instead, split the image or omit `CLIENT_DIST_PATH` and point the SPA at the API; set `CORS_ORIGIN` accordingly.
 
-- Upload `client/dist` to the bucket; ensure `health.json` is reachable.
-- Configure CORS on the API (`CORS_ORIGIN`) for the CloudFront domain.
-- You may omit `CLIENT_DIST_PATH` on the API container in that layout.
+## Manual Docker image (without CDK)
 
-## Deployment artifact without cloud CLI
-
-If you cannot push to ECR from automation, `docker build -f deploy/Dockerfile -t byc-camp-manager:local .` from the repo root produces an image that operators can scan and deploy manually.
+From the repository root: `docker build -f deploy/Dockerfile -t byc-camp-manager:local .`

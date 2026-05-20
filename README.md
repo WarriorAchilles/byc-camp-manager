@@ -22,7 +22,8 @@ The Vite dev server proxies `/api` to the API on port 4000. Configure `server/.e
 - Environment variables, backups, health checks, logging, and AWS-oriented deployment: `docs/deployment.md`
 - Phase 1 smoke test checklist: `docs/phase-1-smoke-test.md`
 - Container image (API + built SPA): `docker build -f deploy/Dockerfile -t byc-camp-manager:latest .`
-- AWS checklist (RDS, ECS/Fargate, secrets, load balancer probes): `infra/README.md`
+- AWS CDK (dev VPC + RDS + ECS + ALB): `infra/cdk` — see `infra/cdk/README.md`
+- AWS checklist and architecture notes: `infra/README.md`
 
 Production-oriented commands from the repo root:
 

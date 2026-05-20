@@ -1,0 +1,26 @@
+{
+  "name": "byc-camp-cdk",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --require-approval never",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.10.10",
+    "aws-cdk": "2.1121.0",
+    "esbuild": "^0.24.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.716.0",
+    "aws-cdk-lib": "2.253.1",
+    "constructs": "^10.4.2"
+  }
+}
