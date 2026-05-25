@@ -10,6 +10,7 @@ import { adminUsersRouter } from "./routes/adminUsers.js";
 import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { publicSelfCheckInRouter } from "./routes/publicSelfCheckIn.js";
+import { stripeWebhookRouter } from "./routes/stripeWebhook.js";
 import { requireAuth } from "./middleware/auth.js";
 
 export function createApp(): express.Express {
@@ -22,6 +23,7 @@ export function createApp(): express.Express {
       credentials: true,
     }),
   );
+  app.use("/api/stripe/webhook", stripeWebhookRouter);
   app.use(express.json());
   app.use(cookieParser());
 

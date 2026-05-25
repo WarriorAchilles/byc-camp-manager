@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 
 type CampMeta = {
@@ -30,13 +30,41 @@ type SelfCheckInResponse = {
   dormAutoAssigned: boolean;
 };
 
+type PaymentOptionsResponse = {
+  camper: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleInitial: string | null;
+    paymentStatus: string;
+    checkInStatus: string;
+    dormAssignment: string | null;
+    remainingBalanceCents: number;
+    onlinePaymentAvailable: boolean;
+  };
+};
+
+type StripeCheckoutResponse = {
+  url: string;
+  stripeSessionId: string;
+  amountCents: number;
+};
+
 function displayName(row: Pick<SelfSearchRow, "firstName" | "lastName" | "middleInitial">): string {
   const mid = row.middleInitial ? ` ${row.middleInitial}.` : "";
   return `${row.firstName}${mid} ${row.lastName}`;
 }
 
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / 100);
+}
+
 export function CamperSelfCheckInPage(): ReactElement {
   const params = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = params.token ?? "";
 
   const [meta, setMeta] = useState<CampMeta | null>(null);
@@ -49,6 +77,8 @@ export function CamperSelfCheckInPage(): ReactElement {
 
   const [busyCamperId, setBusyCamperId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentOptionsResponse["camper"] | null>(null);
+  const [manualPaymentAccepted, setManualPaymentAccepted] = useState(false);
 
   const [success, setSuccess] = useState<{
     message: string;
@@ -83,11 +113,65 @@ export function CamperSelfCheckInPage(): ReactElement {
     void loadMeta();
   }, [loadMeta]);
 
+  useEffect(() => {
+    const stripeState = searchParams.get("stripe");
+    const stripeSessionId = searchParams.get("session_id");
+    if (stripeState === "cancel") {
+      setActionError("Online payment was canceled. You can still pay online or choose manual payment.");
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (stripeState !== "success" || !stripeSessionId) {
+      return;
+    }
+
+    let active = true;
+    setBusyCamperId("stripe-status");
+    setActionError(null);
+    void apiJson<{
+      completed: boolean;
+      camper: SelfCheckInResponse["camper"] & { paymentStatus: string };
+    }>(`${basePath}/stripe-checkout/${encodeURIComponent(stripeSessionId)}/status`)
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        if (data.completed) {
+          setSuccess({
+            message: `Payment received. Welcome, ${displayName(data.camper)}!`,
+            dormLabel: data.camper.dormAssignment ?? "Unassigned",
+            dormAutoAssigned: false,
+          });
+          setResults([]);
+          setSelectedPayment(null);
+          setSearchParams({}, { replace: true });
+        } else {
+          setActionError("Stripe has not confirmed payment yet. Try refreshing in a moment.");
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setActionError(err instanceof Error ? err.message : "Could not confirm Stripe payment.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setBusyCamperId(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [basePath, searchParams, setSearchParams]);
+
   const runSearch = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setSearchError(null);
     setSuccess(null);
     setActionError(null);
+    setSelectedPayment(null);
+    setManualPaymentAccepted(false);
     const query = searchQuery.trim();
     if (!query) {
       setSearchError("Enter part of your first or last name.");
@@ -117,14 +201,35 @@ export function CamperSelfCheckInPage(): ReactElement {
     }
   };
 
-  const checkIn = async (camperId: string): Promise<void> => {
+  const showPaymentOptions = async (row: SelfSearchRow): Promise<void> => {
+    setActionError(null);
+    setSuccess(null);
+    setManualPaymentAccepted(false);
+    setBusyCamperId(row.id);
+    try {
+      const data = await apiJson<PaymentOptionsResponse>(
+        `${basePath}/campers/${row.id}/payment-options`,
+      );
+      if (data.camper.paymentStatus !== "unpaid") {
+        await checkIn(row.id, false);
+        return;
+      }
+      setSelectedPayment(data.camper);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not load payment options.");
+    } finally {
+      setBusyCamperId(null);
+    }
+  };
+
+  const checkIn = async (camperId: string, manualPayment: boolean): Promise<void> => {
     setActionError(null);
     setSuccess(null);
     setBusyCamperId(camperId);
     try {
       const data = await apiJson<SelfCheckInResponse>(`${basePath}/campers/${camperId}/check-in`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ manualPaymentAccepted: manualPayment || undefined }),
       });
       const dormLabel = data.camper.dormAssignment ?? "Unassigned";
       if (data.checkInCompletedThisRequest) {
@@ -138,6 +243,7 @@ export function CamperSelfCheckInPage(): ReactElement {
             row.id === camperId ? { ...row, checkInStatus: "checked_in" } : row,
           ),
         );
+        setSelectedPayment(null);
       } else if (data.alreadyCheckedIn) {
         setSuccess({
           message: `${displayName(data.camper)}, you are already checked in.`,
@@ -148,6 +254,24 @@ export function CamperSelfCheckInPage(): ReactElement {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Check-in failed.");
     } finally {
+      setBusyCamperId(null);
+    }
+  };
+
+  const startStripeCheckout = async (camperId: string): Promise<void> => {
+    setActionError(null);
+    setBusyCamperId(camperId);
+    try {
+      const data = await apiJson<StripeCheckoutResponse>(
+        `${basePath}/campers/${camperId}/stripe-checkout`,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+      );
+      globalThis.location.assign(data.url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not start online payment.");
       setBusyCamperId(null);
     }
   };
@@ -263,15 +387,53 @@ export function CamperSelfCheckInPage(): ReactElement {
                           type="button"
                           className="btn primary"
                           disabled={checkedIn || busyCamperId !== null}
-                          onClick={() => void checkIn(row.id)}
+                          onClick={() => void showPaymentOptions(row)}
                         >
-                          {busyCamperId === row.id ? "Working…" : checkedIn ? "Done" : "Check in"}
+                          {busyCamperId === row.id ? "Working…" : checkedIn ? "Done" : "Continue"}
                         </button>
                       </div>
                     </li>
                   );
                 })}
               </ul>
+            ) : null}
+
+            {selectedPayment ? (
+              <section className="self-check-in-payment" aria-live="polite">
+                <h2 className="self-check-in-payment-title">{displayName(selectedPayment)}</h2>
+                <p className="muted">
+                  Your registration balance is {formatUsd(selectedPayment.remainingBalanceCents)}.
+                  Choose how you will handle payment to finish check-in.
+                </p>
+                {selectedPayment.onlinePaymentAvailable ? (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={busyCamperId !== null}
+                    onClick={() => void startStripeCheckout(selectedPayment.id)}
+                  >
+                    Pay online
+                  </button>
+                ) : (
+                  <p className="muted">Online payment is not available for this balance.</p>
+                )}
+                <label className="check-inline self-check-in-manual-pay">
+                  <input
+                    type="checkbox"
+                    checked={manualPaymentAccepted}
+                    onChange={(event) => setManualPaymentAccepted(event.target.checked)}
+                  />
+                  I will pay manually
+                </label>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={!manualPaymentAccepted || busyCamperId !== null}
+                  onClick={() => void checkIn(selectedPayment.id, true)}
+                >
+                  Check in and show dorm
+                </button>
+              </section>
             ) : null}
           </>
         )}

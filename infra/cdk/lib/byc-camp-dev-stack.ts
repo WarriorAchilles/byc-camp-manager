@@ -155,6 +155,36 @@ export class BycCampDevStack extends cdk.Stack {
       configuredCorsOrigin === undefined
         ? `http://${loadBalancer.loadBalancerDnsName}`
         : String(configuredCorsOrigin);
+    const configuredAppPublicUrl = this.node.tryGetContext("appPublicUrl");
+    const appPublicUrl =
+      configuredAppPublicUrl === undefined
+        ? `http://${loadBalancer.loadBalancerDnsName}`
+        : String(configuredAppPublicUrl);
+    const stripeSecretKeySecretArn = this.node.tryGetContext("stripeSecretKeySecretArn");
+    const stripeWebhookSecretArn = this.node.tryGetContext("stripeWebhookSecretArn");
+    const optionalStripeSecrets: Record<string, ecs.Secret> = {};
+    const stripeSecretKey =
+      stripeSecretKeySecretArn === undefined
+        ? undefined
+        : secretsmanager.Secret.fromSecretPartialArn(
+            this,
+            "StripeSecretKey",
+            String(stripeSecretKeySecretArn),
+          );
+    const stripeWebhookSecret =
+      stripeWebhookSecretArn === undefined
+        ? undefined
+        : secretsmanager.Secret.fromSecretPartialArn(
+            this,
+            "StripeWebhookSecret",
+            String(stripeWebhookSecretArn),
+          );
+    if (stripeSecretKey) {
+      optionalStripeSecrets.STRIPE_SECRET_KEY = ecs.Secret.fromSecretsManager(stripeSecretKey);
+    }
+    if (stripeWebhookSecret) {
+      optionalStripeSecrets.STRIPE_WEBHOOK_SECRET = ecs.Secret.fromSecretsManager(stripeWebhookSecret);
+    }
 
     const container = taskDefinition.addContainer("web", {
       image: usePlaceholderImage
@@ -168,16 +198,20 @@ export class BycCampDevStack extends cdk.Stack {
         NODE_ENV: "production",
         PORT: "4000",
         CORS_ORIGIN: corsOrigin,
+        APP_PUBLIC_URL: appPublicUrl,
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(prismaDatabaseUrlSecret),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret, "token"),
+        ...optionalStripeSecrets,
       },
     });
     container.addPortMappings({ containerPort: 4000, protocol: ecs.Protocol.TCP });
 
     jwtSecret.grantRead(taskDefinition.executionRole!);
     prismaDatabaseUrlSecret.grantRead(taskDefinition.executionRole!);
+    stripeSecretKey?.grantRead(taskDefinition.executionRole!);
+    stripeWebhookSecret?.grantRead(taskDefinition.executionRole!);
     if (!usePlaceholderImage) {
       imageAsset!.repository.grantPull(taskDefinition.executionRole!);
     }

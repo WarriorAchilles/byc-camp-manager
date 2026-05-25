@@ -1166,6 +1166,23 @@ tbody tr:hover td {
   font-size: 0.9rem;
 }
 
+.self-check-in-payment {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.self-check-in-payment-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.self-check-in-manual-pay {
+  margin-top: 0.25rem;
+}
+
 .kiosk-print-root {
   position: fixed;
   left: -10000px;

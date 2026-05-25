@@ -48,6 +48,9 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `usePlaceholderImage=true` | Skips `DockerImageAsset` build; synth/validate only. |
 | `account` / `region` | Passed to the stack `env` (optional if `CDK_DEFAULT_*` / `AWS_*` are set). |
 | `corsOrigin` | Sets the API `CORS_ORIGIN`; defaults to `http://<alb-dns-name>`. |
+| `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
+| `stripeSecretKeySecretArn` | Optional Secrets Manager ARN containing the Stripe restricted/secret API key. |
+| `stripeWebhookSecretArn` | Optional Secrets Manager ARN containing the Stripe webhook signing secret. |
 
 ## CORS
 
@@ -55,6 +58,21 @@ The task sets `CORS_ORIGIN` to `http://<alb-dns-name>` by default. After you add
 
 ```bash
 npx cdk deploy -c corsOrigin=https://admin.example.org
+```
+
+Set the same public HTTPS origin for Stripe redirects after DNS is in place:
+
+```bash
+npx cdk deploy -c corsOrigin=https://admin.example.org -c appPublicUrl=https://admin.example.org
+```
+
+To enable Stripe Checkout in ECS, store the Stripe API key and webhook signing secret as separate Secrets Manager plaintext secrets, then pass their ARNs:
+
+```bash
+npx cdk deploy \
+  -c appPublicUrl=https://admin.example.org \
+  -c stripeSecretKeySecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:stripe-key \
+  -c stripeWebhookSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:stripe-webhook
 ```
 
 ## Database migrations (one-off ECS RunTask)

@@ -7,6 +7,14 @@ import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { writeOpsLog } from "../lib/opsLog.js";
 import { parseSelfCheckInTokenParam } from "../lib/qrToken.js";
 import { pathParam } from "../lib/campYearParams.js";
+import {
+  createSelfCheckInCheckoutSession,
+  getStripeRuntime,
+  reconcileCheckoutSession,
+  remainingBalanceCents,
+  stripeNotConfiguredError,
+} from "../lib/stripeCheckout.js";
+import { CamperPaymentStatus } from "@prisma/client";
 
 const router = Router();
 
@@ -18,35 +26,51 @@ function middleInitialFromName(middleName: string | null): string | null {
   return t.charAt(0).toUpperCase();
 }
 
-router.get("/:token/meta", async (req, res) => {
-  const normalized = parseSelfCheckInTokenParam(req.params.token ?? "");
+const publicCheckInBody = z.object({
+  manualPaymentAccepted: z.boolean().optional(),
+});
+
+type SelfCheckInYearResult =
+  | {
+      year: {
+        id: string;
+        name: string;
+        yearLabel: string;
+        startDate: Date;
+        selfCheckInToken: string | null;
+      };
+      normalized: string;
+    }
+  | { status: 400 | 404; error: string };
+
+async function campYearForSelfCheckInToken(token: string): Promise<SelfCheckInYearResult> {
+  const normalized = parseSelfCheckInTokenParam(token);
   if (!normalized) {
-    res.status(400).json({ error: "invalid_token" });
-    return;
+    return { status: 400 as const, error: "invalid_token" };
   }
   const year = await prisma.campYear.findUnique({
     where: { selfCheckInToken: normalized },
-    select: { name: true, yearLabel: true },
+    select: { id: true, name: true, yearLabel: true, startDate: true, selfCheckInToken: true },
   });
   if (!year) {
-    res.status(404).json({ error: "camp_not_found" });
+    return { status: 404 as const, error: "camp_not_found" };
+  }
+  return { year, normalized };
+}
+
+router.get("/:token/meta", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
-  res.json({ campYear: { name: year.name, yearLabel: year.yearLabel } });
+  res.json({ campYear: { name: result.year.name, yearLabel: result.year.yearLabel } });
 });
 
 router.get("/:token/search", async (req, res) => {
-  const normalized = parseSelfCheckInTokenParam(req.params.token ?? "");
-  if (!normalized) {
-    res.status(400).json({ error: "invalid_token" });
-    return;
-  }
-  const year = await prisma.campYear.findUnique({
-    where: { selfCheckInToken: normalized },
-    select: { id: true },
-  });
-  if (!year) {
-    res.status(404).json({ error: "camp_not_found" });
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
   const query = typeof req.query.q === "string" ? req.query.q : "";
@@ -56,7 +80,7 @@ router.get("/:token/search", async (req, res) => {
     return;
   }
 
-  const where = camperWhereForNameTokens(year.id, tokens);
+  const where = camperWhereForNameTokens(result.year.id, tokens);
 
   const campers = await prisma.camper.findMany({
     where,
@@ -82,25 +106,90 @@ router.get("/:token/search", async (req, res) => {
   });
 });
 
-router.post("/:token/campers/:camperId/check-in", async (req, res) => {
-  const normalized = parseSelfCheckInTokenParam(req.params.token ?? "");
-  if (!normalized) {
-    res.status(400).json({ error: "invalid_token" });
-    return;
-  }
-  const year = await prisma.campYear.findUnique({
-    where: { selfCheckInToken: normalized },
-    select: { id: true, startDate: true },
-  });
-  if (!year) {
-    res.status(404).json({ error: "camp_not_found" });
+router.get("/:token/campers/:camperId/payment-options", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
 
-  const campYearId = year.id;
   const camperId = pathParam(req.params.camperId);
   if (!camperId || !z.string().uuid().safeParse(camperId).success) {
     res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+
+  const camper = await prisma.camper.findFirst({
+    where: { id: camperId, campYearId: result.year.id, archivedAt: null },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      middleName: true,
+      paymentStatus: true,
+      checkInStatus: true,
+      feeDueCents: true,
+      feePaidCents: true,
+      dorm: { select: { name: true } },
+    },
+  });
+  if (!camper) {
+    res.status(404).json({ error: "Camper not found" });
+    return;
+  }
+
+  const remaining = remainingBalanceCents(camper);
+  res.json({
+    camper: {
+      id: camper.id,
+      firstName: camper.firstName,
+      lastName: camper.lastName,
+      middleInitial: middleInitialFromName(camper.middleName),
+      paymentStatus: camper.paymentStatus,
+      checkInStatus: camper.checkInStatus,
+      dormAssignment: camper.dorm?.name ?? null,
+      remainingBalanceCents: remaining,
+      onlinePaymentAvailable: camper.paymentStatus === CamperPaymentStatus.unpaid && remaining > 0,
+    },
+  });
+});
+
+router.post("/:token/campers/:camperId/check-in", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const campYearId = result.year.id;
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+  const parsed = publicCheckInBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+
+  const currentCamper = await prisma.camper.findFirst({
+    where: { id: camperId, campYearId, archivedAt: null },
+    select: { paymentStatus: true, feeDueCents: true, feePaidCents: true },
+  });
+  if (!currentCamper) {
+    res.status(404).json({ error: "Camper not found" });
+    return;
+  }
+  const remaining = remainingBalanceCents(currentCamper);
+  if (
+    currentCamper.paymentStatus === CamperPaymentStatus.unpaid &&
+    !parsed.data.manualPaymentAccepted
+  ) {
+    res.status(409).json({
+      error: "payment_required",
+      remainingBalanceCents: remaining,
+    });
     return;
   }
 
@@ -110,7 +199,7 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
     runCamperCheckInInTransaction(tx, {
       campYearId,
       camperId,
-      campStart: year.startDate,
+      campStart: result.year.startDate,
       now,
       payments: {},
     }),
@@ -159,6 +248,75 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
     checkInCompletedThisRequest: transitionedToCheckedIn,
     dormAutoAssigned,
   });
+});
+
+router.post("/:token/campers/:camperId/stripe-checkout", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+
+  const stripeRuntime = getStripeRuntime();
+  if (!stripeRuntime) {
+    res.status(503).json(stripeNotConfiguredError());
+    return;
+  }
+
+  const checkout = await createSelfCheckInCheckoutSession({
+    campYearId: result.year.id,
+    camperId,
+    kioskToken: result.normalized,
+    stripeRuntime,
+  });
+  if (!checkout.ok) {
+    res.status(checkout.status).json({ error: checkout.error });
+    return;
+  }
+
+  res.json({
+    url: checkout.url,
+    stripeSessionId: checkout.stripeSessionId,
+    amountCents: checkout.amountCents,
+  });
+});
+
+router.get("/:token/stripe-checkout/:stripeSessionId/status", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const stripeRuntime = getStripeRuntime();
+  if (!stripeRuntime) {
+    res.status(503).json(stripeNotConfiguredError());
+    return;
+  }
+
+  const stripeSessionId = pathParam(req.params.stripeSessionId);
+  if (!stripeSessionId || !stripeSessionId.startsWith("cs_")) {
+    res.status(400).json({ error: "Invalid Stripe session id" });
+    return;
+  }
+
+  const status = await reconcileCheckoutSession({
+    stripeRuntime,
+    stripeSessionId,
+    campYearId: result.year.id,
+  });
+  if (!status.ok) {
+    res.status(status.status).json({ error: status.error });
+    return;
+  }
+
+  res.json(status);
 });
 
 export const publicSelfCheckInRouter = router;

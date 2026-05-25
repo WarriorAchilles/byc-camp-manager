@@ -34,6 +34,12 @@ enum CheckInStatus {
   checked_in
 }
 
+enum StripeCheckoutStatus {
+  pending
+  completed
+  expired
+}
+
 enum DormPurpose {
   camper
   worker
@@ -179,9 +185,29 @@ model Camper {
 
   campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
   dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
+  stripeCheckoutSessions StripeCheckoutSession[]
 
   @@index([campYearId])
   @@map("campers")
+}
+
+model StripeCheckoutSession {
+  id              String               @id @default(uuid())
+  stripeSessionId String               @unique @map("stripe_session_id")
+  campYearId      String               @map("camp_year_id")
+  camperId        String               @map("camper_id")
+  amountCents     Int                  @map("amount_cents")
+  status          StripeCheckoutStatus @default(pending)
+  paymentIntentId String?              @map("payment_intent_id")
+  completedAt     DateTime?            @map("completed_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  camper Camper @relation(fields: [camperId], references: [id], onDelete: Cascade)
+
+  @@index([campYearId])
+  @@index([camperId])
+  @@map("stripe_checkout_sessions")
 }
 
 model Worker {

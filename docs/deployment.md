@@ -22,11 +22,31 @@ Further product context: `docs/specs.md`.
 | `JWT_SECRET` | long random string (≥32 chars) | from secrets manager | same | Signs admin session cookies |
 | `CORS_ORIGIN` | optional; e.g. `http://127.0.0.1:5173` | `https://admin-staging.example.org` | `https://admin.example.org` | When unset, CORS reflects any origin (dev-friendly only) |
 | `CLIENT_DIST_PATH` | usually unset (Vite proxies `/api`) | optional path to `client/dist` | e.g. `/app/client/dist` | When set to an existing directory, the API also serves the SPA and `index.html` fallback for client routes |
+| `APP_PUBLIC_URL` | e.g. `http://127.0.0.1:5173` | public staging origin | public production origin | Required for Stripe Checkout success/cancel redirects |
+| `STRIPE_SECRET_KEY` | test restricted key (`rk_test_...`) preferred | test/staging restricted key | live restricted key (`rk_live_...`) preferred | Server-only Stripe API key; never expose to client code or logs |
+| `STRIPE_WEBHOOK_SECRET` | from `stripe listen` | staging webhook signing secret | production webhook signing secret | Required to verify `checkout.session.completed` webhook events |
 | `EMAIL_TRANSPORT` | `log` (default) | `smtp` or `log` | `smtp` for real mail | `log` writes message content to stdout — **do not use for parent-facing mail in prod** |
 | `EMAIL_FROM` | n/a if `log` | verified sender | same | Required when `EMAIL_TRANSPORT=smtp` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | n/a if `log` | provider values | same | Required together for SMTP |
 
 Never commit real `.env` files. Use your AWS account secret store, CI OIDC, or platform env configuration (see Human Tasks in step 07 of the development plan).
+
+### Stripe Checkout for self check-in
+
+The camper self check-in page can redirect unpaid campers to Stripe Checkout for their stored remaining balance (`feeDueCents - feePaidCents`). It uses Stripe-hosted Checkout Sessions and relies on the webhook before marking a camper `paid_stripe`.
+
+Local development setup:
+
+1. Create or use a Stripe test-mode account.
+2. Prefer a restricted API key with only the permissions needed to create/retrieve Checkout Sessions and read payment results.
+3. Set `STRIPE_SECRET_KEY`, `APP_PUBLIC_URL`, and `STRIPE_WEBHOOK_SECRET` in `server/.env`.
+4. Forward webhooks locally:
+
+```bash
+stripe listen --events checkout.session.completed --forward-to localhost:4000/api/stripe/webhook
+```
+
+Use the `whsec_...` value printed by the Stripe CLI as `STRIPE_WEBHOOK_SECRET`. For production, create the same webhook endpoint in the live Stripe account, set the live restricted key and live webhook secret in the production secret store, and keep the test account values out of production.
 
 ### Client dev proxy
 
@@ -117,7 +137,7 @@ Manual checklist: `docs/phase-1-smoke-test.md`.
 
 Phase 1 is intentionally **admin-led** (CSV import, dorms, check-in, reports). The following remain **future** work; they must not block an operational camp week without public registration:
 
-- Full **public family and worker registration** flows (Phase 2+), Stripe checkout, and related public UX.
+- Full **public family and worker registration** flows (Phase 2+), including registration-time Stripe checkout and related public UX. Arrival-day self check-in can already use Stripe Checkout for an imported/admin-entered camper's stored remaining balance.
 - **Multi-year** analytics and historical carry-forward beyond what the current schema already supports for multiple camp years.
 - **Parent portal**, **SMS** notifications, **volunteer credentialing** workflows, **waitlist** automation — see `docs/specs.md` section **13. Future / Wish-List Items**.
 - **Server-rendered PDF** reports (Phase 1 uses browser print / save as PDF).

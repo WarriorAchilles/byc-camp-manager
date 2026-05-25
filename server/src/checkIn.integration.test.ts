@@ -468,10 +468,26 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       expect(row).not.toHaveProperty("qrToken");
       expect(row).not.toHaveProperty("paymentStatus");
 
+      const options = await request(app)
+        .get(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/payment-options`);
+      expect(options.status).toBe(200);
+      expect(options.body.camper).toMatchObject({
+        id: camperId,
+        paymentStatus: CamperPaymentStatus.unpaid,
+        remainingBalanceCents: 0,
+        onlinePaymentAvailable: false,
+      });
+
+      const blocked = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
+        .send({});
+      expect(blocked.status).toBe(409);
+      expect(blocked.body.error).toBe("payment_required");
+
       const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
       const chk = await request(app)
         .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
-        .send({});
+        .send({ manualPaymentAccepted: true });
       expect(chk.status).toBe(200);
       expect(chk.body.checkInCompletedThisRequest).toBe(true);
       expect(chk.body.dormAutoAssigned).toBe(true);
@@ -481,7 +497,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
 
       const again = await request(app)
         .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
-        .send({});
+        .send({ manualPaymentAccepted: true });
       expect(again.status).toBe(200);
       expect(again.body.alreadyCheckedIn).toBe(true);
       expect(again.body.checkInCompletedThisRequest).toBe(false);
@@ -500,6 +516,48 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
         .post(`/api/public/self-check-in/${kioskToken}/campers/${randomUUID()}/check-in`)
         .send({});
       expect(chk.status).toBe(404);
+    });
+
+    it("public Stripe checkout returns service unavailable when Stripe is not configured", async () => {
+      const header = await authHeader();
+      await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      const yearRow = await prisma.campYear.findUniqueOrThrow({ where: { id: campYearId } });
+      const kioskToken = yearRow.selfCheckInToken!;
+
+      const create = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/campers`)
+        .set("Authorization", header)
+        .send({
+          firstName: "Stripe",
+          lastName: "Ready",
+          dateOfBirth: "2085-06-15",
+          gender: Gender.male,
+          guardianName: "G",
+          guardianEmail: "stripe-ready@example.com",
+          guardianPhone: "555",
+          paymentStatus: CamperPaymentStatus.unpaid,
+        });
+      expect(create.status).toBe(201);
+      const camperId = create.body.id as string;
+      await prisma.camper.update({
+        where: { id: camperId },
+        data: { feeDueCents: 16500, feePaidCents: 5000 },
+      });
+
+      const options = await request(app)
+        .get(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/payment-options`);
+      expect(options.status).toBe(200);
+      expect(options.body.camper.onlinePaymentAvailable).toBe(true);
+      expect(options.body.camper.remainingBalanceCents).toBe(11500);
+
+      const checkout = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/stripe-checkout`)
+        .send({});
+      expect(checkout.status).toBe(503);
+      expect(checkout.body.error).toBe("stripe_not_configured");
     });
 
     it("regenerating kiosk token invalidates the previous QR URL", async () => {
