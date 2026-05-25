@@ -145,6 +145,21 @@ export function parseMoneyAmountToCents(
   return { ok: true, cents };
 }
 
+function parseFeeDueAmountToCents(raw: string): { ok: true; cents: number; assumedZero: boolean } | { ok: false; message: string } {
+  if (!raw.trim()) {
+    return { ok: true, cents: 0, assumedZero: true };
+  }
+  const parsed = parseMoneyAmountToCents(raw);
+  return parsed.ok ? { ...parsed, assumedZero: false } : parsed;
+}
+
+function parseFeePaidAmountToCents(raw: string): { ok: true; cents: number } | { ok: false; message: string } {
+  if (!raw.trim()) {
+    return { ok: true, cents: 0 };
+  }
+  return parseMoneyAmountToCents(raw);
+}
+
 export function normalizedCamperNameKey(firstName: string, lastName: string): string {
   return `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`;
 }
@@ -294,11 +309,11 @@ export function runCamperFeeImportPreview(
       errors.push("Last name is required.");
     }
 
-    const dueParsed = parseMoneyAmountToCents(feeDueRaw);
+    const dueParsed = parseFeeDueAmountToCents(feeDueRaw);
     if (!dueParsed.ok) {
       errors.push(`Fees due: ${dueParsed.message}`);
     }
-    const paidParsed = parseMoneyAmountToCents(feePaidRaw);
+    const paidParsed = parseFeePaidAmountToCents(feePaidRaw);
     if (!paidParsed.ok) {
       errors.push(`Fees paid: ${paidParsed.message}`);
     }
@@ -308,6 +323,9 @@ export function runCamperFeeImportPreview(
     if (dueParsed.ok && paidParsed.ok) {
       feeDueCents = dueParsed.cents;
       feePaidCents = paidParsed.cents;
+      if (dueParsed.assumedZero) {
+        warnings.push("Fees due is empty; importing will assume fees due is $0.00.");
+      }
       if (feeDueCents === 0 && feePaidCents !== 0) {
         errors.push("Fee due is zero but fee paid is not; fix the row or use a non-zero fee due.");
       } else if (feeDueCents === 0 && feePaidCents === 0) {
