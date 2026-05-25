@@ -135,6 +135,18 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
   }
 
+  async function authHeaderForRole(role: AdminRole): Promise<string> {
+    const admin = await prisma.adminUser.create({
+      data: {
+        email: `${role}-${randomUUID()}@example.com`,
+        passwordHash: await hashPassword(password),
+        role,
+        isActive: true,
+      },
+    });
+    return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
+  }
+
   it("QR lookup rejects invalid token", async () => {
     const header = await authHeader();
     const res = await request(app)
@@ -714,6 +726,27 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
 
       const newMeta = await request(app).get(`/api/public/self-check-in/${t2}/meta`);
       expect(newMeta.status).toBe(200);
+    });
+
+    it("rejects camp admins when generating or regenerating the kiosk token", async () => {
+      const campAdminHeader = await authHeaderForRole(AdminRole.camp_admin);
+      const issue = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", campAdminHeader)
+        .send({});
+      expect(issue.status).toBe(403);
+
+      const superAdminHeader = await authHeader();
+      await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", superAdminHeader)
+        .send({});
+
+      const regenerate = await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token/regenerate`)
+        .set("Authorization", campAdminHeader)
+        .send({});
+      expect(regenerate.status).toBe(403);
     });
   });
 });

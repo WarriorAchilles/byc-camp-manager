@@ -1071,6 +1071,10 @@ tbody tr:hover td {
   margin: 0 auto;
 }
 
+.self-check-in-qr-page {
+  max-width: 52rem;
+}
+
 .self-check-in-page {
   min-height: 100vh;
   padding: clamp(1rem, 3vw, 2rem);

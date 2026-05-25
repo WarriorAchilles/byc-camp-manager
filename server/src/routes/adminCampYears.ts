@@ -138,7 +138,7 @@ adminCampYearsRouter.post(
 
 adminCampYearsRouter.post(
   "/:campYearId/self-check-in/token",
-  requireRole(AdminRole.super_admin, AdminRole.camp_admin),
+  requireRole(AdminRole.super_admin),
   async (req: AuthedRequest, res) => {
     const campYearId = campYearIdFromParams(req.params.campYearId, res);
     if (!campYearId) {
@@ -166,7 +166,7 @@ adminCampYearsRouter.post(
 
 adminCampYearsRouter.post(
   "/:campYearId/self-check-in/token/regenerate",
-  requireRole(AdminRole.super_admin, AdminRole.camp_admin),
+  requireRole(AdminRole.super_admin),
   async (req: AuthedRequest, res) => {
     const campYearId = campYearIdFromParams(req.params.campYearId, res);
     if (!campYearId) {

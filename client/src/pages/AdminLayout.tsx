@@ -10,6 +10,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { to: "/admin", label: "Check-in", end: true, placeholder: false },
+  { to: "/admin/self-check-in-qr", label: "Self check-in QR", placeholder: false },
   { to: "/admin/camp", label: "Camp configuration", placeholder: false },
   { to: "/admin/people", label: "People", placeholder: false },
   { to: "/admin/imports", label: "Imports", placeholder: false },
@@ -21,6 +22,7 @@ const navItems: NavItem[] = [
 /** Sidebar entries camp admins may access (operational areas only). */
 const campAdminNavPaths = new Set<string>([
   "/admin",
+  "/admin/self-check-in-qr",
   "/admin/people",
   "/admin/dorms",
   "/admin/reports",

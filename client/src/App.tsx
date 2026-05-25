@@ -9,6 +9,7 @@ import { CamperSelfCheckInPage } from "./pages/CamperSelfCheckInPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { PeoplePage } from "./pages/PeoplePage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { SelfCheckInQrPage } from "./pages/SelfCheckInQrPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 
 function FullPageAuthLoading(): React.ReactElement {
@@ -59,6 +60,7 @@ export function App(): React.ReactElement {
         >
           <Route index element={<CheckInPage />} />
           <Route path="check-in" element={<Navigate to="/admin" replace />} />
+          <Route path="self-check-in-qr" element={<SelfCheckInQrPage />} />
           <Route
             path="camp"
             element={
