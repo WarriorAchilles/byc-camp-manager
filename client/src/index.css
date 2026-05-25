@@ -1117,6 +1117,24 @@ tbody tr:hover td {
   gap: 0.75rem;
 }
 
+.self-check-in-select-row {
+  justify-content: flex-start;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.self-check-in-select-row input {
+  flex: 0 0 auto;
+}
+
+.self-check-in-pinned-row {
+  border-color: color-mix(in srgb, var(--success) 38%, var(--border));
+  background: color-mix(in srgb, var(--success) 7%, var(--surface));
+}
+
 .self-check-in-name {
   font-weight: 600;
 }
@@ -1138,8 +1156,14 @@ tbody tr:hover td {
   margin: 0 0 0.75rem;
 }
 
+.self-check-in-dorm-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
 .self-check-in-dorm {
-  margin: 0 0 0.85rem;
+  margin: 0;
   padding: 0.85rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);

@@ -193,7 +193,7 @@ model Camper {
 
 model StripeCheckoutSession {
   id              String               @id @default(uuid())
-  stripeSessionId String               @unique @map("stripe_session_id")
+  stripeSessionId String               @map("stripe_session_id")
   campYearId      String               @map("camp_year_id")
   camperId        String               @map("camper_id")
   amountCents     Int                  @map("amount_cents")
@@ -205,6 +205,7 @@ model StripeCheckoutSession {
 
   camper Camper @relation(fields: [camperId], references: [id], onDelete: Cascade)
 
+  @@index([stripeSessionId])
   @@index([campYearId])
   @@index([camperId])
   @@map("stripe_checkout_sessions")

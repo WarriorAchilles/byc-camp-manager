@@ -51,15 +51,20 @@ function paymentIntentIdFromSession(session: Stripe.Checkout.Session): string | 
 
 export async function createSelfCheckInCheckoutSession(input: {
   campYearId: string;
-  camperId: string;
+  camperIds: string[];
   kioskToken: string;
   stripeRuntime: StripeRuntime;
 }): Promise<
   | { ok: true; url: string; stripeSessionId: string; amountCents: number }
   | { ok: false; status: number; error: string }
 > {
-  const camper = await prisma.camper.findFirst({
-    where: { id: input.camperId, campYearId: input.campYearId, archivedAt: null },
+  const uniqueCamperIds = [...new Set(input.camperIds)];
+  if (uniqueCamperIds.length === 0) {
+    return { ok: false, status: 400, error: "At least one camper is required" };
+  }
+
+  const campers = await prisma.camper.findMany({
+    where: { id: { in: uniqueCamperIds }, campYearId: input.campYearId, archivedAt: null },
     select: {
       id: true,
       firstName: true,
@@ -69,70 +74,68 @@ export async function createSelfCheckInCheckoutSession(input: {
       feeDueCents: true,
       feePaidCents: true,
     },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
-  if (!camper) {
-    return { ok: false, status: 404, error: "Camper not found" };
-  }
-  if (camper.paymentStatus !== CamperPaymentStatus.unpaid) {
-    return { ok: false, status: 409, error: "Camper is already paid" };
+  if (campers.length !== uniqueCamperIds.length) {
+    return { ok: false, status: 404, error: "One or more campers were not found" };
   }
 
-  const amountCents = remainingBalanceCents(camper);
+  const campersWithBalances = campers
+    .map((camper) => ({ camper, amountCents: remainingBalanceCents(camper) }))
+    .map(({ camper, amountCents }) => ({
+      camper,
+      amountCents:
+        camper.paymentStatus === CamperPaymentStatus.unpaid && amountCents > 0 ? amountCents : 0,
+    }));
+  const payableCampers = campersWithBalances.filter(({ amountCents }) => amountCents > 0);
+
+  const amountCents = payableCampers.reduce((sum, payableCamper) => sum + payableCamper.amountCents, 0);
   if (amountCents <= 0) {
-    return { ok: false, status: 409, error: "No online balance is available for this camper" };
+    return { ok: false, status: 409, error: "No online balance is available for the selected campers" };
   }
 
-  const camperName = `${camper.firstName} ${camper.lastName}`.trim();
   const successUrl =
     `${input.stripeRuntime.appPublicUrl}/self-check-in/${encodeURIComponent(input.kioskToken)}` +
     "?stripe=success&session_id={CHECKOUT_SESSION_ID}";
   const cancelUrl =
     `${input.stripeRuntime.appPublicUrl}/self-check-in/${encodeURIComponent(input.kioskToken)}` +
-    `?stripe=cancel&camper_id=${encodeURIComponent(input.camperId)}`;
+    `?stripe=cancel`;
 
   const session = await input.stripeRuntime.stripe.checkout.sessions.create({
     mode: "payment",
-    client_reference_id: input.camperId,
-    customer_email: camper.guardianEmail,
+    client_reference_id: uniqueCamperIds.join(","),
+    customer_email: campers[0]?.guardianEmail,
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: {
       campYearId: input.campYearId,
-      camperId: input.camperId,
+      camperIds: uniqueCamperIds.join(","),
       source: "self_check_in",
     },
-    line_items: [
-      {
+    line_items: payableCampers.map(({ camper, amountCents: camperAmountCents }) => ({
         quantity: 1,
         price_data: {
           currency: "usd",
           product_data: {
-            name: `Camp registration balance - ${camperName}`,
+            name: `Camp registration balance - ${camper.firstName} ${camper.lastName}`.trim(),
           },
-          unit_amount: amountCents,
+          unit_amount: camperAmountCents,
         },
-      },
-    ],
+      })),
   });
 
   if (!session.url) {
     return { ok: false, status: 502, error: "Stripe did not return a checkout URL" };
   }
 
-  await prisma.stripeCheckoutSession.upsert({
-    where: { stripeSessionId: session.id },
-    create: {
+  await prisma.stripeCheckoutSession.createMany({
+    data: campersWithBalances.map(({ camper, amountCents: camperAmountCents }) => ({
       stripeSessionId: session.id,
       campYearId: input.campYearId,
-      camperId: input.camperId,
-      amountCents,
+      camperId: camper.id,
+      amountCents: camperAmountCents,
       status: StripeCheckoutStatus.pending,
-    },
-    update: {
-      camperId: input.camperId,
-      campYearId: input.campYearId,
-      amountCents,
-    },
+    })),
   });
 
   return { ok: true, url: session.url, stripeSessionId: session.id, amountCents };
@@ -144,57 +147,88 @@ async function applyCompletedCheckoutInTransaction(
     session: Stripe.Checkout.Session;
     now: Date;
   },
-): Promise<{ campYearId: string; camperId: string; transitionedToCheckedIn: boolean } | null> {
-  const sessionRow = await tx.stripeCheckoutSession.findUnique({
+): Promise<
+  | {
+      campYearId: string;
+      campers: Array<{ camperId: string; transitionedToCheckedIn: boolean }>;
+    }
+  | null
+> {
+  const sessionRows = await tx.stripeCheckoutSession.findMany({
     where: { stripeSessionId: input.session.id },
   });
-  if (!sessionRow) {
+  if (sessionRows.length === 0) {
     return null;
   }
-  if (sessionRow.status === StripeCheckoutStatus.completed) {
+  const firstSessionRow = sessionRows[0];
+  if (!firstSessionRow) {
+    return null;
+  }
+  if (sessionRows.every((sessionRow) => sessionRow.status === StripeCheckoutStatus.completed)) {
     return {
-      campYearId: sessionRow.campYearId,
-      camperId: sessionRow.camperId,
-      transitionedToCheckedIn: false,
+      campYearId: firstSessionRow.campYearId,
+      campers: sessionRows.map((sessionRow) => ({
+        camperId: sessionRow.camperId,
+        transitionedToCheckedIn: false,
+      })),
     };
   }
 
   const year = await tx.campYear.findUnique({
-    where: { id: sessionRow.campYearId },
+    where: { id: firstSessionRow.campYearId },
     select: { startDate: true },
   });
   if (!year) {
     return null;
   }
 
-  const camper = await tx.camper.findFirst({
-    where: { id: sessionRow.camperId, campYearId: sessionRow.campYearId, archivedAt: null },
-    select: { feeDueCents: true, feePaidCents: true, checkInStatus: true },
-  });
-  if (!camper) {
-    return null;
+  const completedCampers: Array<{ camperId: string; transitionedToCheckedIn: boolean }> = [];
+
+  for (const sessionRow of sessionRows) {
+    if (sessionRow.status === StripeCheckoutStatus.completed) {
+      completedCampers.push({ camperId: sessionRow.camperId, transitionedToCheckedIn: false });
+      continue;
+    }
+
+    const camper = await tx.camper.findFirst({
+      where: { id: sessionRow.camperId, campYearId: sessionRow.campYearId, archivedAt: null },
+      select: { feeDueCents: true, feePaidCents: true, checkInStatus: true },
+    });
+    if (!camper) {
+      continue;
+    }
+
+    if (sessionRow.amountCents > 0) {
+      const paidAfterCheckout = (camper.feePaidCents ?? 0) + sessionRow.amountCents;
+      const newPaidCents =
+        camper.feeDueCents === null
+          ? paidAfterCheckout
+          : Math.min(paidAfterCheckout, camper.feeDueCents);
+      await tx.camper.update({
+        where: { id: sessionRow.camperId },
+        data: {
+          paymentStatus: CamperPaymentStatus.paid_stripe,
+          feePaidCents: newPaidCents,
+        },
+      });
+    }
+
+    const checkInResult = await runCamperCheckInInTransaction(tx, {
+      campYearId: sessionRow.campYearId,
+      camperId: sessionRow.camperId,
+      campStart: year.startDate,
+      now: input.now,
+      payments: {},
+    });
+
+    completedCampers.push({
+      camperId: sessionRow.camperId,
+      transitionedToCheckedIn:
+        checkInResult?.transitionedToCheckedIn ?? camper.checkInStatus !== CheckInStatus.checked_in,
+    });
   }
 
-  const paidAfterCheckout = (camper.feePaidCents ?? 0) + sessionRow.amountCents;
-  const newPaidCents =
-    camper.feeDueCents === null ? paidAfterCheckout : Math.min(paidAfterCheckout, camper.feeDueCents);
-  await tx.camper.update({
-    where: { id: sessionRow.camperId },
-    data: {
-      paymentStatus: CamperPaymentStatus.paid_stripe,
-      feePaidCents: newPaidCents,
-    },
-  });
-
-  const checkInResult = await runCamperCheckInInTransaction(tx, {
-    campYearId: sessionRow.campYearId,
-    camperId: sessionRow.camperId,
-    campStart: year.startDate,
-    now: input.now,
-    payments: {},
-  });
-
-  await tx.stripeCheckoutSession.update({
+  await tx.stripeCheckoutSession.updateMany({
     where: { stripeSessionId: input.session.id },
     data: {
       status: StripeCheckoutStatus.completed,
@@ -204,16 +238,14 @@ async function applyCompletedCheckoutInTransaction(
   });
 
   return {
-    campYearId: sessionRow.campYearId,
-    camperId: sessionRow.camperId,
-    transitionedToCheckedIn:
-      checkInResult?.transitionedToCheckedIn ?? camper.checkInStatus !== CheckInStatus.checked_in,
+    campYearId: firstSessionRow.campYearId,
+    campers: completedCampers,
   };
 }
 
 export async function completeCheckoutSessionIfPaid(
   session: Stripe.Checkout.Session,
-): Promise<{ completed: boolean; campYearId?: string; camperId?: string }> {
+): Promise<{ completed: boolean; campYearId?: string; camperIds?: string[] }> {
   if (session.payment_status !== "paid") {
     return { completed: false };
   }
@@ -226,16 +258,19 @@ export async function completeCheckoutSessionIfPaid(
     return { completed: false };
   }
 
-  writeOpsLog("stripe_checkout_completed", {
-    campYearId: result.campYearId,
-    camperId: result.camperId,
-    stripeSessionId: session.id,
-    transitionedToCheckedIn: result.transitionedToCheckedIn,
-  });
+  for (const camperResult of result.campers) {
+    writeOpsLog("stripe_checkout_completed", {
+      campYearId: result.campYearId,
+      camperId: camperResult.camperId,
+      stripeSessionId: session.id,
+      transitionedToCheckedIn: camperResult.transitionedToCheckedIn,
+    });
+  }
 
-  if (result.transitionedToCheckedIn) {
+  const campersNeedingEmail = result.campers.filter((camperResult) => camperResult.transitionedToCheckedIn);
+  for (const camperResult of campersNeedingEmail) {
     const camper = await prisma.camper.findUnique({
-      where: { id: result.camperId },
+      where: { id: camperResult.camperId },
       select: {
         firstName: true,
         middleName: true,
@@ -254,14 +289,18 @@ export async function completeCheckoutSessionIfPaid(
       });
       writeOpsLog("check_in_confirmation_email", {
         campYearId: result.campYearId,
-        camperId: result.camperId,
+        camperId: camperResult.camperId,
         channel: "self_service_stripe",
         result: emailResult.status,
       });
     }
   }
 
-  return { completed: true, campYearId: result.campYearId, camperId: result.camperId };
+  return {
+    completed: true,
+    campYearId: result.campYearId,
+    camperIds: result.campers.map((camperResult) => camperResult.camperId),
+  };
 }
 
 export async function reconcileCheckoutSession(input: {
@@ -272,6 +311,14 @@ export async function reconcileCheckoutSession(input: {
   | {
       ok: true;
       completed: boolean;
+      campers: Array<{
+        firstName: string;
+        lastName: string;
+        middleInitial: string | null;
+        checkInStatus: string;
+        paymentStatus: string;
+        dormAssignment: string | null;
+      }>;
       camper: {
         firstName: string;
         lastName: string;
@@ -283,24 +330,33 @@ export async function reconcileCheckoutSession(input: {
     }
   | { ok: false; status: number; error: string }
 > {
-  const sessionRow = await prisma.stripeCheckoutSession.findUnique({
+  const sessionRows = await prisma.stripeCheckoutSession.findMany({
     where: { stripeSessionId: input.stripeSessionId },
+    orderBy: { createdAt: "asc" },
   });
-  if (!sessionRow) {
+  if (sessionRows.length === 0) {
     return { ok: false, status: 404, error: "Checkout session not found" };
   }
-  if (sessionRow.campYearId !== input.campYearId) {
+  const firstSessionRow = sessionRows[0];
+  if (!firstSessionRow || firstSessionRow.campYearId !== input.campYearId) {
     return { ok: false, status: 404, error: "Checkout session not found" };
   }
 
-  if (sessionRow.status !== StripeCheckoutStatus.completed) {
+  let currentSessionRows = sessionRows;
+  if (currentSessionRows.some((sessionRow) => sessionRow.status !== StripeCheckoutStatus.completed)) {
     const session = await input.stripeRuntime.stripe.checkout.sessions.retrieve(input.stripeSessionId);
     await completeCheckoutSessionIfPaid(session);
+    currentSessionRows = await prisma.stripeCheckoutSession.findMany({
+      where: { stripeSessionId: input.stripeSessionId },
+      orderBy: { createdAt: "asc" },
+    });
   }
 
-  const camper = await prisma.camper.findFirst({
-    where: { id: sessionRow.camperId, campYearId: sessionRow.campYearId },
+  const camperIds = currentSessionRows.map((sessionRow) => sessionRow.camperId);
+  const campers = await prisma.camper.findMany({
+    where: { id: { in: camperIds }, campYearId: firstSessionRow.campYearId },
     select: {
+      id: true,
       firstName: true,
       lastName: true,
       middleName: true,
@@ -308,21 +364,29 @@ export async function reconcileCheckoutSession(input: {
       paymentStatus: true,
       dorm: { select: { name: true } },
     },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
-  if (!camper) {
+  if (campers.length === 0) {
+    return { ok: false, status: 404, error: "Camper not found" };
+  }
+
+  const responseCampers = campers.map((camper) => ({
+    firstName: camper.firstName,
+    lastName: camper.lastName,
+    middleInitial: camper.middleName?.trim().charAt(0).toUpperCase() || null,
+    checkInStatus: camper.checkInStatus,
+    paymentStatus: camper.paymentStatus,
+    dormAssignment: camper.dorm?.name ?? null,
+  }));
+  const firstCamper = responseCampers[0];
+  if (!firstCamper) {
     return { ok: false, status: 404, error: "Camper not found" };
   }
 
   return {
     ok: true,
-    completed: camper.paymentStatus === CamperPaymentStatus.paid_stripe,
-    camper: {
-      firstName: camper.firstName,
-      lastName: camper.lastName,
-      middleInitial: camper.middleName?.trim().charAt(0).toUpperCase() || null,
-      checkInStatus: camper.checkInStatus,
-      paymentStatus: camper.paymentStatus,
-      dormAssignment: camper.dorm?.name ?? null,
-    },
+    completed: currentSessionRows.every((sessionRow) => sessionRow.status === StripeCheckoutStatus.completed),
+    campers: responseCampers,
+    camper: firstCamper,
   };
 }

@@ -30,6 +30,15 @@ const publicCheckInBody = z.object({
   manualPaymentAccepted: z.boolean().optional(),
 });
 
+const publicBatchCheckInBody = z.object({
+  camperIds: z.array(z.string().uuid()).min(1).max(20),
+  manualPaymentAccepted: z.boolean().optional(),
+});
+
+const publicStripeCheckoutBody = z.object({
+  camperIds: z.array(z.string().uuid()).min(1).max(20).optional(),
+});
+
 type SelfCheckInYearResult =
   | {
       year: {
@@ -250,6 +259,108 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
   });
 });
 
+router.post("/:token/check-in", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const parsed = publicBatchCheckInBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+
+  const campYearId = result.year.id;
+  const uniqueCamperIds = [...new Set(parsed.data.camperIds)];
+  const currentCampers = await prisma.camper.findMany({
+    where: { id: { in: uniqueCamperIds }, campYearId, archivedAt: null },
+    select: { id: true, paymentStatus: true, feeDueCents: true, feePaidCents: true },
+  });
+  if (currentCampers.length !== uniqueCamperIds.length) {
+    res.status(404).json({ error: "One or more campers were not found" });
+    return;
+  }
+
+  const unpaidCamper = currentCampers.find(
+    (camper) => camper.paymentStatus === CamperPaymentStatus.unpaid,
+  );
+  if (unpaidCamper && !parsed.data.manualPaymentAccepted) {
+    res.status(409).json({
+      error: "payment_required",
+      remainingBalanceCents: currentCampers.reduce(
+        (sum, camper) =>
+          camper.paymentStatus === CamperPaymentStatus.unpaid
+            ? sum + remainingBalanceCents(camper)
+            : sum,
+        0,
+      ),
+    });
+    return;
+  }
+
+  const now = new Date();
+  const checkInResults = await prisma.$transaction(async (tx) => {
+    const results = [];
+    for (const camperId of uniqueCamperIds) {
+      const txResult = await runCamperCheckInInTransaction(tx, {
+        campYearId,
+        camperId,
+        campStart: result.year.startDate,
+        now,
+        payments: {},
+      });
+      if (txResult) {
+        results.push(txResult);
+      }
+    }
+    return results;
+  });
+
+  for (const txResult of checkInResults) {
+    const { camper: finalCamper, transitionedToCheckedIn, dormAutoAssigned } = txResult;
+    if (!transitionedToCheckedIn) {
+      continue;
+    }
+    writeOpsLog("camper_check_in_self_service", {
+      campYearId,
+      camperId: finalCamper.id,
+      dormAutoAssigned,
+    });
+    const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
+      .filter(Boolean)
+      .join(" ");
+    const emailResult = await sendCheckInConfirmationMail({
+      to: finalCamper.guardianEmail,
+      camperFullName: fullName,
+      dormLabel: finalCamper.dorm?.name ?? "unassigned",
+      checkedInAt: now,
+    });
+    writeOpsLog("check_in_confirmation_email", {
+      campYearId,
+      camperId: finalCamper.id,
+      channel: "self_service",
+      result: emailResult.status,
+    });
+  }
+
+  res.json({
+    campers: checkInResults.map((txResult) => ({
+      camper: {
+        firstName: txResult.camper.firstName,
+        lastName: txResult.camper.lastName,
+        middleInitial: middleInitialFromName(txResult.camper.middleName),
+        checkInStatus: txResult.camper.checkInStatus,
+        dormAssignment: txResult.camper.dorm?.name ?? null,
+      },
+      alreadyCheckedIn: !txResult.transitionedToCheckedIn,
+      checkInCompletedThisRequest: txResult.transitionedToCheckedIn,
+      dormAutoAssigned: txResult.dormAutoAssigned,
+    })),
+  });
+});
+
 router.post("/:token/campers/:camperId/stripe-checkout", async (req, res) => {
   const result = await campYearForSelfCheckInToken(req.params.token ?? "");
   if ("error" in result) {
@@ -271,7 +382,44 @@ router.post("/:token/campers/:camperId/stripe-checkout", async (req, res) => {
 
   const checkout = await createSelfCheckInCheckoutSession({
     campYearId: result.year.id,
-    camperId,
+    camperIds: [camperId],
+    kioskToken: result.normalized,
+    stripeRuntime,
+  });
+  if (!checkout.ok) {
+    res.status(checkout.status).json({ error: checkout.error });
+    return;
+  }
+
+  res.json({
+    url: checkout.url,
+    stripeSessionId: checkout.stripeSessionId,
+    amountCents: checkout.amountCents,
+  });
+});
+
+router.post("/:token/stripe-checkout", async (req, res) => {
+  const result = await campYearForSelfCheckInToken(req.params.token ?? "");
+  if ("error" in result) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const parsed = publicStripeCheckoutBody.safeParse(req.body ?? {});
+  if (!parsed.success || !parsed.data.camperIds) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+
+  const stripeRuntime = getStripeRuntime();
+  if (!stripeRuntime) {
+    res.status(503).json(stripeNotConfiguredError());
+    return;
+  }
+
+  const checkout = await createSelfCheckInCheckoutSession({
+    campYearId: result.year.id,
+    camperIds: parsed.data.camperIds,
     kioskToken: result.normalized,
     stripeRuntime,
   });

@@ -30,6 +30,10 @@ type SelfCheckInResponse = {
   dormAutoAssigned: boolean;
 };
 
+type BatchSelfCheckInResponse = {
+  campers: SelfCheckInResponse[];
+};
+
 type PaymentOptionsResponse = {
   camper: {
     id: string;
@@ -77,18 +81,30 @@ export function CamperSelfCheckInPage(): ReactElement {
 
   const [busyCamperId, setBusyCamperId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentOptionsResponse["camper"] | null>(null);
+  const [selectedCampers, setSelectedCampers] = useState<SelfSearchRow[]>([]);
+  const [selectedPayments, setSelectedPayments] = useState<PaymentOptionsResponse["camper"][]>([]);
   const [manualPaymentAccepted, setManualPaymentAccepted] = useState(false);
 
   const [success, setSuccess] = useState<{
     message: string;
-    dormLabel: string;
+    campers: Array<{
+      name: string;
+      dormLabel: string;
+    }>;
     dormAutoAssigned: boolean;
   } | null>(null);
 
   const basePath = useMemo(
     () => `/api/public/self-check-in/${encodeURIComponent(token)}`,
     [token],
+  );
+  const selectedCamperIds = useMemo(
+    () => selectedCampers.map((camper) => camper.id),
+    [selectedCampers],
+  );
+  const unselectedResults = useMemo(
+    () => results.filter((row) => !selectedCamperIds.includes(row.id)),
+    [results, selectedCamperIds],
   );
 
   const loadMeta = useCallback(async (): Promise<void> => {
@@ -130,6 +146,7 @@ export function CamperSelfCheckInPage(): ReactElement {
     setActionError(null);
     void apiJson<{
       completed: boolean;
+      campers?: Array<SelfCheckInResponse["camper"] & { paymentStatus: string }>;
       camper: SelfCheckInResponse["camper"] & { paymentStatus: string };
     }>(`${basePath}/stripe-checkout/${encodeURIComponent(stripeSessionId)}/status`)
       .then((data) => {
@@ -137,13 +154,25 @@ export function CamperSelfCheckInPage(): ReactElement {
           return;
         }
         if (data.completed) {
+          const checkedInCampers =
+            "campers" in data && Array.isArray(data.campers) && data.campers.length > 0
+              ? data.campers
+              : [data.camper];
+          const camperCount = checkedInCampers.length;
           setSuccess({
-            message: `Payment received. Welcome, ${displayName(data.camper)}!`,
-            dormLabel: data.camper.dormAssignment ?? "Unassigned",
+            message:
+              camperCount > 1
+                ? `Payment received. ${camperCount} campers are checked in.`
+                : `Payment received. Welcome, ${displayName(data.camper)}!`,
+            campers: checkedInCampers.map((camper) => ({
+              name: displayName(camper),
+              dormLabel: camper.dormAssignment ?? "Unassigned",
+            })),
             dormAutoAssigned: false,
           });
           setResults([]);
-          setSelectedPayment(null);
+          setSelectedCampers([]);
+          setSelectedPayments([]);
           setSearchParams({}, { replace: true });
         } else {
           setActionError("Stripe has not confirmed payment yet. Try refreshing in a moment.");
@@ -170,7 +199,7 @@ export function CamperSelfCheckInPage(): ReactElement {
     setSearchError(null);
     setSuccess(null);
     setActionError(null);
-    setSelectedPayment(null);
+    setSelectedPayments([]);
     setManualPaymentAccepted(false);
     const query = searchQuery.trim();
     if (!query) {
@@ -201,20 +230,40 @@ export function CamperSelfCheckInPage(): ReactElement {
     }
   };
 
-  const showPaymentOptions = async (row: SelfSearchRow): Promise<void> => {
+  const toggleSelectedCamper = (camper: SelfSearchRow): void => {
+    setActionError(null);
+    setSelectedPayments([]);
+    setManualPaymentAccepted(false);
+    setSelectedCampers((previous) =>
+      previous.some((selectedCamper) => selectedCamper.id === camper.id)
+        ? previous.filter((selectedCamper) => selectedCamper.id !== camper.id)
+        : [...previous, camper],
+    );
+  };
+
+  const showPaymentOptions = async (): Promise<void> => {
     setActionError(null);
     setSuccess(null);
     setManualPaymentAccepted(false);
-    setBusyCamperId(row.id);
+    setSelectedPayments([]);
+    if (selectedCamperIds.length === 0) {
+      setActionError("Select at least one camper.");
+      return;
+    }
+    setBusyCamperId("selected");
     try {
-      const data = await apiJson<PaymentOptionsResponse>(
-        `${basePath}/campers/${row.id}/payment-options`,
+      const paymentOptions = await Promise.all(
+        selectedCamperIds.map((camperId) =>
+          apiJson<PaymentOptionsResponse>(`${basePath}/campers/${camperId}/payment-options`),
+        ),
       );
-      if (data.camper.paymentStatus !== "unpaid") {
-        await checkIn(row.id, false);
+      const campers = paymentOptions.map((paymentOption) => paymentOption.camper);
+      const needsPayment = campers.some((camper) => camper.paymentStatus === "unpaid");
+      if (!needsPayment) {
+        await checkInSelected(false);
         return;
       }
-      setSelectedPayment(data.camper);
+      setSelectedPayments(campers);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not load payment options.");
     } finally {
@@ -222,35 +271,42 @@ export function CamperSelfCheckInPage(): ReactElement {
     }
   };
 
-  const checkIn = async (camperId: string, manualPayment: boolean): Promise<void> => {
+  const checkInSelected = async (manualPayment: boolean): Promise<void> => {
     setActionError(null);
     setSuccess(null);
-    setBusyCamperId(camperId);
+    setBusyCamperId("selected");
     try {
-      const data = await apiJson<SelfCheckInResponse>(`${basePath}/campers/${camperId}/check-in`, {
+      const data = await apiJson<BatchSelfCheckInResponse>(`${basePath}/check-in`, {
         method: "POST",
-        body: JSON.stringify({ manualPaymentAccepted: manualPayment || undefined }),
+        body: JSON.stringify({
+          camperIds: selectedCamperIds,
+          manualPaymentAccepted: manualPayment || undefined,
+        }),
       });
-      const dormLabel = data.camper.dormAssignment ?? "Unassigned";
-      if (data.checkInCompletedThisRequest) {
-        setSuccess({
-          message: `Welcome, ${displayName(data.camper)}!`,
-          dormLabel,
-          dormAutoAssigned: data.dormAutoAssigned,
-        });
-        setResults((previous) =>
-          previous.map((row) =>
-            row.id === camperId ? { ...row, checkInStatus: "checked_in" } : row,
-          ),
-        );
-        setSelectedPayment(null);
-      } else if (data.alreadyCheckedIn) {
-        setSuccess({
-          message: `${displayName(data.camper)}, you are already checked in.`,
-          dormLabel,
-          dormAutoAssigned: false,
-        });
-      }
+      const checkedInCount = data.campers.filter(
+        (entry) => entry.checkInCompletedThisRequest || entry.alreadyCheckedIn,
+      ).length;
+      const firstCamper = data.campers[0]?.camper;
+      setSuccess({
+        message:
+          checkedInCount > 1
+            ? `${checkedInCount} campers are checked in.`
+            : firstCamper
+              ? `Welcome, ${displayName(firstCamper)}!`
+              : "Check-in complete.",
+        campers: data.campers.map((entry) => ({
+          name: displayName(entry.camper),
+          dormLabel: entry.camper.dormAssignment ?? "Unassigned",
+        })),
+        dormAutoAssigned: data.campers.some((entry) => entry.dormAutoAssigned),
+      });
+      setResults((previous) =>
+        previous.map((row) =>
+          selectedCamperIds.includes(row.id) ? { ...row, checkInStatus: "checked_in" } : row,
+        ),
+      );
+      setSelectedCampers([]);
+      setSelectedPayments([]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Check-in failed.");
     } finally {
@@ -258,23 +314,28 @@ export function CamperSelfCheckInPage(): ReactElement {
     }
   };
 
-  const startStripeCheckout = async (camperId: string): Promise<void> => {
+  const startSelectedStripeCheckout = async (): Promise<void> => {
     setActionError(null);
-    setBusyCamperId(camperId);
+    setBusyCamperId("selected");
     try {
-      const data = await apiJson<StripeCheckoutResponse>(
-        `${basePath}/campers/${camperId}/stripe-checkout`,
-        {
-          method: "POST",
-          body: JSON.stringify({}),
-        },
-      );
+      const data = await apiJson<StripeCheckoutResponse>(`${basePath}/stripe-checkout`, {
+        method: "POST",
+        body: JSON.stringify({ camperIds: selectedCamperIds }),
+      });
       globalThis.location.assign(data.url);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not start online payment.");
       setBusyCamperId(null);
     }
   };
+
+  const selectedBalanceCents = selectedPayments.reduce(
+    (sum, camper) => sum + camper.remainingBalanceCents,
+    0,
+  );
+  const onlinePaymentAvailable = selectedPayments.some((camper) => camper.onlinePaymentAvailable);
+  const hasSelectedCampers = selectedCampers.length > 0;
+  const hasVisibleCampers = hasSelectedCampers || unselectedResults.length > 0;
 
   if (metaError) {
     return (
@@ -316,10 +377,14 @@ export function CamperSelfCheckInPage(): ReactElement {
         {success ? (
           <section className="self-check-in-success" aria-live="polite">
             <p className="self-check-in-success-message">{success.message}</p>
-            <p className="self-check-in-dorm">
-              <span className="self-check-in-dorm-label">Your dorm</span>
-              <span className="self-check-in-dorm-value">{success.dormLabel}</span>
-            </p>
+            <div className="self-check-in-dorm-list">
+              {success.campers.map((camper) => (
+                <p className="self-check-in-dorm" key={`${camper.name}-${camper.dormLabel}`}>
+                  <span className="self-check-in-dorm-label">{camper.name}</span>
+                  <span className="self-check-in-dorm-value">{camper.dormLabel}</span>
+                </p>
+              ))}
+            </div>
             {success.dormAutoAssigned ? (
               <p className="muted self-check-in-hint">We just placed you in this dorm based on camp rules.</p>
             ) : null}
@@ -330,6 +395,7 @@ export function CamperSelfCheckInPage(): ReactElement {
                 setSuccess(null);
                 setSearchQuery("");
                 setResults([]);
+                setSelectedCampers([]);
               }}
             >
               Check in someone else
@@ -368,49 +434,88 @@ export function CamperSelfCheckInPage(): ReactElement {
               </p>
             ) : null}
 
-            {results.length > 0 ? (
-              <ul className="check-in-result-list self-check-in-results">
-                {results.map((row) => {
-                  const checkedIn = row.checkInStatus === "checked_in";
-                  return (
-                    <li key={row.id}>
-                      <div className="self-check-in-row">
-                        <div>
-                          <div className="self-check-in-name">{displayName(row)}</div>
-                          {checkedIn ? (
-                            <span className="self-check-in-badge self-check-in-badge-done">Checked in</span>
-                          ) : (
-                            <span className="self-check-in-badge">Not checked in yet</span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={checkedIn || busyCamperId !== null}
-                          onClick={() => void showPaymentOptions(row)}
-                        >
-                          {busyCamperId === row.id ? "Working…" : checkedIn ? "Done" : "Continue"}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+            {hasVisibleCampers ? (
+              <>
+                <ul className="check-in-result-list self-check-in-results">
+                  {selectedCampers.map((row) => {
+                    const checkedIn = row.checkInStatus === "checked_in";
+                    return (
+                      <li key={row.id}>
+                        <label className="self-check-in-row self-check-in-select-row self-check-in-pinned-row">
+                          <input
+                            type="checkbox"
+                            checked
+                            disabled={checkedIn || busyCamperId !== null}
+                            onChange={() => toggleSelectedCamper(row)}
+                          />
+                          <div>
+                            <div className="self-check-in-name">{displayName(row)}</div>
+                            {checkedIn ? (
+                              <span className="self-check-in-badge self-check-in-badge-done">Checked in</span>
+                            ) : (
+                              <span className="self-check-in-badge">Not checked in yet</span>
+                            )}
+                          </div>
+                        </label>
+                      </li>
+                    );
+                  })}
+                  {unselectedResults.map((row) => {
+                    const checkedIn = row.checkInStatus === "checked_in";
+                    return (
+                      <li key={row.id}>
+                        <label className="self-check-in-row self-check-in-select-row">
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            disabled={checkedIn || busyCamperId !== null}
+                            onChange={() => toggleSelectedCamper(row)}
+                          />
+                          <div>
+                            <div className="self-check-in-name">{displayName(row)}</div>
+                            {checkedIn ? (
+                              <span className="self-check-in-badge self-check-in-badge-done">Checked in</span>
+                            ) : (
+                              <span className="self-check-in-badge">Not checked in yet</span>
+                            )}
+                          </div>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={selectedCamperIds.length === 0 || busyCamperId !== null}
+                  onClick={() => void showPaymentOptions()}
+                >
+                  {busyCamperId === "selected"
+                    ? "Working…"
+                    : selectedCamperIds.length > 1
+                      ? `Continue with ${selectedCamperIds.length} campers`
+                      : "Continue"}
+                </button>
+              </>
             ) : null}
 
-            {selectedPayment ? (
+            {selectedPayments.length > 0 ? (
               <section className="self-check-in-payment" aria-live="polite">
-                <h2 className="self-check-in-payment-title">{displayName(selectedPayment)}</h2>
+                <h2 className="self-check-in-payment-title">
+                  {selectedPayments.length > 1
+                    ? `${selectedPayments.length} selected campers`
+                    : displayName(selectedPayments[0]!)}
+                </h2>
                 <p className="muted">
-                  Your registration balance is {formatUsd(selectedPayment.remainingBalanceCents)}.
-                  Choose how you will handle payment to finish check-in.
+                  The selected registration balance is {formatUsd(selectedBalanceCents)}. Choose how
+                  you will handle payment to finish check-in.
                 </p>
-                {selectedPayment.onlinePaymentAvailable ? (
+                {onlinePaymentAvailable ? (
                   <button
                     type="button"
                     className="btn primary"
                     disabled={busyCamperId !== null}
-                    onClick={() => void startStripeCheckout(selectedPayment.id)}
+                    onClick={() => void startSelectedStripeCheckout()}
                   >
                     Pay online
                   </button>
@@ -429,7 +534,7 @@ export function CamperSelfCheckInPage(): ReactElement {
                   type="button"
                   className="btn secondary"
                   disabled={!manualPaymentAccepted || busyCamperId !== null}
-                  onClick={() => void checkIn(selectedPayment.id, true)}
+                  onClick={() => void checkInSelected(true)}
                 >
                   Check in and show dorm
                 </button>

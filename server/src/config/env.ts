@@ -34,3 +34,9 @@ export function loadEnv(): Env {
   cached = parsed.data;
   return parsed.data;
 }
+
+export function resetEnvCacheForTests(): void {
+  if (process.env.NODE_ENV === "test") {
+    cached = null;
+  }
+}
