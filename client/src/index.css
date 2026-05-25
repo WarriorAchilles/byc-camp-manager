@@ -506,7 +506,6 @@ input[type="date"],
 input[type="number"],
 select {
   width: 100%;
-  max-width: 320px;
   padding: 0.55rem 0.72rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
