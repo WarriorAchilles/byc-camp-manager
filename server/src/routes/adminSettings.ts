@@ -1,10 +1,12 @@
-import { AdminRole } from "@prisma/client";
+import prismaClientPkg from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { SETTINGS_ROW_ID } from "../lib/activeCampYearSetting.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+
+const { AdminRole } = prismaClientPkg;
 
 const patchBody = z.object({
   activeCampYearId: z.string().uuid().nullable(),

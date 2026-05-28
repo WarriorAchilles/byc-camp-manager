@@ -14,7 +14,9 @@ import {
   remainingBalanceCents,
   stripeNotConfiguredError,
 } from "../lib/stripeCheckout.js";
-import { CamperPaymentStatus } from "@prisma/client";
+import prismaClientPkg from "@prisma/client";
+
+const { CamperPaymentStatus } = prismaClientPkg;
 
 const router = Router();
 

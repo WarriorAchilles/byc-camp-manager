@@ -1,10 +1,4 @@
-import {
-  AdminRole,
-  CheckInStatus,
-  DormGenderDesignation,
-  DormPurpose,
-  Gender,
-} from "@prisma/client";
+import prismaClientPkg from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -22,6 +16,8 @@ import { adminCampYearCsvImportRouter } from "./adminCampYearCsvImport.js";
 import { adminCampYearDormAssignmentsRouter } from "./adminCampYearDormAssignments.js";
 import { adminCampYearDormLeadersRouter } from "./adminCampYearDormLeaders.js";
 import { adminCampYearWorkersRouter } from "./adminCampYearWorkers.js";
+
+const { AdminRole, CheckInStatus, DormGenderDesignation, DormPurpose, Gender } = prismaClientPkg;
 
 const isoDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 

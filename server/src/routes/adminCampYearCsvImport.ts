@@ -1,9 +1,4 @@
-import {
-  AdminRole,
-  CamperPaymentStatus,
-  Gender,
-  ImportSource,
-} from "@prisma/client";
+import prismaClientPkg from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -20,6 +15,8 @@ import { writeOpsLog } from "../lib/opsLog.js";
 import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+
+const { AdminRole, CamperPaymentStatus, Gender, ImportSource } = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 

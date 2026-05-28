@@ -1,4 +1,4 @@
-import { AdminRole, DormPurpose } from "@prisma/client";
+import prismaClientPkg from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -15,6 +15,8 @@ import { campYearIdFromParams } from "../lib/campYearParams.js";
 import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+
+const { AdminRole, DormPurpose } = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 

@@ -1,5 +1,7 @@
-import { CamperPaymentStatus } from "@prisma/client";
+import prismaClientPkg, { type CamperPaymentStatus as CamperPaymentStatusType } from "@prisma/client";
 import { parseCsvRows } from "./csvImportCore.js";
+
+const { CamperPaymentStatus } = prismaClientPkg;
 
 /** Logical column ids for camper fee CSV (API + UI). */
 export const CAMPER_FEE_COLUMN_KEYS = ["firstName", "lastName", "feeDue", "feePaid"] as const;
@@ -164,7 +166,7 @@ export function normalizedCamperNameKey(firstName: string, lastName: string): st
   return `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`;
 }
 
-export type CamperFeeMatchRow = { id: string; paymentStatus: CamperPaymentStatus };
+export type CamperFeeMatchRow = { id: string; paymentStatus: CamperPaymentStatusType };
 
 /**
  * After persisting feeDueCents / feePaidCents from a fee CSV:
@@ -173,10 +175,10 @@ export type CamperFeeMatchRow = { id: string; paymentStatus: CamperPaymentStatus
  * - Underpaid (paid < due): set unpaid unless currently paid_stripe (never downgrade Stripe from a spreadsheet).
  */
 export function resolvePaymentStatusAfterFeeImport(
-  current: CamperPaymentStatus,
+  current: CamperPaymentStatusType,
   feeDueCents: number,
   feePaidCents: number,
-): CamperPaymentStatus {
+): CamperPaymentStatusType {
   if (feeDueCents === 0) {
     return current;
   }
@@ -206,7 +208,7 @@ export type CamperFeeCommitPayload = {
   camperId: string;
   feeDueCents: number;
   feePaidCents: number;
-  paymentStatus: CamperPaymentStatus;
+  paymentStatus: CamperPaymentStatusType;
 };
 
 export type CamperFeeImportPreviewResult = {
@@ -227,7 +229,7 @@ function buildNameIndex(
     id: string;
     firstName: string;
     lastName: string;
-    paymentStatus: CamperPaymentStatus;
+    paymentStatus: CamperPaymentStatusType;
   }>,
 ): Map<string, CamperFeeMatchRow[]> {
   const map = new Map<string, CamperFeeMatchRow[]>();
@@ -251,7 +253,7 @@ export function runCamperFeeImportPreview(
     id: string;
     firstName: string;
     lastName: string;
-    paymentStatus: CamperPaymentStatus;
+    paymentStatus: CamperPaymentStatusType;
   }>,
 ): CamperFeeImportPreviewResult {
   const globalWarnings: string[] = [];

@@ -1,17 +1,12 @@
-import {
-  AdminRole,
-  CheckInStatus,
-  DormPurpose,
-  Gender,
-  ImportSource,
-  type Prisma,
-} from "@prisma/client";
+import prismaClientPkg, { type Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+
+const { AdminRole, CheckInStatus, DormPurpose, Gender, ImportSource } = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 

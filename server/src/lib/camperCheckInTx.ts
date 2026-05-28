@@ -1,5 +1,7 @@
-import { CamperPaymentStatus, CheckInStatus, type Prisma } from "@prisma/client";
+import prismaClientPkg, { type Prisma } from "@prisma/client";
 import { autoAssignCamperDormIfUnassigned } from "./checkInDormAssignment.js";
+
+const { CamperPaymentStatus, CheckInStatus } = prismaClientPkg;
 
 type Db = Prisma.TransactionClient;
 

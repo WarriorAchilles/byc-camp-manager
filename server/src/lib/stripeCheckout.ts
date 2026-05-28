@@ -1,10 +1,12 @@
-import { CamperPaymentStatus, CheckInStatus, StripeCheckoutStatus, type Prisma } from "@prisma/client";
+import prismaClientPkg, { type Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { loadEnv } from "../config/env.js";
 import { prisma } from "../db.js";
 import { runCamperCheckInInTransaction } from "./camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "./checkInConfirmationMail.js";
 import { writeOpsLog } from "./opsLog.js";
+
+const { CamperPaymentStatus, CheckInStatus, StripeCheckoutStatus } = prismaClientPkg;
 
 const stripeApiVersion = "2026-04-22.dahlia";
 

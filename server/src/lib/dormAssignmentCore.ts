@@ -1,4 +1,10 @@
-import { DormGenderDesignation, DormPurpose, Gender } from "@prisma/client";
+import prismaClientPkg, {
+  type DormGenderDesignation as DormGenderDesignationType,
+  type DormPurpose as DormPurposeType,
+  type Gender as GenderType,
+} from "@prisma/client";
+
+const { DormGenderDesignation, DormPurpose, Gender } = prismaClientPkg;
 
 /** Age in full years at camp start (UTC calendar dates). */
 export function ageOnCampStartUtc(dateOfBirth: Date, campStart: Date): number {
@@ -11,8 +17,8 @@ export function ageOnCampStartUtc(dateOfBirth: Date, campStart: Date): number {
 }
 
 export function camperDormGenderMatches(
-  designation: DormGenderDesignation,
-  gender: Gender,
+  designation: DormGenderDesignationType,
+  gender: GenderType,
 ): boolean {
   if (designation === DormGenderDesignation.boys) {
     return gender === Gender.male;
@@ -24,8 +30,8 @@ export function camperDormGenderMatches(
 }
 
 export function workerDormGenderMatches(
-  designation: DormGenderDesignation,
-  gender: Gender,
+  designation: DormGenderDesignationType,
+  gender: GenderType,
 ): boolean {
   if (designation === DormGenderDesignation.co_ed) {
     return true;
@@ -41,7 +47,7 @@ export type DormBracketSlice = { minAge: number; maxAge: number; sortOrder: numb
 
 export type CamperDormForAuto = {
   id: string;
-  gender: Gender;
+  gender: GenderType;
   dateOfBirth: Date;
   lastName: string;
   firstName: string;
@@ -49,7 +55,7 @@ export type CamperDormForAuto = {
 
 export type WorkerDormForAuto = {
   id: string;
-  gender: Gender;
+  gender: GenderType;
   lastName: string;
   firstName: string;
 };
@@ -57,8 +63,8 @@ export type WorkerDormForAuto = {
 export type CamperDormSlot = {
   id: string;
   name: string;
-  purpose: DormPurpose;
-  genderDesignation: DormGenderDesignation;
+  purpose: DormPurposeType;
+  genderDesignation: DormGenderDesignationType;
   bedCapacity: number;
   ageGroupBracket: DormBracketSlice | null;
 };
@@ -66,8 +72,8 @@ export type CamperDormSlot = {
 export type WorkerDormSlot = {
   id: string;
   name: string;
-  purpose: DormPurpose;
-  genderDesignation: DormGenderDesignation;
+  purpose: DormPurposeType;
+  genderDesignation: DormGenderDesignationType;
   bedCapacity: number;
 };
 
@@ -166,9 +172,9 @@ export function autoAssignWorkersGreedy(
 }
 
 export function warningsAfterCamperAssignedToCamperDorm(input: {
-  camperGender: Gender;
+  camperGender: GenderType;
   camperAge: number;
-  dormGender: DormGenderDesignation;
+  dormGender: DormGenderDesignationType;
   dormBracket: DormBracketSlice | null;
 }): string[] {
   const warnings: string[] = [];
@@ -185,8 +191,8 @@ export function warningsAfterCamperAssignedToCamperDorm(input: {
 }
 
 export function warningsAfterWorkerAssignedToWorkerDorm(input: {
-  workerGender: Gender;
-  dormGender: DormGenderDesignation;
+  workerGender: GenderType;
+  dormGender: DormGenderDesignationType;
 }): string[] {
   if (input.dormGender === DormGenderDesignation.co_ed) {
     return [];
@@ -197,17 +203,17 @@ export function warningsAfterWorkerAssignedToWorkerDorm(input: {
   return [];
 }
 
-export function assertCamperDormPurpose(dormPurpose: DormPurpose): "ok" | "invalid" {
+export function assertCamperDormPurpose(dormPurpose: DormPurposeType): "ok" | "invalid" {
   return dormPurpose === DormPurpose.camper ? "ok" : "invalid";
 }
 
-export function assertWorkerDormPurpose(dormPurpose: DormPurpose): "ok" | "invalid" {
+export function assertWorkerDormPurpose(dormPurpose: DormPurposeType): "ok" | "invalid" {
   return dormPurpose === DormPurpose.worker ? "ok" : "invalid";
 }
 
 export function isCamperDormCoEdDisallowed(
-  purpose: DormPurpose,
-  genderDesignation: DormGenderDesignation,
+  purpose: DormPurposeType,
+  genderDesignation: DormGenderDesignationType,
 ): boolean {
   return purpose === DormPurpose.camper && genderDesignation === DormGenderDesignation.co_ed;
 }

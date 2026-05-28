@@ -1,5 +1,7 @@
-import { DormPurpose, type Prisma } from "@prisma/client";
+import prismaClientPkg, { type Prisma } from "@prisma/client";
 import { autoAssignCampersGreedy } from "./dormAssignmentCore.js";
+
+const { DormPurpose } = prismaClientPkg;
 
 type Db = Prisma.TransactionClient;
 
