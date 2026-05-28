@@ -5,9 +5,14 @@
 **/.env.*
 **/coverage
 **/.vite
+**/cdk.out
+**/cdk.out.*
 **/*.log
 server/node_modules
 client/node_modules
 .cursor
+.agents
+.claude
+.codex
 mcps
 docs/development-plan
