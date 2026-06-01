@@ -162,6 +162,7 @@ export class BycCampDevStack extends cdk.Stack {
         : String(configuredAppPublicUrl);
     const stripeSecretKeySecretArn = this.node.tryGetContext("stripeSecretKeySecretArn");
     const stripeWebhookSecretArn = this.node.tryGetContext("stripeWebhookSecretArn");
+    const initialSuperAdminSecretArn = this.node.tryGetContext("initialSuperAdminSecretArn");
     const optionalStripeSecrets: Record<string, ecs.Secret> = {};
     const stripeSecretKey =
       stripeSecretKeySecretArn === undefined
@@ -185,6 +186,25 @@ export class BycCampDevStack extends cdk.Stack {
     if (stripeWebhookSecret) {
       optionalStripeSecrets.STRIPE_WEBHOOK_SECRET = ecs.Secret.fromSecretsManager(stripeWebhookSecret);
     }
+    const initialSuperAdminSecret =
+      initialSuperAdminSecretArn === undefined
+        ? undefined
+        : secretsmanager.Secret.fromSecretPartialArn(
+            this,
+            "InitialSuperAdminSecret",
+            String(initialSuperAdminSecretArn),
+          );
+    const optionalBootstrapSecrets: Record<string, ecs.Secret> = {};
+    if (initialSuperAdminSecret) {
+      optionalBootstrapSecrets.INITIAL_SUPER_ADMIN_EMAIL = ecs.Secret.fromSecretsManager(
+        initialSuperAdminSecret,
+        "email",
+      );
+      optionalBootstrapSecrets.INITIAL_SUPER_ADMIN_PASSWORD = ecs.Secret.fromSecretsManager(
+        initialSuperAdminSecret,
+        "password",
+      );
+    }
 
     const container = taskDefinition.addContainer("web", {
       image: usePlaceholderImage
@@ -204,6 +224,7 @@ export class BycCampDevStack extends cdk.Stack {
         DATABASE_URL: ecs.Secret.fromSecretsManager(prismaDatabaseUrlSecret),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret, "token"),
         ...optionalStripeSecrets,
+        ...optionalBootstrapSecrets,
       },
     });
     container.addPortMappings({ containerPort: 4000, protocol: ecs.Protocol.TCP });
@@ -212,6 +233,7 @@ export class BycCampDevStack extends cdk.Stack {
     prismaDatabaseUrlSecret.grantRead(taskDefinition.executionRole!);
     stripeSecretKey?.grantRead(taskDefinition.executionRole!);
     stripeWebhookSecret?.grantRead(taskDefinition.executionRole!);
+    initialSuperAdminSecret?.grantRead(taskDefinition.executionRole!);
     if (!usePlaceholderImage) {
       imageAsset!.repository.grantPull(taskDefinition.executionRole!);
     }

@@ -1,4 +1,4 @@
-import { seedInitialSuperAdmin } from "../src/lib/seedInitialSuperAdmin.js";
+import { seedInitialSuperAdmin } from "../lib/seedInitialSuperAdmin.js";
 
 seedInitialSuperAdmin().catch((error: unknown) => {
   console.error(error);

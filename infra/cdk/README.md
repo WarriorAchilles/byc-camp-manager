@@ -51,6 +51,7 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
 | `stripeSecretKeySecretArn` | Optional Secrets Manager ARN containing the Stripe restricted/secret API key. |
 | `stripeWebhookSecretArn` | Optional Secrets Manager ARN containing the Stripe webhook signing secret. |
+| `initialSuperAdminSecretArn` | Optional Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. |
 
 ## CORS
 
@@ -75,11 +76,35 @@ npx cdk deploy \
   -c stripeWebhookSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:stripe-webhook
 ```
 
-## Database migrations (one-off ECS RunTask)
+To enable first-admin bootstrap in the post-deploy step, create a Secrets Manager secret with this JSON shape and pass its ARN at deploy time:
 
-After the first successful deploy, run Prisma migrations **once** against RDS using the **same** task definition and subnets/security group as the service. Replace placeholders with values from stack outputs (`ClusterName`, `TaskDefinitionArn`, comma-separated `PublicSubnetIds`, `EcsSecurityGroupId`).
+```json
+{
+  "email": "admin@example.org",
+  "password": "long-random-password"
+}
+```
 
-PowerShell (split subnet IDs from output into an array for `--subnets`):
+```bash
+npx cdk deploy -c initialSuperAdminSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:initial-admin
+```
+
+## Post-deploy database setup
+
+After each successful deploy, run the post-deploy script from the repository root:
+
+```powershell
+.\scripts\run-post-deploy.ps1 -StackName BycCampDevStack -Region us-east-2
+```
+
+The script runs two one-off ECS Fargate tasks using the deployed task definition, public subnets, and ECS security group from stack outputs:
+
+1. `cd /app/server && npx prisma migrate deploy`
+2. `cd /app/server && npm run db:seed:prod`
+
+`prisma migrate deploy` is safe to run on every deploy; it applies only pending migrations. The seed step is only for first-admin bootstrap and is idempotent when the configured admin email already exists. Do not use the seed step for routine password resets.
+
+Low-level equivalent for the migration task:
 
 ```powershell
 aws ecs run-task `
@@ -92,7 +117,7 @@ aws ecs run-task `
 
 The production image includes the `prisma` CLI (`server` dependency) so `npx prisma migrate deploy` works from `/app/server` where `prisma/schema.prisma` lives.
 
-Wait for the task to stop, then check logs in the log group printed for the task family, or hit `GET /api/health/ready` on the load balancer.
+Wait for the tasks to stop, then check the log group and stream printed by the script, or hit `GET /api/health/ready` on the load balancer.
 
 ## Destroy
 

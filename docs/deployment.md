@@ -76,6 +76,14 @@ Seed is for dev/demo only unless you intentionally seed production:
 npm run db:seed
 ```
 
+The production Docker image also includes a compiled first-admin bootstrap entrypoint:
+
+```bash
+npm run db:seed:prod
+```
+
+Use it only through the AWS post-deploy flow with Secrets Manager-provided `INITIAL_SUPER_ADMIN_EMAIL` and `INITIAL_SUPER_ADMIN_PASSWORD`; it is for first-admin bootstrap, not routine password resets.
+
 ## Health checks
 
 | Target | Endpoint / artifact | Purpose |
@@ -125,7 +133,7 @@ No cloud resources are provisioned from this repo alone — **Human Tasks** (acc
 The CDK app under [`infra/cdk/`](../infra/cdk/) provisions VPC, RDS PostgreSQL, Secrets Manager entries, an ECS Fargate service behind an ALB, and (by default) builds the app image from [`deploy/Dockerfile`](../deploy/Dockerfile).
 
 1. Bootstrap and deploy: see [`infra/cdk/README.md`](../infra/cdk/README.md).
-2. **Migrations** are not run automatically: use the documented **ECS RunTask** one-off command after deploy.
+2. **Migrations and first-admin bootstrap** are not run automatically by the web service: run [`scripts/run-post-deploy.ps1`](../scripts/run-post-deploy.ps1) after each deploy.
 3. Set `CORS_ORIGIN` with `-c corsOrigin=https://admin.example.org` when serving the UI from a custom domain; otherwise the stack defaults to the ALB DNS origin.
 4. **Synth without Docker** (CI or quick validation): `cd infra/cdk && npx cdk synth -c usePlaceholderImage=true`.
 
