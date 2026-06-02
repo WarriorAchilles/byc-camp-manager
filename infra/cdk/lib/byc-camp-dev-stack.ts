@@ -189,7 +189,7 @@ export class BycCampDevStack extends cdk.Stack {
     const initialSuperAdminSecret =
       initialSuperAdminSecretArn === undefined
         ? undefined
-        : secretsmanager.Secret.fromSecretPartialArn(
+        : secretsmanager.Secret.fromSecretCompleteArn(
             this,
             "InitialSuperAdminSecret",
             String(initialSuperAdminSecretArn),

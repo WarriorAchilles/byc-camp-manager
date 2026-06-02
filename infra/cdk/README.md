@@ -51,7 +51,7 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
 | `stripeSecretKeySecretArn` | Optional Secrets Manager ARN containing the Stripe restricted/secret API key. |
 | `stripeWebhookSecretArn` | Optional Secrets Manager ARN containing the Stripe webhook signing secret. |
-| `initialSuperAdminSecretArn` | Optional Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. |
+| `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
 
 ## CORS
 
@@ -86,7 +86,7 @@ To enable first-admin bootstrap in the post-deploy step, create a Secrets Manage
 ```
 
 ```bash
-npx cdk deploy -c initialSuperAdminSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:initial-admin
+npx cdk deploy -c initialSuperAdminSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:initial-admin-AbCdEf
 ```
 
 ## Post-deploy database setup

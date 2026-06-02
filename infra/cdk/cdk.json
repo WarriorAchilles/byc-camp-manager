@@ -6,6 +6,7 @@
   },
   "context": {
     "region": "us-east-2",
+    "initialSuperAdminSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:initial-admin-90GKKp",
     "@aws-cdk/aws-ecs:removeDefaultDesiredCount": true,
     "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true
   }
