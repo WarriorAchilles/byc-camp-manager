@@ -49,11 +49,12 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `account` / `region` | Passed to the stack `env` (optional if `CDK_DEFAULT_*` / `AWS_*` are set). |
 | `corsOrigin` | Sets the API `CORS_ORIGIN`; defaults to `http://<alb-dns-name>`. |
 | `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
+| `certificateArn` | Optional ACM certificate ARN for the admin hostname. When set, the ALB serves HTTPS on port 443 and redirects HTTP to HTTPS. |
 | `stripeSecretKeySecretArn` | Optional Secrets Manager ARN containing the Stripe restricted/secret API key. |
 | `stripeWebhookSecretArn` | Optional Secrets Manager ARN containing the Stripe webhook signing secret. |
 | `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
 
-## CORS
+## HTTPS and CORS
 
 The task sets `CORS_ORIGIN` to `http://<alb-dns-name>` by default. After you add HTTPS and a stable hostname, redeploy with an explicit origin:
 
@@ -66,6 +67,17 @@ Set the same public HTTPS origin for Stripe redirects after DNS is in place:
 ```bash
 npx cdk deploy -c corsOrigin=https://admin.example.org -c appPublicUrl=https://admin.example.org
 ```
+
+To serve the app at `https://admin.believersyouthcamp.com`, first request and validate an ACM certificate for `admin.believersyouthcamp.com` in the same region as this stack. Then deploy with the certificate ARN and matching public origins:
+
+```bash
+npx cdk deploy \
+  -c certificateArn=arn:aws:acm:REGION:ACCOUNT:certificate/CERTIFICATE_ID \
+  -c corsOrigin=https://admin.believersyouthcamp.com \
+  -c appPublicUrl=https://admin.believersyouthcamp.com
+```
+
+When `certificateArn` is set, the load balancer allows HTTPS traffic on port 443, forwards HTTPS traffic to the app target group, and redirects HTTP traffic on port 80 to HTTPS.
 
 To enable Stripe Checkout in ECS, store the Stripe API key and webhook signing secret as separate Secrets Manager plaintext secrets, then pass their ARNs:
 

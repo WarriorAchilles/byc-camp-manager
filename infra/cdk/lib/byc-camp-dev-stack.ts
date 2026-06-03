@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as ecs from "aws-cdk-lib/aws-ecs";
@@ -30,6 +31,7 @@ export class BycCampDevStack extends cdk.Stack {
       description: "ALB ingress",
     });
     albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), "HTTP from internet");
+    albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), "HTTPS from internet");
 
     const ecsSecurityGroup = new ec2.SecurityGroup(this, "EcsSecurityGroup", {
       vpc,
@@ -160,6 +162,15 @@ export class BycCampDevStack extends cdk.Stack {
       configuredAppPublicUrl === undefined
         ? `http://${loadBalancer.loadBalancerDnsName}`
         : String(configuredAppPublicUrl);
+    const configuredCertificateArn = this.node.tryGetContext("certificateArn");
+    const certificate =
+      configuredCertificateArn === undefined
+        ? undefined
+        : acm.Certificate.fromCertificateArn(
+            this,
+            "AdminCertificate",
+            String(configuredCertificateArn),
+          );
     const stripeSecretKeySecretArn = this.node.tryGetContext("stripeSecretKeySecretArn");
     const stripeWebhookSecretArn = this.node.tryGetContext("stripeWebhookSecretArn");
     const initialSuperAdminSecretArn = this.node.tryGetContext("initialSuperAdminSecretArn");
@@ -274,11 +285,30 @@ export class BycCampDevStack extends cdk.Stack {
       }),
     );
 
-    loadBalancer.addListener("HttpListener", {
-      port: 80,
-      open: true,
-      defaultTargetGroups: [targetGroup],
-    });
+    if (certificate) {
+      loadBalancer.addListener("HttpsListener", {
+        port: 443,
+        open: false,
+        certificates: [certificate],
+        defaultTargetGroups: [targetGroup],
+      });
+
+      loadBalancer.addListener("HttpListener", {
+        port: 80,
+        open: false,
+        defaultAction: elbv2.ListenerAction.redirect({
+          protocol: "HTTPS",
+          port: "443",
+          permanent: true,
+        }),
+      });
+    } else {
+      loadBalancer.addListener("HttpListener", {
+        port: 80,
+        open: false,
+        defaultTargetGroups: [targetGroup],
+      });
+    }
 
     new cdk.CfnOutput(this, "LoadBalancerDns", {
       value: loadBalancer.loadBalancerDnsName,
