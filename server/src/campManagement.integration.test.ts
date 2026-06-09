@@ -29,6 +29,7 @@ if (integrationDbReady) {
 }
 
 const superEmail = "super-camp-mgmt-test@example.com";
+const campAdminEmail = "camp-admin-camp-mgmt-test@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", () => {
@@ -48,15 +49,23 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
 
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
     const passwordHash = await hashPassword(password);
-    await prisma.adminUser.create({
-      data: {
-        email: superEmail,
-        passwordHash,
-        role: AdminRole.super_admin,
-        isActive: true,
-      },
+    await prisma.adminUser.createMany({
+      data: [
+        {
+          email: superEmail,
+          passwordHash,
+          role: AdminRole.super_admin,
+          isActive: true,
+        },
+        {
+          email: campAdminEmail,
+          passwordHash,
+          role: AdminRole.camp_admin,
+          isActive: true,
+        },
+      ],
     });
 
     const year = await prisma.campYear.create({
@@ -98,7 +107,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     await prisma.dorm.deleteMany({});
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
     await prisma.$disconnect();
   });
 
@@ -162,5 +171,36 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       .send({ campers: rows, confirmCapacityOverride: true });
     expect(allowed.status).toBe(201);
     expect(allowed.body.imported).toBe(2);
+  });
+
+  it("allows only super admins to delete campers", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(camperPayload());
+    expect(created.status).toBe(201);
+
+    const forbidden = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`);
+    expect(forbidden.status).toBe(403);
+
+    const deleted = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+    expect(deleted.status).toBe(204);
+
+    const camper = await prisma.camper.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(camper.archivedAt).not.toBeNull();
+
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+    expect(listed.body.campers).toHaveLength(0);
   });
 });

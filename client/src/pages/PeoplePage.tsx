@@ -83,6 +83,8 @@ export function PeoplePage(): React.ReactElement {
   const [workerFormError, setWorkerFormError] = useState<string | null>(null);
   const [leaderFormError, setLeaderFormError] = useState<string | null>(null);
   const [capacityWarning, setCapacityWarning] = useState<CapacityBody | null>(null);
+  const [deleteCamperError, setDeleteCamperError] = useState<string | null>(null);
+  const [deletingCamperId, setDeletingCamperId] = useState<string | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
   const workerDorms = allDorms.filter((dorm) => dorm.purpose === "worker");
@@ -302,6 +304,35 @@ export function PeoplePage(): React.ReactElement {
       setLeaderFormError(
         httpError instanceof Error ? httpError.message : "Could not create dorm leader.",
       );
+    }
+  };
+
+  const handleDeleteCamper = async (camper: CamperRow): Promise<void> => {
+    if (!superAdmin || !campYearId || deletingCamperId !== null) {
+      return;
+    }
+    const camperName = `${camper.firstName} ${camper.lastName}`.trim();
+    const confirmed = globalThis.confirm(
+      `Delete ${camperName}? This removes the camper from active camp records.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteCamperError(null);
+    setDeletingCamperId(camper.id);
+    try {
+      await apiJson(`/api/admin/camp-years/${campYearId}/campers/${camper.id}`, {
+        method: "DELETE",
+      });
+      await Promise.all([loadPeopleData(campYearId), loadCampYears()]);
+    } catch (caught) {
+      const httpError = caught as ApiHttpError;
+      setDeleteCamperError(
+        httpError instanceof Error ? httpError.message : "Could not delete camper.",
+      );
+    } finally {
+      setDeletingCamperId(null);
     }
   };
 
@@ -608,6 +639,7 @@ export function PeoplePage(): React.ReactElement {
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Campers</h2>
+        {deleteCamperError ? <p className="error">{deleteCamperError}</p> : null}
         {campers.length === 0 ? (
           <p className="muted">No campers yet for this year.</p>
         ) : (
@@ -621,6 +653,7 @@ export function PeoplePage(): React.ReactElement {
                   <th>Fee paid</th>
                   <th>Payment</th>
                   <th>Source</th>
+                  {superAdmin ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -634,6 +667,18 @@ export function PeoplePage(): React.ReactElement {
                     <td>{formatUsdFromCents(camper.feePaidCents)}</td>
                     <td>{camper.paymentStatus}</td>
                     <td>{camper.importSource}</td>
+                    {superAdmin ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={deletingCamperId !== null}
+                          onClick={() => void handleDeleteCamper(camper)}
+                        >
+                          {deletingCamperId === camper.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

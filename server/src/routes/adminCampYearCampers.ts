@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { evaluateCamperCapacity } from "../lib/camperCapacity.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -53,7 +54,6 @@ const updateBody = z
   .object({
     ...camperFields,
     checkInStatus: z.nativeEnum(CheckInStatus).optional(),
-    archivedAt: z.string().datetime().nullable().optional(),
   })
   .partial();
 
@@ -382,15 +382,39 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
       data.checkedInAt = null;
     }
   }
-  if (partial.archivedAt !== undefined) {
-    data.archivedAt = partial.archivedAt ? new Date(partial.archivedAt) : null;
-  }
-
   const updated = await prisma.camper.update({
     where: { id: camperId as string },
     data,
   });
   res.json(updated);
+});
+
+router.delete("/:camperId", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+
+  const result = await prisma.camper.updateMany({
+    where: { id: camperId, campYearId, archivedAt: null },
+    data: { archivedAt: new Date() },
+  });
+  if (result.count === 0) {
+    res.status(404).json({ error: "Camper not found" });
+    return;
+  }
+
+  writeOpsLog("camper_deleted", {
+    adminUserId: req.adminUser?.id,
+    campYearId,
+    camperId,
+  });
+  res.status(204).send();
 });
 
 export const adminCampYearCampersRouter = router;
