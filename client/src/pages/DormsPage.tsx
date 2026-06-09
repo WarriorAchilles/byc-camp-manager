@@ -234,6 +234,9 @@ export function DormsPage(): React.ReactElement {
   const [editGender, setEditGender] = useState<"boys" | "girls" | "co_ed">("boys");
   const [editCapacity, setEditCapacity] = useState("");
   const [editBracketId, setEditBracketId] = useState("");
+  const [deletingDormId, setDeletingDormId] = useState<string | null>(null);
+  const [dormToDelete, setDormToDelete] = useState<DormRow | null>(null);
+  const deleteDormConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const [camperDorms, setCamperDorms] = useState<BoardDormCamper[]>([]);
   const [workerDorms, setWorkerDorms] = useState<BoardDormWorker[]>([]);
@@ -457,6 +460,51 @@ export function DormsPage(): React.ReactElement {
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not update dorm.";
       setInventoryError(message);
+    }
+  };
+
+  useEffect(() => {
+    if (!dormToDelete) {
+      return;
+    }
+    deleteDormConfirmRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && deletingDormId === null) {
+        setDormToDelete(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dormToDelete, deletingDormId]);
+
+  const handleDeleteDorm = async (): Promise<void> => {
+    const dorm = dormToDelete;
+    if (!superAdmin || !campYearId || !dorm) {
+      return;
+    }
+    setInventoryError(null);
+    setDeletingDormId(dorm.id);
+    try {
+      await apiJson(`/api/admin/camp-years/${campYearId}/dorms/${dorm.id}`, {
+        method: "DELETE",
+      });
+      if (editingId === dorm.id) {
+        setEditingId(null);
+      }
+      if (rosterDormId === dorm.id) {
+        setRosterDormId("");
+        setRoster(null);
+      }
+      setDormToDelete(null);
+      await loadInventory();
+      if (activeTab === "assignments") {
+        await loadBoard();
+      }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not delete dorm.";
+      setInventoryError(message);
+    } finally {
+      setDeletingDormId(null);
     }
   };
 
@@ -800,7 +848,7 @@ export function DormsPage(): React.ReactElement {
                   <th>Gender</th>
                   <th>Beds</th>
                   <th>Age group</th>
-                  {superAdmin ? <th>Edit</th> : null}
+                  {superAdmin ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -821,9 +869,23 @@ export function DormsPage(): React.ReactElement {
                       </td>
                       {superAdmin ? (
                         <td>
-                          <button type="button" className="btn secondary" onClick={() => beginEdit(dorm)}>
-                            Edit
-                          </button>
+                          <div className="row">
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              onClick={() => beginEdit(dorm)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              disabled={deletingDormId === dorm.id}
+                              onClick={() => setDormToDelete(dorm)}
+                            >
+                              {deletingDormId === dorm.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
                         </td>
                       ) : null}
                     </tr>
@@ -1378,6 +1440,53 @@ export function DormsPage(): React.ReactElement {
               ) : null}
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {dormToDelete ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingDormId === null) {
+              setDormToDelete(null);
+            }
+          }}
+        >
+          <div
+            className="card stack modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dorm-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-dorm-title" style={{ marginTop: 0 }}>
+              Delete dorm?
+            </h2>
+            <p style={{ margin: 0 }}>
+              Delete <strong>{dormToDelete.name}</strong>? Assigned people will remain in this camp
+              year and become unassigned.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={deletingDormId !== null}
+                onClick={() => setDormToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                ref={deleteDormConfirmRef}
+                type="button"
+                className="btn danger"
+                disabled={deletingDormId !== null}
+                onClick={() => void handleDeleteDorm()}
+              >
+                {deletingDormId !== null ? "Deleting…" : "Delete dorm"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -203,4 +203,80 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       .set("Authorization", `Bearer ${superAdminToken}`);
     expect(listed.body.campers).toHaveLength(0);
   });
+
+  it("allows only super admins to delete age groups, dorms, and camp years", async () => {
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const bracket = await prisma.ageGroupBracket.findFirstOrThrow({ where: { campYearId } });
+
+    const ageGroupDelete = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/age-group-brackets/${bracket.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`);
+    expect(ageGroupDelete.status).toBe(403);
+
+    const dormDelete = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/dorms/${camperDormId}`)
+      .set("Authorization", `Bearer ${campAdminToken}`);
+    expect(dormDelete.status).toBe(403);
+
+    const campYearDelete = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ confirmationLabel: "Integration Camp (2099)" });
+    expect(campYearDelete.status).toBe(403);
+  });
+
+  it("deletes age groups and dorms while preserving and unassigning related records", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const bracket = await prisma.ageGroupBracket.findFirstOrThrow({ where: { campYearId } });
+    const createdCamper = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(camperPayload());
+    expect(createdCamper.status).toBe(201);
+
+    const ageGroupDelete = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/age-group-brackets/${bracket.id}`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+    expect(ageGroupDelete.status).toBe(204);
+    const dormAfterAgeGroupDelete = await prisma.dorm.findUniqueOrThrow({
+      where: { id: camperDormId },
+    });
+    expect(dormAfterAgeGroupDelete.ageGroupBracketId).toBeNull();
+
+    const dormDelete = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}/dorms/${camperDormId}`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+    expect(dormDelete.status).toBe(204);
+    const camperAfterDormDelete = await prisma.camper.findUniqueOrThrow({
+      where: { id: createdCamper.body.id },
+    });
+    expect(camperAfterDormDelete.dormId).toBeNull();
+  });
+
+  it("requires the exact confirmation label before deleting a camp year and its records", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const createdCamper = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(camperPayload());
+    expect(createdCamper.status).toBe(201);
+
+    const mismatchedConfirmation = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ confirmationLabel: "2099" });
+    expect(mismatchedConfirmation.status).toBe(400);
+    expect(await prisma.campYear.findUnique({ where: { id: campYearId } })).not.toBeNull();
+
+    const deleted = await request(app)
+      .delete(`/api/admin/camp-years/${campYearId}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ confirmationLabel: "Integration Camp (2099)" });
+    expect(deleted.status).toBe(204);
+    expect(await prisma.campYear.findUnique({ where: { id: campYearId } })).toBeNull();
+    expect(await prisma.camper.findUnique({ where: { id: createdCamper.body.id } })).toBeNull();
+  });
 });

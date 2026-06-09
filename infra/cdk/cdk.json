@@ -8,6 +8,9 @@
     "region": "us-east-2",
     "initialSuperAdminSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:initial-admin-90GKKp",
     "@aws-cdk/aws-ecs:removeDefaultDesiredCount": true,
-    "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true
+    "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,
+    "certificateArn": "arn:aws:acm:us-east-2:644238516603:certificate/9770c231-befd-495d-9924-85fbc8c7fb8e",
+    "corsOrigin": "https://admin.believersyouthcamp.com",
+    "appPublicUrl": "https://admin.believersyouthcamp.com"
   }
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiJson } from "../api";
 import { useAuth } from "../auth";
 import { resolveCampYearSelectionNullable } from "../campYearSelection";
@@ -64,6 +64,18 @@ export function CampConfigurationPage(): React.ReactElement {
   const [editBracketMax, setEditBracketMax] = useState("");
   const [editBracketSort, setEditBracketSort] = useState("");
   const [editBracketActive, setEditBracketActive] = useState(true);
+  const [deletingBracketId, setDeletingBracketId] = useState<string | null>(null);
+  const [bracketToDelete, setBracketToDelete] = useState<AgeGroupBracket | null>(null);
+  const deleteBracketConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const [deletingCampYear, setDeletingCampYear] = useState(false);
+  const [campYearDeleteDialog, setCampYearDeleteDialog] = useState<{
+    campYearId: string;
+    confirmationLabel: string;
+    step: "warning" | "type_confirmation";
+  } | null>(null);
+  const [campYearDeleteConfirmation, setCampYearDeleteConfirmation] = useState("");
+  const campYearDeleteContinueRef = useRef<HTMLButtonElement | null>(null);
+  const campYearDeleteInputRef = useRef<HTMLInputElement | null>(null);
 
   const [staffDefaultCampYearId, setStaffDefaultCampYearId] = useState("");
   const [staffDefaultSaving, setStaffDefaultSaving] = useState(false);
@@ -253,6 +265,44 @@ export function CampConfigurationPage(): React.ReactElement {
     }
   };
 
+  useEffect(() => {
+    if (!bracketToDelete) {
+      return;
+    }
+    deleteBracketConfirmRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && deletingBracketId === null) {
+        setBracketToDelete(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [bracketToDelete, deletingBracketId]);
+
+  const handleDeleteBracket = async (): Promise<void> => {
+    const bracket = bracketToDelete;
+    if (!superAdmin || !selectedId || !bracket) {
+      return;
+    }
+    setBracketError(null);
+    setDeletingBracketId(bracket.id);
+    try {
+      await apiJson(`/api/admin/camp-years/${selectedId}/age-group-brackets/${bracket.id}`, {
+        method: "DELETE",
+      });
+      if (editingBracketId === bracket.id) {
+        setEditingBracketId(null);
+      }
+      setBracketToDelete(null);
+      await loadAgeBrackets();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not delete age group.";
+      setBracketError(message);
+    } finally {
+      setDeletingBracketId(null);
+    }
+  };
+
   const handleCreate = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!superAdmin) {
@@ -344,6 +394,76 @@ export function CampConfigurationPage(): React.ReactElement {
       setError(message);
     } finally {
       setStaffDefaultSaving(false);
+    }
+  };
+
+  const openCampYearDeleteDialog = (): void => {
+    if (!superAdmin || !selected) {
+      return;
+    }
+    setCampYearDeleteConfirmation("");
+    setCampYearDeleteDialog({
+      campYearId: selected.id,
+      confirmationLabel: `${selected.name} (${selected.yearLabel})`,
+      step: "warning",
+    });
+  };
+
+  const closeCampYearDeleteDialog = useCallback((): void => {
+    if (deletingCampYear) {
+      return;
+    }
+    setCampYearDeleteDialog(null);
+    setCampYearDeleteConfirmation("");
+  }, [deletingCampYear]);
+
+  useEffect(() => {
+    if (!campYearDeleteDialog) {
+      return;
+    }
+    if (campYearDeleteDialog.step === "warning") {
+      campYearDeleteContinueRef.current?.focus();
+    } else {
+      campYearDeleteInputRef.current?.focus();
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !deletingCampYear) {
+        closeCampYearDeleteDialog();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [campYearDeleteDialog, closeCampYearDeleteDialog, deletingCampYear]);
+
+  const handleDeleteCampYear = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (
+      !superAdmin ||
+      !campYearDeleteDialog ||
+      campYearDeleteDialog.step !== "type_confirmation" ||
+      campYearDeleteConfirmation !== campYearDeleteDialog.confirmationLabel
+    ) {
+      return;
+    }
+    setError(null);
+    setDeletingCampYear(true);
+    try {
+      await apiJson(`/api/admin/camp-years/${campYearDeleteDialog.campYearId}`, {
+        method: "DELETE",
+        body: JSON.stringify({
+          confirmationLabel: campYearDeleteDialog.confirmationLabel,
+        }),
+      });
+      setCampYearDeleteDialog(null);
+      setCampYearDeleteConfirmation("");
+      setEditingBracketId(null);
+      setAgeBrackets([]);
+      await load();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not delete camp year.";
+      setError(message);
+    } finally {
+      setDeletingCampYear(false);
     }
   };
 
@@ -531,7 +651,7 @@ export function CampConfigurationPage(): React.ReactElement {
                   <th>Ages</th>
                   <th>Sort</th>
                   <th>Active</th>
-                  <th>Edit</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -565,13 +685,23 @@ export function CampConfigurationPage(): React.ReactElement {
                       </label>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        onClick={() => beginEditBracket(bracket)}
-                      >
-                        Edit
-                      </button>
+                      <div className="row">
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          onClick={() => beginEditBracket(bracket)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          disabled={deletingBracketId === bracket.id}
+                          onClick={() => setBracketToDelete(bracket)}
+                        >
+                          {deletingBracketId === bracket.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -711,9 +841,19 @@ export function CampConfigurationPage(): React.ReactElement {
               camper wristband / card codes). Self check-in kiosk QR below is not affected.
             </span>
           </label>
-          <button type="submit" className="btn">
-            Save changes
-          </button>
+          <div className="row">
+            <button type="submit" className="btn">
+              Save changes
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={deletingCampYear}
+              onClick={openCampYearDeleteDialog}
+            >
+              {deletingCampYear ? "Deleting…" : "Delete entire camp year"}
+            </button>
+          </div>
         </form>
       ) : null}
 
@@ -723,6 +863,141 @@ export function CampConfigurationPage(): React.ReactElement {
             Fee placeholders and capacity are managed by super admins. You can still add campers and
             workers from <strong>People</strong> according to your role.
           </p>
+        </div>
+      ) : null}
+
+      {bracketToDelete ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingBracketId === null) {
+              setBracketToDelete(null);
+            }
+          }}
+        >
+          <div
+            className="card stack modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-age-group-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-age-group-title" style={{ marginTop: 0 }}>
+              Delete age group?
+            </h2>
+            <p style={{ margin: 0 }}>
+              Delete <strong>{bracketToDelete.label}</strong>? Dorms using it will keep their people
+              but no longer have an age group.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={deletingBracketId !== null}
+                onClick={() => setBracketToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                ref={deleteBracketConfirmRef}
+                type="button"
+                className="btn danger"
+                disabled={deletingBracketId !== null}
+                onClick={() => void handleDeleteBracket()}
+              >
+                {deletingBracketId !== null ? "Deleting…" : "Delete age group"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {campYearDeleteDialog ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCampYearDeleteDialog();
+            }
+          }}
+        >
+          <div
+            className="card stack modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camp-year-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {campYearDeleteDialog.step === "warning" ? (
+              <>
+                <h2 id="camp-year-delete-title" style={{ marginTop: 0 }}>
+                  Delete entire camp year?
+                </h2>
+                <p style={{ margin: 0 }}>
+                  This permanently deletes <strong>{campYearDeleteDialog.confirmationLabel}</strong>{" "}
+                  and every camper, worker, dorm leader, dorm, age group, and related record for it.
+                </p>
+                <p className="error" style={{ margin: 0 }}>
+                  This cannot be undone.
+                </p>
+                <div className="row" style={{ justifyContent: "flex-end" }}>
+                  <button type="button" className="btn secondary" onClick={closeCampYearDeleteDialog}>
+                    Cancel
+                  </button>
+                  <button
+                    ref={campYearDeleteContinueRef}
+                    type="button"
+                    className="btn danger"
+                    onClick={() =>
+                      setCampYearDeleteDialog({
+                        ...campYearDeleteDialog,
+                        step: "type_confirmation",
+                      })
+                    }
+                  >
+                    Continue
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form className="stack" onSubmit={(event) => void handleDeleteCampYear(event)}>
+                <h2 id="camp-year-delete-title" style={{ marginTop: 0 }}>
+                  Confirm permanent deletion
+                </h2>
+                <label className="stack">
+                  Type <strong>{campYearDeleteDialog.confirmationLabel}</strong> to confirm
+                  <input
+                    ref={campYearDeleteInputRef}
+                    value={campYearDeleteConfirmation}
+                    onChange={(event) => setCampYearDeleteConfirmation(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="row" style={{ justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={deletingCampYear}
+                    onClick={closeCampYearDeleteDialog}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn danger"
+                    disabled={
+                      deletingCampYear ||
+                      campYearDeleteConfirmation !== campYearDeleteDialog.confirmationLabel
+                    }
+                  >
+                    {deletingCampYear ? "Deleting…" : "Permanently delete camp year"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       ) : null}
     </div>

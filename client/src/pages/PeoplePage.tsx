@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
@@ -85,6 +85,8 @@ export function PeoplePage(): React.ReactElement {
   const [capacityWarning, setCapacityWarning] = useState<CapacityBody | null>(null);
   const [deleteCamperError, setDeleteCamperError] = useState<string | null>(null);
   const [deletingCamperId, setDeletingCamperId] = useState<string | null>(null);
+  const [camperToDelete, setCamperToDelete] = useState<CamperRow | null>(null);
+  const deleteCamperConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
   const workerDorms = allDorms.filter((dorm) => dorm.purpose === "worker");
@@ -307,15 +309,26 @@ export function PeoplePage(): React.ReactElement {
     }
   };
 
-  const handleDeleteCamper = async (camper: CamperRow): Promise<void> => {
+  useEffect(() => {
+    if (!camperToDelete) {
+      return;
+    }
+    deleteCamperConfirmRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && deletingCamperId === null) {
+        setCamperToDelete(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [camperToDelete, deletingCamperId]);
+
+  const handleDeleteCamper = async (): Promise<void> => {
+    const camper = camperToDelete;
     if (!superAdmin || !campYearId || deletingCamperId !== null) {
       return;
     }
-    const camperName = `${camper.firstName} ${camper.lastName}`.trim();
-    const confirmed = globalThis.confirm(
-      `Delete ${camperName}? This removes the camper from active camp records.`,
-    );
-    if (!confirmed) {
+    if (!camper) {
       return;
     }
 
@@ -325,6 +338,7 @@ export function PeoplePage(): React.ReactElement {
       await apiJson(`/api/admin/camp-years/${campYearId}/campers/${camper.id}`, {
         method: "DELETE",
       });
+      setCamperToDelete(null);
       await Promise.all([loadPeopleData(campYearId), loadCampYears()]);
     } catch (caught) {
       const httpError = caught as ApiHttpError;
@@ -673,7 +687,7 @@ export function PeoplePage(): React.ReactElement {
                           type="button"
                           className="btn danger"
                           disabled={deletingCamperId !== null}
-                          onClick={() => void handleDeleteCamper(camper)}
+                          onClick={() => setCamperToDelete(camper)}
                         >
                           {deletingCamperId === camper.id ? "Deleting…" : "Delete"}
                         </button>
@@ -764,6 +778,56 @@ export function PeoplePage(): React.ReactElement {
           <Link to="/admin/imports">Imports</Link> page (CSV preview, column mapping, and capacity override). JSON bulk
           camper import remains available at <code>POST /api/admin/camp-years/:id/campers/import</code> for integrations.
         </p>
+      ) : null}
+
+      {camperToDelete ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingCamperId === null) {
+              setCamperToDelete(null);
+            }
+          }}
+        >
+          <div
+            className="card stack modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-camper-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-camper-title" style={{ marginTop: 0 }}>
+              Delete camper?
+            </h2>
+            <p style={{ margin: 0 }}>
+              Delete{" "}
+              <strong>
+                {camperToDelete.firstName} {camperToDelete.lastName}
+              </strong>
+              ? This removes the camper from active camp records.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={deletingCamperId !== null}
+                onClick={() => setCamperToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                ref={deleteCamperConfirmRef}
+                type="button"
+                className="btn danger"
+                disabled={deletingCamperId !== null}
+                onClick={() => void handleDeleteCamper()}
+              >
+                {deletingCamperId !== null ? "Deleting…" : "Delete camper"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

@@ -40,6 +40,10 @@ const campYearCreateBody = z.object({
 
 const campYearPatchBody = campYearCreateBody.partial();
 
+const campYearDeleteBody = z.object({
+  confirmationLabel: z.string(),
+});
+
 const ageBracketCreateBody = z.object({
   label: z.string().min(1),
   minAge: z.number().int().min(0).max(120),
@@ -286,6 +290,28 @@ ageBracketRouter.patch("/:bracketId", requireRole(AdminRole.super_admin), async 
     },
   });
   res.json(updated);
+});
+
+ageBracketRouter.delete("/:bracketId", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const bracketId = pathParam(req.params.bracketId);
+  if (!bracketId || !z.string().uuid().safeParse(bracketId).success) {
+    res.status(400).json({ error: "Invalid bracket id" });
+    return;
+  }
+  const existing = await prisma.ageGroupBracket.findFirst({
+    where: { id: bracketId, campYearId },
+    select: { id: true },
+  });
+  if (!existing) {
+    res.status(404).json({ error: "Age group bracket not found" });
+    return;
+  }
+  await prisma.ageGroupBracket.delete({ where: { id: bracketId } });
+  res.status(204).send();
 });
 
 adminCampYearsRouter.use("/:campYearId/age-group-brackets", ageBracketRouter);
@@ -622,6 +648,28 @@ dormMutationRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
   res.json(updated);
 });
 
+dormMutationRouter.delete("/:dormId", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const dormId = pathParam(req.params.dormId);
+  if (!dormId || !z.string().uuid().safeParse(dormId).success) {
+    res.status(400).json({ error: "Invalid dorm id" });
+    return;
+  }
+  const existing = await prisma.dorm.findFirst({
+    where: { id: dormId, campYearId },
+    select: { id: true },
+  });
+  if (!existing) {
+    res.status(404).json({ error: "Dorm not found" });
+    return;
+  }
+  await prisma.dorm.delete({ where: { id: dormId } });
+  res.status(204).send();
+});
+
 adminCampYearsRouter.use(
   "/:campYearId/dorms",
   dormReadRouter,
@@ -733,5 +781,36 @@ adminCampYearsRouter.patch(
       },
     });
     res.json(updated);
+  },
+);
+
+adminCampYearsRouter.delete(
+  "/:campYearId",
+  requireRole(AdminRole.super_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) {
+      return;
+    }
+    const parsed = campYearDeleteBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+    const existing = await prisma.campYear.findUnique({
+      where: { id: campYearId },
+      select: { id: true, name: true, yearLabel: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Camp year not found" });
+      return;
+    }
+    const expectedConfirmationLabel = `${existing.name} (${existing.yearLabel})`;
+    if (parsed.data.confirmationLabel !== expectedConfirmationLabel) {
+      res.status(400).json({ error: "Camp year confirmation label did not match" });
+      return;
+    }
+    await prisma.campYear.delete({ where: { id: campYearId } });
+    res.status(204).send();
   },
 );
