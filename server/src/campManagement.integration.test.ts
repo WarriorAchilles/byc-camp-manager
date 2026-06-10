@@ -226,6 +226,45 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(campYearDelete.status).toBe(403);
   });
 
+  it("allows only super admins to disable check-in confirmation emails", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+
+    const forbidden = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ checkInConfirmationEmailsEnabled: false });
+    expect(forbidden.status).toBe(403);
+
+    const updated = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ checkInConfirmationEmailsEnabled: false });
+    expect(updated.status).toBe(200);
+    expect(updated.body.checkInConfirmationEmailsEnabled).toBe(false);
+  });
+
+  it("creates camp years with check-in email and camper QR scan disabled by default", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+
+    const created = await request(app)
+      .post("/api/admin/camp-years")
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        name: "Default Options Camp",
+        yearLabel: "2100",
+        startDate: "2100-07-01",
+        endDate: "2100-07-07",
+      });
+
+    expect(created.status).toBe(201);
+    expect(created.body.checkInCamperQrScanEnabled).toBe(false);
+    expect(created.body.checkInConfirmationEmailsEnabled).toBe(false);
+  });
+
   it("deletes age groups and dorms while preserving and unassigning related records", async () => {
     const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });

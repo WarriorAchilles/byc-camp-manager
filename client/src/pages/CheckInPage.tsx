@@ -111,7 +111,7 @@ export function CheckInPage(): React.ReactElement {
   const [camperCheckInModal, setCamperCheckInModal] = useState<CamperCheckInDoneModal | null>(null);
 
   const selectedCampYear = campYears.find((year) => year.id === campYearId);
-  const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled !== false;
+  const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled === true;
 
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{

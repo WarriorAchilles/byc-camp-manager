@@ -269,32 +269,40 @@ export async function completeCheckoutSessionIfPaid(
     });
   }
 
-  const campersNeedingEmail = result.campers.filter((camperResult) => camperResult.transitionedToCheckedIn);
-  for (const camperResult of campersNeedingEmail) {
-    const camper = await prisma.camper.findUnique({
-      where: { id: camperResult.camperId },
-      select: {
-        firstName: true,
-        middleName: true,
-        lastName: true,
-        guardianEmail: true,
-        checkedInAt: true,
-        dorm: { select: { name: true } },
-      },
-    });
-    if (camper) {
-      const emailResult = await sendCheckInConfirmationMail({
-        to: camper.guardianEmail,
-        camperFullName: [camper.firstName, camper.middleName, camper.lastName].filter(Boolean).join(" "),
-        dormLabel: camper.dorm?.name ?? "unassigned",
-        checkedInAt: camper.checkedInAt ?? new Date(),
+  const campYear = await prisma.campYear.findUnique({
+    where: { id: result.campYearId },
+    select: { checkInConfirmationEmailsEnabled: true },
+  });
+  if (campYear?.checkInConfirmationEmailsEnabled) {
+    const campersNeedingEmail = result.campers.filter(
+      (camperResult) => camperResult.transitionedToCheckedIn,
+    );
+    for (const camperResult of campersNeedingEmail) {
+      const camper = await prisma.camper.findUnique({
+        where: { id: camperResult.camperId },
+        select: {
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          guardianEmail: true,
+          checkedInAt: true,
+          dorm: { select: { name: true } },
+        },
       });
-      writeOpsLog("check_in_confirmation_email", {
-        campYearId: result.campYearId,
-        camperId: camperResult.camperId,
-        channel: "self_service_stripe",
-        result: emailResult.status,
-      });
+      if (camper) {
+        const emailResult = await sendCheckInConfirmationMail({
+          to: camper.guardianEmail,
+          camperFullName: [camper.firstName, camper.middleName, camper.lastName].filter(Boolean).join(" "),
+          dormLabel: camper.dorm?.name ?? "unassigned",
+          checkedInAt: camper.checkedInAt ?? new Date(),
+        });
+        writeOpsLog("check_in_confirmation_email", {
+          campYearId: result.campYearId,
+          camperId: camperResult.camperId,
+          channel: "self_service_stripe",
+          result: emailResult.status,
+        });
+      }
     }
   }
 

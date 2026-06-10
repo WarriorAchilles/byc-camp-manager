@@ -36,6 +36,7 @@ const campYearCreateBody = z.object({
   discountTierNotes: z.string().nullable().optional(),
   merchandisePlaceholderNotes: z.string().nullable().optional(),
   checkInCamperQrScanEnabled: z.boolean().optional(),
+  checkInConfirmationEmailsEnabled: z.boolean().optional(),
 });
 
 const campYearPatchBody = campYearCreateBody.partial();
@@ -129,7 +130,8 @@ adminCampYearsRouter.post(
         thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents ?? null,
         discountTierNotes: parsed.data.discountTierNotes?.trim() ?? null,
         merchandisePlaceholderNotes: parsed.data.merchandisePlaceholderNotes?.trim() ?? null,
-        checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled ?? true,
+        checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled ?? false,
+        checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
       },
     });
     res.status(201).json(created);
@@ -777,6 +779,9 @@ adminCampYearsRouter.patch(
           : {}),
         ...(parsed.data.checkInCamperQrScanEnabled !== undefined
           ? { checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled }
+          : {}),
+        ...(parsed.data.checkInConfirmationEmailsEnabled !== undefined
+          ? { checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled }
           : {}),
       },
     });

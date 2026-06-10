@@ -49,6 +49,7 @@ type SelfCheckInYearResult =
         yearLabel: string;
         startDate: Date;
         selfCheckInToken: string | null;
+        checkInConfirmationEmailsEnabled: boolean;
       };
       normalized: string;
     }
@@ -61,7 +62,14 @@ async function campYearForSelfCheckInToken(token: string): Promise<SelfCheckInYe
   }
   const year = await prisma.campYear.findUnique({
     where: { selfCheckInToken: normalized },
-    select: { id: true, name: true, yearLabel: true, startDate: true, selfCheckInToken: true },
+    select: {
+      id: true,
+      name: true,
+      yearLabel: true,
+      startDate: true,
+      selfCheckInToken: true,
+      checkInConfirmationEmailsEnabled: true,
+    },
   });
   if (!year) {
     return { status: 404 as const, error: "camp_not_found" };
@@ -229,22 +237,24 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
       camperId,
       dormAutoAssigned,
     });
-    const dormLabel = finalCamper.dorm?.name ?? "unassigned";
-    const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
-      .filter(Boolean)
-      .join(" ");
-    const emailResult = await sendCheckInConfirmationMail({
-      to: finalCamper.guardianEmail,
-      camperFullName: fullName,
-      dormLabel,
-      checkedInAt: now,
-    });
-    writeOpsLog("check_in_confirmation_email", {
-      campYearId,
-      camperId,
-      channel: "self_service",
-      result: emailResult.status,
-    });
+    if (result.year.checkInConfirmationEmailsEnabled) {
+      const dormLabel = finalCamper.dorm?.name ?? "unassigned";
+      const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
+        .filter(Boolean)
+        .join(" ");
+      const emailResult = await sendCheckInConfirmationMail({
+        to: finalCamper.guardianEmail,
+        camperFullName: fullName,
+        dormLabel,
+        checkedInAt: now,
+      });
+      writeOpsLog("check_in_confirmation_email", {
+        campYearId,
+        camperId,
+        channel: "self_service",
+        result: emailResult.status,
+      });
+    }
   }
 
   res.json({
@@ -330,21 +340,23 @@ router.post("/:token/check-in", async (req, res) => {
       camperId: finalCamper.id,
       dormAutoAssigned,
     });
-    const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
-      .filter(Boolean)
-      .join(" ");
-    const emailResult = await sendCheckInConfirmationMail({
-      to: finalCamper.guardianEmail,
-      camperFullName: fullName,
-      dormLabel: finalCamper.dorm?.name ?? "unassigned",
-      checkedInAt: now,
-    });
-    writeOpsLog("check_in_confirmation_email", {
-      campYearId,
-      camperId: finalCamper.id,
-      channel: "self_service",
-      result: emailResult.status,
-    });
+    if (result.year.checkInConfirmationEmailsEnabled) {
+      const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
+        .filter(Boolean)
+        .join(" ");
+      const emailResult = await sendCheckInConfirmationMail({
+        to: finalCamper.guardianEmail,
+        camperFullName: fullName,
+        dormLabel: finalCamper.dorm?.name ?? "unassigned",
+        checkedInAt: now,
+      });
+      writeOpsLog("check_in_confirmation_email", {
+        campYearId,
+        camperId: finalCamper.id,
+        channel: "self_service",
+        result: emailResult.status,
+      });
+    }
   }
 
   res.json({

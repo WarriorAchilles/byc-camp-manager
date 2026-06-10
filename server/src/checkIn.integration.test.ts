@@ -213,6 +213,10 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
   it("camper check-in sends log email once; duplicate is idempotent", async () => {
     const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const header = await authHeader();
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: { checkInConfirmationEmailsEnabled: true },
+    });
     const create = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", header)
@@ -251,6 +255,41 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(second.body.checkInConfirmationEmail).toBeNull();
 
     expect(logSpy.mock.calls.some((c) => String(c[0]).includes("guard-checkin@example.com"))).toBe(true);
+  });
+
+  it("camper check-in skips confirmation email when disabled for the camp year", async () => {
+    const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const header = await authHeader();
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: { checkInConfirmationEmailsEnabled: false },
+    });
+    const create = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", header)
+      .send({
+        firstName: "No",
+        lastName: "Confirmation",
+        dateOfBirth: "2012-05-01",
+        gender: Gender.male,
+        guardianName: "Guard",
+        guardianEmail: "disabled-checkin-email@example.com",
+        guardianPhone: "555",
+        paymentStatus: CamperPaymentStatus.unpaid,
+        dormId: camperDormId,
+      });
+
+    const checkIn = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${create.body.id}/check-in`)
+      .set("Authorization", header)
+      .send({});
+
+    expect(checkIn.status).toBe(200);
+    expect(checkIn.body.checkInCompletedThisRequest).toBe(true);
+    expect(checkIn.body.checkInConfirmationEmail).toBeNull();
+    expect(logSpy.mock.calls.some((call) => String(call[0]).includes("disabled-checkin-email@example.com"))).toBe(
+      false,
+    );
   });
 
   it("auto-assigns a camper dorm at check-in when unassigned and a matching dorm is available", async () => {
@@ -511,7 +550,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       expect(chk.body.dormAutoAssigned).toBe(true);
       expect(chk.body.camper.dormAssignment).toBe("Camper Hall A");
       expect(chk.body).not.toHaveProperty("checkInConfirmationEmail");
-      expect(logSpy.mock.calls.some((c) => String(c[0]).includes("kiosk-public@example.com"))).toBe(true);
+      expect(logSpy.mock.calls.some((call) => String(call[0]).includes("kiosk-public@example.com"))).toBe(false);
 
       const again = await request(app)
         .post(`/api/public/self-check-in/${kioskToken}/campers/${camperId}/check-in`)
@@ -600,6 +639,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     });
 
     it("public Stripe checkout can include multiple selected campers", async () => {
+      const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
       const header = await authHeader();
       await request(app)
         .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
@@ -688,6 +728,10 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       });
       expect(sessionRows.length).toBe(2);
 
+      await prisma.campYear.update({
+        where: { id: campYearId },
+        data: { checkInConfirmationEmailsEnabled: false },
+      });
       const completion = await completeCheckoutSessionIfPaid({
         id: "cs_test_multi_selected",
         payment_status: "paid",
@@ -704,6 +748,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       });
       expect(checkedInCampers.every((camper) => camper.paymentStatus === CamperPaymentStatus.paid_stripe)).toBe(true);
       expect(checkedInCampers.every((camper) => camper.checkInStatus === CheckInStatus.checked_in)).toBe(true);
+      expect(logSpy.mock.calls.some((call) => String(call[0]).includes("multi-pay@example.com"))).toBe(false);
     });
 
     it("regenerating kiosk token invalidates the previous QR URL", async () => {
