@@ -780,7 +780,7 @@ export function CheckInPage(): React.ReactElement {
           {selectedCamper.paymentStatus === "unpaid" ? (
             <fieldset className="check-in-cash-fieldset">
               <legend className="field-label">Cash payment at check-in</legend>
-              <label className="check-inline">
+              <label className="check-inline payment-checkbox-button">
                 <input
                   type="checkbox"
                   checked={markPaidCamper}
@@ -794,7 +794,7 @@ export function CheckInPage(): React.ReactElement {
                 Mark this camper paid (cash)
               </label>
               {familyPaymentOptionEnabled ? (
-                <label className="check-inline">
+                <label className="check-inline payment-checkbox-button">
                   <input
                     type="checkbox"
                     checked={markPaidFamily}

@@ -522,13 +522,13 @@ export function CamperSelfCheckInPage(): ReactElement {
                 ) : (
                   <p className="muted">Online payment is not available for this balance.</p>
                 )}
-                <label className="check-inline self-check-in-manual-pay">
+                <label className="check-inline payment-checkbox-button self-check-in-manual-pay">
                   <input
                     type="checkbox"
                     checked={manualPaymentAccepted}
                     onChange={(event) => setManualPaymentAccepted(event.target.checked)}
                   />
-                  I will pay manually
+                  I am paying by cash or check
                 </label>
                 <button
                   type="button"

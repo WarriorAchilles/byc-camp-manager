@@ -991,6 +991,52 @@ tbody tr:hover td {
   cursor: pointer;
 }
 
+.payment-checkbox-button {
+  align-items: center;
+  width: 100%;
+  min-height: 4rem;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color 140ms ease-out,
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.payment-checkbox-button:hover {
+  border-color: var(--brand-orange-500);
+  background: var(--brand-orange-soft);
+  transform: translateY(-1px);
+}
+
+.payment-checkbox-button:has(input:checked) {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.payment-checkbox-button:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.payment-checkbox-button input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  accent-color: var(--success);
+}
+
 .check-in-detail-actions {
   display: flex;
   flex-wrap: wrap;
