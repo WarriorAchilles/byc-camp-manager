@@ -246,7 +246,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(updated.body.checkInConfirmationEmailsEnabled).toBe(false);
   });
 
-  it("creates camp years with check-in email and camper QR scan disabled by default", async () => {
+  it("creates camp years with optional check-in features disabled by default", async () => {
     const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
 
@@ -262,6 +262,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
 
     expect(created.status).toBe(201);
     expect(created.body.checkInCamperQrScanEnabled).toBe(false);
+    expect(created.body.checkInFamilyPaymentOptionEnabled).toBe(false);
     expect(created.body.checkInConfirmationEmailsEnabled).toBe(false);
   });
 

@@ -36,6 +36,7 @@ const campYearCreateBody = z.object({
   discountTierNotes: z.string().nullable().optional(),
   merchandisePlaceholderNotes: z.string().nullable().optional(),
   checkInCamperQrScanEnabled: z.boolean().optional(),
+  checkInFamilyPaymentOptionEnabled: z.boolean().optional(),
   checkInConfirmationEmailsEnabled: z.boolean().optional(),
 });
 
@@ -131,6 +132,7 @@ adminCampYearsRouter.post(
         discountTierNotes: parsed.data.discountTierNotes?.trim() ?? null,
         merchandisePlaceholderNotes: parsed.data.merchandisePlaceholderNotes?.trim() ?? null,
         checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled ?? false,
+        checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled ?? false,
         checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
       },
     });
@@ -779,6 +781,9 @@ adminCampYearsRouter.patch(
           : {}),
         ...(parsed.data.checkInCamperQrScanEnabled !== undefined
           ? { checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled }
+          : {}),
+        ...(parsed.data.checkInFamilyPaymentOptionEnabled !== undefined
+          ? { checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled }
           : {}),
         ...(parsed.data.checkInConfirmationEmailsEnabled !== undefined
           ? { checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled }

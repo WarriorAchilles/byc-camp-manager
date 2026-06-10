@@ -20,6 +20,8 @@ type CampYearRow = {
   merchandisePlaceholderNotes: string | null;
   /** When false, staff Check-in hides camera scan for camper QR codes. */
   checkInCamperQrScanEnabled?: boolean;
+  /** When false, staff Check-in hides the guardian-family cash payment option. */
+  checkInFamilyPaymentOptionEnabled?: boolean;
   /** When false, the app does not send guardian confirmation emails after camper check-in. */
   checkInConfirmationEmailsEnabled?: boolean;
   activeCamperCount?: number;
@@ -365,6 +367,8 @@ export function CampConfigurationPage(): React.ReactElement {
           merchandisePlaceholderNotes:
             String(formData.get("merchandisePlaceholderNotes") ?? "").trim() || null,
           checkInCamperQrScanEnabled: formData.get("checkInCamperQrScanEnabled") === "on",
+          checkInFamilyPaymentOptionEnabled:
+            formData.get("checkInFamilyPaymentOptionEnabled") === "on",
           checkInConfirmationEmailsEnabled:
             formData.get("checkInConfirmationEmailsEnabled") === "on",
         }),
@@ -843,6 +847,17 @@ export function CampConfigurationPage(): React.ReactElement {
             <span>
               Show <strong>Scan QR</strong> for campers on the staff Check-in page (camera scan of
               camper wristband / card codes). Self check-in kiosk QR below is not affected.
+            </span>
+          </label>
+          <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              name="checkInFamilyPaymentOptionEnabled"
+              defaultChecked={selected.checkInFamilyPaymentOptionEnabled === true}
+            />
+            <span>
+              Show <strong>Mark all campers with this guardian email paid (cash)</strong> on the staff
+              Check-in page.
             </span>
           </label>
           <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>

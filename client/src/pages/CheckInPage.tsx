@@ -10,6 +10,7 @@ type CampYearOption = {
   name: string;
   yearLabel: string;
   checkInCamperQrScanEnabled?: boolean;
+  checkInFamilyPaymentOptionEnabled?: boolean;
 };
 
 type CheckInSummary = {
@@ -112,6 +113,8 @@ export function CheckInPage(): React.ReactElement {
 
   const selectedCampYear = campYears.find((year) => year.id === campYearId);
   const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled === true;
+  const familyPaymentOptionEnabled =
+    selectedCampYear?.checkInFamilyPaymentOptionEnabled === true;
 
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{
@@ -197,6 +200,12 @@ export function CheckInPage(): React.ReactElement {
       setCamperMode("search");
     }
   }, [camperQrScanEnabled, camperMode, stopScanner]);
+
+  useEffect(() => {
+    if (!familyPaymentOptionEnabled) {
+      setMarkPaidFamily(false);
+    }
+  }, [familyPaymentOptionEnabled]);
 
   const startScanner = useCallback(async (): Promise<void> => {
     setActionError(null);
@@ -342,7 +351,8 @@ export function CheckInPage(): React.ReactElement {
           method: "POST",
           body: JSON.stringify({
             markPaidCashForCamper: markPaidCamper || undefined,
-            markPaidCashForGuardianFamily: markPaidFamily || undefined,
+            markPaidCashForGuardianFamily:
+              familyPaymentOptionEnabled && markPaidFamily ? true : undefined,
           }),
         },
       );
@@ -783,19 +793,21 @@ export function CheckInPage(): React.ReactElement {
                 />
                 Mark this camper paid (cash)
               </label>
-              <label className="check-inline">
-                <input
-                  type="checkbox"
-                  checked={markPaidFamily}
-                  onChange={(event) => {
-                    setMarkPaidFamily(event.target.checked);
-                    if (event.target.checked) {
-                      setMarkPaidCamper(false);
-                    }
-                  }}
-                />
-                Mark all campers with this guardian email paid (cash)
-              </label>
+              {familyPaymentOptionEnabled ? (
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    checked={markPaidFamily}
+                    onChange={(event) => {
+                      setMarkPaidFamily(event.target.checked);
+                      if (event.target.checked) {
+                        setMarkPaidCamper(false);
+                      }
+                    }}
+                  />
+                  Mark all campers with this guardian email paid (cash)
+                </label>
+              ) : null}
             </fieldset>
           ) : null}
           <div className="check-in-detail-actions">

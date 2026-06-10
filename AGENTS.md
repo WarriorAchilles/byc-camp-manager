@@ -1,1 +1,1 @@
-Don't run cdk commands. Instruct the user what commands to run when these are needed.
+Don't run cdk commands or dev commands that run the server or client locally. Instruct the user what commands to run when these are needed.
