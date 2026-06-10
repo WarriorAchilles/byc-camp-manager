@@ -248,9 +248,12 @@ export function SelfCheckInQrPage(): React.ReactElement {
       {selfCheckInToken ? (
         <div className="kiosk-print-root">
           <div className="kiosk-print-sheet">
-            <p className="kiosk-print-eyebrow">Camper check-in</p>
-            <h2 className="kiosk-print-title">{selectedCampYear?.name ?? "Camp"}</h2>
-            <p className="kiosk-print-meta">{selectedCampYear ? selectedCampYear.yearLabel : ""}</p>
+            <img
+              className="kiosk-print-logo"
+              src="/byc-logo.png"
+              alt="Believers Youth Camp"
+            />
+            <h2 className="kiosk-print-title">BYC Self Check-In</h2>
             <p className="kiosk-print-lead">
               Scan with your phone, search for your name, then tap Check in for your dorm assignment.
             </p>

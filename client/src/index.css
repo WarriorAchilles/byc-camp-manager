@@ -1221,21 +1221,16 @@ tbody tr:hover td {
   margin: 0 auto;
 }
 
-.kiosk-print-eyebrow {
-  margin: 0;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+.kiosk-print-logo {
+  display: block;
+  width: min(24rem, 100%);
+  height: auto;
+  margin: 0 auto 1.5rem;
 }
 
 .kiosk-print-title {
-  margin: 0.5rem 0 0;
-  font-size: 1.75rem;
-}
-
-.kiosk-print-meta {
-  margin: 0.15rem 0 0;
+  margin: 0;
+  font-size: 2.5rem;
 }
 
 .kiosk-print-lead {
@@ -1264,8 +1259,10 @@ tbody tr:hover td {
   .kiosk-print-root {
     position: absolute;
     left: 0;
+    right: 0;
     top: 0;
-    width: 100%;
+    box-sizing: border-box;
+    width: auto;
     padding: 2rem 1rem;
   }
 
@@ -1276,7 +1273,15 @@ tbody tr:hover td {
   }
 
   .kiosk-print-sheet {
+    width: 100%;
+    max-width: none;
     text-align: center;
+  }
+
+  .kiosk-print-lead {
+    max-width: 28rem;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 
@@ -1403,6 +1408,10 @@ tbody tr:hover td {
     padding: 0.5rem 0.75rem !important;
     max-width: none !important;
     background: white !important;
+  }
+
+  #admin-main:has(.kiosk-print-root) {
+    padding: 0 !important;
   }
 
   body {
