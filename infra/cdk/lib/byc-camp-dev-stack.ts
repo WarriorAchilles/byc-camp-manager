@@ -178,7 +178,7 @@ export class BycCampDevStack extends cdk.Stack {
     const stripeSecretKey =
       stripeSecretKeySecretArn === undefined
         ? undefined
-        : secretsmanager.Secret.fromSecretPartialArn(
+        : secretsmanager.Secret.fromSecretCompleteArn(
             this,
             "StripeSecretKey",
             String(stripeSecretKeySecretArn),
@@ -186,7 +186,7 @@ export class BycCampDevStack extends cdk.Stack {
     const stripeWebhookSecret =
       stripeWebhookSecretArn === undefined
         ? undefined
-        : secretsmanager.Secret.fromSecretPartialArn(
+        : secretsmanager.Secret.fromSecretCompleteArn(
             this,
             "StripeWebhookSecret",
             String(stripeWebhookSecretArn),

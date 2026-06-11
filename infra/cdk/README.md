@@ -50,8 +50,8 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `corsOrigin` | Sets the API `CORS_ORIGIN`; defaults to `http://<alb-dns-name>`. |
 | `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
 | `certificateArn` | Optional ACM certificate ARN for the admin hostname. When set, the ALB serves HTTPS on port 443 and redirects HTTP to HTTPS. |
-| `stripeSecretKeySecretArn` | Optional Secrets Manager ARN containing the Stripe restricted/secret API key. |
-| `stripeWebhookSecretArn` | Optional Secrets Manager ARN containing the Stripe webhook signing secret. |
+| `stripeSecretKeySecretArn` | Optional full Secrets Manager ARN containing the Stripe restricted/secret API key. Include the generated suffix. |
+| `stripeWebhookSecretArn` | Optional full Secrets Manager ARN containing the Stripe webhook signing secret. Include the generated suffix. |
 | `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
 
 ## HTTPS and CORS
