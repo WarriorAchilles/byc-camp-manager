@@ -360,6 +360,64 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
   });
 });
 
+router.post("/campers/:camperId/undo-check-in", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+
+  const year = await prisma.campYear.findUnique({ where: { id: campYearId }, select: { id: true } });
+  if (!year) {
+    res.status(404).json({ error: "Camp year not found" });
+    return;
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.camper.findFirst({
+      where: { id: camperId, campYearId, archivedAt: null },
+      select: { id: true },
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const update = await tx.camper.updateMany({
+      where: { id: camperId, campYearId, checkInStatus: CheckInStatus.checked_in },
+      data: { checkInStatus: CheckInStatus.not_checked_in, checkedInAt: null },
+    });
+    const camper = await tx.camper.findFirstOrThrow({
+      where: { id: camperId, campYearId },
+      select: camperCheckInSelect,
+    });
+
+    return { camper, checkInUndoneThisRequest: update.count === 1 };
+  });
+
+  if (!result) {
+    res.status(404).json({ error: "Camper not found" });
+    return;
+  }
+
+  if (result.checkInUndoneThisRequest) {
+    writeOpsLog("camper_check_in_undone_admin", {
+      actorAdminUserId: req.adminUser?.id,
+      campYearId,
+      camperId,
+    });
+  }
+
+  res.json({
+    camper: serializeCamperCheckIn(result.camper),
+    checkInUndoneThisRequest: result.checkInUndoneThisRequest,
+    alreadyNotCheckedIn: !result.checkInUndoneThisRequest,
+  });
+});
+
 router.post("/workers/:workerId/check-in", async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);
   if (!campYearId) {

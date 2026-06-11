@@ -257,6 +257,61 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(logSpy.mock.calls.some((c) => String(c[0]).includes("guard-checkin@example.com"))).toBe(true);
   });
 
+  it("undoes camper check-in, clears the timestamp, and updates the summary", async () => {
+    const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const header = await authHeader();
+    const create = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", header)
+      .send({
+        firstName: "Wrong",
+        lastName: "Camper",
+        dateOfBirth: "2012-05-01",
+        gender: Gender.male,
+        guardianName: "Guard",
+        guardianEmail: "wrong-camper@example.com",
+        guardianPhone: "555",
+        paymentStatus: CamperPaymentStatus.paid_cash,
+        dormId: camperDormId,
+      });
+    const camperId = create.body.id as string;
+
+    await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${camperId}/check-in`)
+      .set("Authorization", header)
+      .send({});
+
+    const undo = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${camperId}/undo-check-in`)
+      .set("Authorization", header)
+      .send({});
+    expect(undo.status).toBe(200);
+    expect(undo.body.checkInUndoneThisRequest).toBe(true);
+    expect(undo.body.alreadyNotCheckedIn).toBe(false);
+    expect(undo.body.camper.checkInStatus).toBe(CheckInStatus.not_checked_in);
+    expect(undo.body.camper.checkedInAt).toBeNull();
+    expect(undo.body.camper.paymentStatus).toBe(CamperPaymentStatus.paid_cash);
+    expect(undo.body.camper.dormAssignment).toBe("Camper Hall A");
+
+    const summary = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/check-in/summary`)
+      .set("Authorization", header);
+    expect(summary.body.campersCheckedIn).toBe(0);
+
+    const repeat = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${camperId}/undo-check-in`)
+      .set("Authorization", header)
+      .send({});
+    expect(repeat.status).toBe(200);
+    expect(repeat.body.checkInUndoneThisRequest).toBe(false);
+    expect(repeat.body.alreadyNotCheckedIn).toBe(true);
+
+    const undoLogs = logSpy.mock.calls.filter((call) =>
+      String(call[0]).includes('"event":"camper_check_in_undone_admin"'),
+    );
+    expect(undoLogs).toHaveLength(1);
+  });
+
   it("camper check-in skips confirmation email when disabled for the camp year", async () => {
     const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const header = await authHeader();

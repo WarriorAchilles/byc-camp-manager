@@ -68,6 +68,12 @@ type CamperCheckInPostResponse = {
   dormAutoAssigned?: boolean;
 };
 
+type CamperUndoCheckInPostResponse = {
+  camper: CamperCheckIn;
+  alreadyNotCheckedIn: boolean;
+  checkInUndoneThisRequest: boolean;
+};
+
 type CamperCheckInDoneModal = {
   firstName: string;
   lastName: string;
@@ -373,6 +379,39 @@ export function CheckInPage(): React.ReactElement {
       await loadSummary();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Check-in failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undoCamperCheckIn = async (): Promise<void> => {
+    if (!campYearId || !selectedCamper || selectedCamper.checkInStatus !== "checked_in") {
+      return;
+    }
+    const fullName = [selectedCamper.firstName, selectedCamper.middleName, selectedCamper.lastName]
+      .filter(Boolean)
+      .join(" ");
+    const confirmed = globalThis.confirm(
+      `Undo check-in for ${fullName}? Their dorm assignment and payment status will not change.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusy(true);
+    setActionError(null);
+    try {
+      const data = await apiJson<CamperUndoCheckInPostResponse>(
+        `/api/admin/camp-years/${campYearId}/check-in/campers/${selectedCamper.id}/undo-check-in`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      setSelectedCamper(data.camper);
+      setSearchResults((results) =>
+        results.map((camper) => (camper.id === data.camper.id ? data.camper : camper)),
+      );
+      await loadSummary();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not undo check-in");
     } finally {
       setBusy(false);
     }
@@ -814,6 +853,16 @@ export function CheckInPage(): React.ReactElement {
             <button type="button" className="btn secondary" onClick={() => setSelectedCamper(null)}>
               Cancel
             </button>
+            {selectedCamper.checkInStatus === "checked_in" ? (
+              <button
+                type="button"
+                className="btn danger"
+                disabled={busy}
+                onClick={() => void undoCamperCheckIn()}
+              >
+                Undo check-in
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn primary"
