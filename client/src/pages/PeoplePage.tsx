@@ -18,7 +18,7 @@ type CamperRow = {
   firstName: string;
   lastName: string;
   guardianEmail: string;
-  paymentStatus: string;
+  paymentStatus: "unpaid" | "paid_cash" | "paid_stripe";
   importSource: string;
   feeDueCents: number | null;
   feePaidCents: number | null;
@@ -66,6 +66,16 @@ function formatUsdFromCents(cents: number | null | undefined): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
+function paymentStatusLabel(paymentStatus: CamperRow["paymentStatus"]): string {
+  if (paymentStatus === "paid_cash") {
+    return "Paid (cash)";
+  }
+  if (paymentStatus === "paid_stripe") {
+    return "Paid (Stripe)";
+  }
+  return "Unpaid";
+}
+
 export function PeoplePage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
@@ -86,6 +96,8 @@ export function PeoplePage(): React.ReactElement {
   const [deleteCamperError, setDeleteCamperError] = useState<string | null>(null);
   const [deletingCamperId, setDeletingCamperId] = useState<string | null>(null);
   const [camperToDelete, setCamperToDelete] = useState<CamperRow | null>(null);
+  const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
+  const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
   const deleteCamperConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
@@ -347,6 +359,35 @@ export function PeoplePage(): React.ReactElement {
       );
     } finally {
       setDeletingCamperId(null);
+    }
+  };
+
+  const handleToggleCamperPayment = async (camper: CamperRow): Promise<void> => {
+    if (!campYearId || updatingPaymentCamperId !== null) {
+      return;
+    }
+
+    const paymentStatus = camper.paymentStatus === "unpaid" ? "paid_cash" : "unpaid";
+    setPaymentStatusError(null);
+    setUpdatingPaymentCamperId(camper.id);
+    try {
+      const updatedCamper = await apiJson<CamperRow>(
+        `/api/admin/camp-years/${campYearId}/campers/${camper.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ paymentStatus }),
+        },
+      );
+      setCampers((previous) =>
+        previous.map((row) => (row.id === updatedCamper.id ? updatedCamper : row)),
+      );
+    } catch (caught) {
+      const httpError = caught as ApiHttpError;
+      setPaymentStatusError(
+        httpError instanceof Error ? httpError.message : "Could not update camper payment status.",
+      );
+    } finally {
+      setUpdatingPaymentCamperId(null);
     }
   };
 
@@ -654,6 +695,7 @@ export function PeoplePage(): React.ReactElement {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Campers</h2>
         {deleteCamperError ? <p className="error">{deleteCamperError}</p> : null}
+        {paymentStatusError ? <p className="error">{paymentStatusError}</p> : null}
         {campers.length === 0 ? (
           <p className="muted">No campers yet for this year.</p>
         ) : (
@@ -667,7 +709,7 @@ export function PeoplePage(): React.ReactElement {
                   <th>Fee paid</th>
                   <th>Payment</th>
                   <th>Source</th>
-                  {superAdmin ? <th>Actions</th> : null}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -679,20 +721,34 @@ export function PeoplePage(): React.ReactElement {
                     <td>{camper.guardianEmail}</td>
                     <td>{formatUsdFromCents(camper.feeDueCents)}</td>
                     <td>{formatUsdFromCents(camper.feePaidCents)}</td>
-                    <td>{camper.paymentStatus}</td>
+                    <td>{paymentStatusLabel(camper.paymentStatus)}</td>
                     <td>{camper.importSource}</td>
-                    {superAdmin ? (
-                      <td>
+                    <td>
+                      <div className="row">
                         <button
                           type="button"
-                          className="btn danger"
-                          disabled={deletingCamperId !== null}
-                          onClick={() => setCamperToDelete(camper)}
+                          className="btn secondary"
+                          disabled={updatingPaymentCamperId !== null}
+                          onClick={() => void handleToggleCamperPayment(camper)}
                         >
-                          {deletingCamperId === camper.id ? "Deleting…" : "Delete"}
+                          {updatingPaymentCamperId === camper.id
+                            ? "Updating…"
+                            : camper.paymentStatus === "unpaid"
+                              ? "Mark paid"
+                              : "Mark unpaid"}
                         </button>
-                      </td>
-                    ) : null}
+                        {superAdmin ? (
+                          <button
+                            type="button"
+                            className="btn danger"
+                            disabled={deletingCamperId !== null || updatingPaymentCamperId !== null}
+                            onClick={() => setCamperToDelete(camper)}
+                          >
+                            {deletingCamperId === camper.id ? "Deleting…" : "Delete"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -204,6 +204,30 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(listed.body.campers).toHaveLength(0);
   });
 
+  it("allows camp admins to mark and unmark campers as paid", async () => {
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send(camperPayload());
+    expect(created.status).toBe(201);
+
+    const markedPaid = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ paymentStatus: CamperPaymentStatus.paid_cash });
+    expect(markedPaid.status).toBe(200);
+    expect(markedPaid.body.paymentStatus).toBe(CamperPaymentStatus.paid_cash);
+
+    const markedUnpaid = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ paymentStatus: CamperPaymentStatus.unpaid });
+    expect(markedUnpaid.status).toBe(200);
+    expect(markedUnpaid.body.paymentStatus).toBe(CamperPaymentStatus.unpaid);
+  });
+
   it("allows only super admins to delete age groups, dorms, and camp years", async () => {
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
