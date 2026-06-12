@@ -33,8 +33,6 @@ const campYearCreateBody = z.object({
   earlyCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   lateCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   thirdPlusCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
-  discountTierNotes: z.string().nullable().optional(),
-  merchandisePlaceholderNotes: z.string().nullable().optional(),
   checkInCamperQrScanEnabled: z.boolean().optional(),
   checkInFamilyPaymentOptionEnabled: z.boolean().optional(),
   checkInConfirmationEmailsEnabled: z.boolean().optional(),
@@ -129,8 +127,6 @@ adminCampYearsRouter.post(
         earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
         lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
         thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents ?? null,
-        discountTierNotes: parsed.data.discountTierNotes?.trim() ?? null,
-        merchandisePlaceholderNotes: parsed.data.merchandisePlaceholderNotes?.trim() ?? null,
         checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled ?? false,
         checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled ?? false,
         checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
@@ -770,14 +766,6 @@ adminCampYearsRouter.patch(
           : {}),
         ...(parsed.data.thirdPlusCamperFeeCents !== undefined
           ? { thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents }
-          : {}),
-        ...(parsed.data.discountTierNotes !== undefined
-          ? { discountTierNotes: parsed.data.discountTierNotes?.trim() ?? null }
-          : {}),
-        ...(parsed.data.merchandisePlaceholderNotes !== undefined
-          ? {
-              merchandisePlaceholderNotes: parsed.data.merchandisePlaceholderNotes?.trim() ?? null,
-            }
           : {}),
         ...(parsed.data.checkInCamperQrScanEnabled !== undefined
           ? { checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled }

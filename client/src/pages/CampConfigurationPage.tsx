@@ -16,8 +16,6 @@ type CampYearRow = {
   earlyCamperFeeCents: number | null;
   lateCamperFeeCents: number | null;
   thirdPlusCamperFeeCents: number | null;
-  discountTierNotes: string | null;
-  merchandisePlaceholderNotes: string | null;
   /** When false, staff Check-in hides camera scan for camper QR codes. */
   checkInCamperQrScanEnabled?: boolean;
   /** When false, staff Check-in hides the guardian-family cash payment option. */
@@ -72,6 +70,7 @@ export function CampConfigurationPage(): React.ReactElement {
   const [createStart, setCreateStart] = useState("2026-07-01");
   const [createEnd, setCreateEnd] = useState("2026-07-07");
   const [createCapacity, setCreateCapacity] = useState("");
+  const [showCreateCampYearForm, setShowCreateCampYearForm] = useState(false);
 
   const [ageBrackets, setAgeBrackets] = useState<AgeGroupBracket[]>([]);
   const [ageBracketsLoading, setAgeBracketsLoading] = useState(false);
@@ -350,6 +349,7 @@ export function CampConfigurationPage(): React.ReactElement {
         }),
       });
       await load();
+      setShowCreateCampYearForm(false);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Could not create camp year.";
@@ -394,9 +394,6 @@ export function CampConfigurationPage(): React.ReactElement {
           earlyCamperFeeCents,
           lateCamperFeeCents,
           thirdPlusCamperFeeCents,
-          discountTierNotes: String(formData.get("discountTierNotes") ?? "").trim() || null,
-          merchandisePlaceholderNotes:
-            String(formData.get("merchandisePlaceholderNotes") ?? "").trim() || null,
           checkInCamperQrScanEnabled: formData.get("checkInCamperQrScanEnabled") === "on",
           checkInFamilyPaymentOptionEnabled:
             formData.get("checkInFamilyPaymentOptionEnabled") === "on",
@@ -575,7 +572,15 @@ export function CampConfigurationPage(): React.ReactElement {
         )}
       </div>
 
-      {superAdmin ? (
+      {superAdmin && !showCreateCampYearForm ? (
+        <div className="card">
+          <button type="button" className="btn" onClick={() => setShowCreateCampYearForm(true)}>
+            Add new camp year
+          </button>
+        </div>
+      ) : null}
+
+      {superAdmin && showCreateCampYearForm ? (
         <form className="card stack" onSubmit={handleCreate}>
           <h2 style={{ marginTop: 0 }}>New camp year</h2>
           <label>
@@ -621,9 +626,18 @@ export function CampConfigurationPage(): React.ReactElement {
               onChange={(event) => setCreateCapacity(event.target.value)}
             />
           </label>
-          <button type="submit" className="btn">
-            Create camp year
-          </button>
+          <div className="row">
+            <button type="submit" className="btn">
+              Create camp year
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setShowCreateCampYearForm(false)}
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       ) : null}
 
@@ -897,24 +911,6 @@ export function CampConfigurationPage(): React.ReactElement {
               name="feeCutoverAt"
               type="datetime-local"
               defaultValue={datetimeLocalInputFromIso(selected.feeCutoverAt)}
-            />
-          </label>
-          <label>
-            Discount tier notes (placeholder)
-            <textarea
-              name="discountTierNotes"
-              rows={3}
-              defaultValue={selected.discountTierNotes ?? ""}
-              style={{ width: "100%", maxWidth: "480px" }}
-            />
-          </label>
-          <label>
-            Merchandise placeholder notes
-            <textarea
-              name="merchandisePlaceholderNotes"
-              rows={3}
-              defaultValue={selected.merchandisePlaceholderNotes ?? ""}
-              style={{ width: "100%", maxWidth: "480px" }}
             />
           </label>
           <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
