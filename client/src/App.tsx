@@ -70,6 +70,14 @@ export function App(): React.ReactElement {
             }
           />
           <Route path="people" element={<PeoplePage />} />
+          <Route
+            path="people/add"
+            element={
+              <SuperAdminRoute>
+                <PeoplePage mode="add" />
+              </SuperAdminRoute>
+            }
+          />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="dorms" element={<DormsPage />} />
           <Route path="reports" element={<ReportsPage />} />

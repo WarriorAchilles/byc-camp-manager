@@ -479,6 +479,29 @@ button {
   align-items: center;
 }
 
+.people-add-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.people-add-tabs .btn.secondary.active {
+  background: var(--brand-slate-700);
+  border-color: var(--brand-slate-700);
+  color: #fffaf8;
+}
+
+.people-add-form {
+  max-width: 44rem;
+}
+
+.people-add-button,
+.people-back-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .camper-price-label {
   justify-content: flex-start;
   gap: 0.4rem;
@@ -548,6 +571,7 @@ textarea:hover {
   border-color: var(--border-strong);
 }
 
+input:not([type]),
 input[type="email"],
 input[type="password"],
 input[type="text"],

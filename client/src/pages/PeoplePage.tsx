@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
@@ -87,10 +87,18 @@ function paymentStatusLabel(paymentStatus: CamperRow["paymentStatus"]): string {
   return "Unpaid";
 }
 
-export function PeoplePage(): React.ReactElement {
+type PeoplePageProps = {
+  mode?: "list" | "add";
+};
+
+type AddPersonKind = "camper" | "worker" | "leader";
+
+export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactElement {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const superAdmin = user?.role === "super_admin";
   const canAddPeople = superAdmin;
+  const [addPersonKind, setAddPersonKind] = useState<AddPersonKind>("camper");
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState<string>("");
@@ -252,8 +260,7 @@ export function PeoplePage(): React.ReactElement {
         body: JSON.stringify(buildCamperPayload(confirmOverride)),
       });
       resetCapacityUi();
-      await loadPeopleData(campYearId);
-      await loadCampYears();
+      navigate("/admin/people");
     } catch (caught) {
       const httpError = caught as ApiHttpError;
       if (httpError.status === 409 && httpError.body && typeof httpError.body === "object") {
@@ -295,8 +302,7 @@ export function PeoplePage(): React.ReactElement {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      await loadPeopleData(campYearId);
-      setWEmail(`worker-${Date.now()}@example.com`);
+      navigate("/admin/people");
     } catch (caught) {
       const httpError = caught as ApiHttpError;
       setWorkerFormError(
@@ -324,8 +330,7 @@ export function PeoplePage(): React.ReactElement {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      await loadPeopleData(campYearId);
-      setDlEmail(`leader-${Date.now()}@example.com`);
+      navigate("/admin/people");
     } catch (caught) {
       const httpError = caught as ApiHttpError;
       setLeaderFormError(
@@ -406,13 +411,13 @@ export function PeoplePage(): React.ReactElement {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>People</h1>
+      <h1 style={{ marginTop: 0 }}>{mode === "add" ? "Add people" : "People"}</h1>
       <p className="muted">
-        {canAddPeople ? (
+        {mode === "add" ? (
+          <>Choose the type of person to add for the selected camp year.</>
+        ) : canAddPeople ? (
           <>
-            Add campers, workers, and dorm leaders for the selected camp year. Campers use camp capacity as a
-            soft limit (warn, then optional override). Workers and dorm leaders do not count toward camper
-            capacity.
+            View campers, workers, and dorm leaders for the selected camp year.
           </>
         ) : (
           <>
@@ -421,6 +426,20 @@ export function PeoplePage(): React.ReactElement {
           </>
         )}
       </p>
+      {mode === "list" && canAddPeople ? (
+        <p>
+          <Link className="btn people-add-button" to="/admin/people/add">
+            Add people
+          </Link>
+        </p>
+      ) : null}
+      {mode === "add" ? (
+        <p>
+          <Link className="btn secondary people-back-button" to="/admin/people">
+            ← Back to people
+          </Link>
+        </p>
+      ) : null}
 
       {loading ? <p className="muted">Loading…</p> : null}
       {listError ? <p className="error">{listError}</p> : null}
@@ -462,9 +481,52 @@ export function PeoplePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {canAddPeople && campYearId ? (
+      {mode === "add" && canAddPeople && campYearId ? (
         <>
-          <form className="card stack" onSubmit={(event) => void handleCreateCamper(event)}>
+          <div className="people-add-tabs" role="tablist" aria-label="Person type">
+            <button
+              id="add-camper-tab"
+              type="button"
+              role="tab"
+              aria-selected={addPersonKind === "camper"}
+              aria-controls="add-camper-panel"
+              className={`btn secondary${addPersonKind === "camper" ? " active" : ""}`}
+              onClick={() => setAddPersonKind("camper")}
+            >
+              Add camper
+            </button>
+            <button
+              id="add-worker-tab"
+              type="button"
+              role="tab"
+              aria-selected={addPersonKind === "worker"}
+              aria-controls="add-worker-panel"
+              className={`btn secondary${addPersonKind === "worker" ? " active" : ""}`}
+              onClick={() => setAddPersonKind("worker")}
+            >
+              Add worker
+            </button>
+            <button
+              id="add-leader-tab"
+              type="button"
+              role="tab"
+              aria-selected={addPersonKind === "leader"}
+              aria-controls="add-leader-panel"
+              className={`btn secondary${addPersonKind === "leader" ? " active" : ""}`}
+              onClick={() => setAddPersonKind("leader")}
+            >
+              Add leader
+            </button>
+          </div>
+
+          {addPersonKind === "camper" ? (
+            <form
+              id="add-camper-panel"
+              role="tabpanel"
+              aria-labelledby="add-camper-tab"
+              className="card stack people-add-form"
+              onSubmit={(event) => void handleCreateCamper(event)}
+            >
             <h2 style={{ marginTop: 0 }}>Add camper</h2>
             {capacityWarning ? (
               <div
@@ -602,9 +664,17 @@ export function PeoplePage(): React.ReactElement {
             <button type="submit" className="btn">
               {capacityWarning ? "Confirm and add camper" : "Add camper"}
             </button>
-          </form>
+            </form>
+          ) : null}
 
-          <form className="card stack" onSubmit={(event) => void handleCreateWorker(event)}>
+          {addPersonKind === "worker" ? (
+            <form
+              id="add-worker-panel"
+              role="tabpanel"
+              aria-labelledby="add-worker-tab"
+              className="card stack people-add-form"
+              onSubmit={(event) => void handleCreateWorker(event)}
+            >
             <h2 style={{ marginTop: 0 }}>Add worker</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
               Volunteers / staff. Email must be unique per camp year.
@@ -687,9 +757,17 @@ export function PeoplePage(): React.ReactElement {
             <button type="submit" className="btn">
               Add worker
             </button>
-          </form>
+            </form>
+          ) : null}
 
-          <form className="card stack" onSubmit={(event) => void handleCreateLeader(event)}>
+          {addPersonKind === "leader" ? (
+            <form
+              id="add-leader-panel"
+              role="tabpanel"
+              aria-labelledby="add-leader-tab"
+              className="card stack people-add-form"
+              onSubmit={(event) => void handleCreateLeader(event)}
+            >
             <h2 style={{ marginTop: 0 }}>Add dorm leader</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
               Assign leaders to camper dorms on the{" "}
@@ -737,11 +815,14 @@ export function PeoplePage(): React.ReactElement {
             <button type="submit" className="btn">
               Add dorm leader
             </button>
-          </form>
+            </form>
+          ) : null}
         </>
       ) : null}
 
-      <div className="card">
+      {mode === "list" ? (
+        <>
+          <div className="card">
         <h2 style={{ marginTop: 0 }}>Campers</h2>
         {deleteCamperError ? <p className="error">{deleteCamperError}</p> : null}
         {paymentStatusError ? <p className="error">{paymentStatusError}</p> : null}
@@ -804,7 +885,7 @@ export function PeoplePage(): React.ReactElement {
             </table>
           </div>
         )}
-      </div>
+          </div>
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Workers</h2>
@@ -883,6 +964,8 @@ export function PeoplePage(): React.ReactElement {
           <Link to="/admin/imports">Imports</Link> page (CSV preview, column mapping, and capacity override). JSON bulk
           camper import remains available at <code>POST /api/admin/camp-years/:id/campers/import</code> for integrations.
         </p>
+      ) : null}
+        </>
       ) : null}
 
       {camperToDelete ? (
