@@ -4,7 +4,7 @@ import { useAuth } from "../auth";
 
 export function LoginPage(): React.ReactElement {
   const { user, login, loading } = useAuth();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -18,7 +18,7 @@ export function LoginPage(): React.ReactElement {
     setFormError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Login failed");
     } finally {
@@ -45,13 +45,13 @@ export function LoginPage(): React.ReactElement {
         </div>
         <form className="stack" onSubmit={(event) => void onSubmit(event)}>
           <div className="stack">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="username">Username</label>
             <input
-              id="email"
-              type="email"
+              id="username"
+              type="text"
               autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
               required
             />
           </div>

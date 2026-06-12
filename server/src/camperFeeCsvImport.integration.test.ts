@@ -32,8 +32,8 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "fee-csv-super@example.com";
-const campAdminEmail = "fee-csv-camp@example.com";
+const superUsername = "fee-csv-super@example.com";
+const campAdminUsername = "fee-csv-camp@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import API (super admin)", () => {
@@ -52,14 +52,14 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.adminUser.deleteMany({
-      where: { email: { in: [superEmail, campAdminEmail] } },
+      where: { username: { in: [superUsername, campAdminUsername] } },
     });
 
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.createMany({
       data: [
-        { email: superEmail, passwordHash, role: AdminRole.super_admin, isActive: true },
-        { email: campAdminEmail, passwordHash, role: AdminRole.camp_admin, isActive: true },
+        { username: superUsername, passwordHash, role: AdminRole.super_admin, isActive: true },
+        { username: campAdminUsername, passwordHash, role: AdminRole.camp_admin, isActive: true },
       ],
     });
 
@@ -83,13 +83,13 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.adminUser.deleteMany({
-      where: { email: { in: [superEmail, campAdminEmail] } },
+      where: { username: { in: [superUsername, campAdminUsername] } },
     });
     await prisma.$disconnect();
   });
 
   it("returns 403 for camp_admin on fee CSV preview", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Fees Due,Fees Paid\nAda,Lovelace,165,165\n";
     const response = await request(app)
@@ -118,7 +118,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
       },
     });
 
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Fees Due,Fees Paid\nAda,Lovelace,$165.00,$165.00\n";
 
@@ -145,7 +145,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
   });
 
   it("returns a row error when no camper matches the name", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Fees Due,Fees Paid\nNobody,Here,10,10\n";
 
@@ -177,7 +177,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
     await prisma.camper.create({ data: { ...base, qrToken: qr1, guardianEmail: "g1@example.com" } });
     await prisma.camper.create({ data: { ...base, qrToken: qr2, guardianEmail: "g2@example.com" } });
 
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Fees Due,Fees Paid\nSam,Same,50,50\n";
 
@@ -209,7 +209,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
       },
     });
 
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Fees Due,Fees Paid\nStripe,Paid,180.00,50.00\n";
 
@@ -245,7 +245,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
       },
     });
 
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText =
       "First Name,Last Name,Fees Due,Fees Paid\nMorgan,FeeSkip,20.00,20.00\nNobody,Here,10,10\n";

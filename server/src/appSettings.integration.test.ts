@@ -29,8 +29,8 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "super-app-settings-test@example.com";
-const campAdminEmail = "camp-app-settings-test@example.com";
+const superUsername = "super-app-settings-test@example.com";
+const campAdminUsername = "camp-app-settings-test@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("app settings API", () => {
@@ -51,13 +51,13 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("app settings API", () 
     await prisma.campYear.deleteMany({});
     await prisma.appSettings.deleteMany({});
 
-    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
+    await prisma.adminUser.deleteMany({ where: { username: { in: [superUsername, campAdminUsername] } } });
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.create({
-      data: { email: superEmail, passwordHash, role: AdminRole.super_admin, isActive: true },
+      data: { username: superUsername, passwordHash, role: AdminRole.super_admin, isActive: true },
     });
     await prisma.adminUser.create({
-      data: { email: campAdminEmail, passwordHash, role: AdminRole.camp_admin, isActive: true },
+      data: { username: campAdminUsername, passwordHash, role: AdminRole.camp_admin, isActive: true },
     });
 
     const older = await prisma.campYear.create({
@@ -86,17 +86,17 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("app settings API", () 
   afterAll(async () => {
     await prisma.appSettings.deleteMany({});
     await prisma.campYear.deleteMany({});
-    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
+    await prisma.adminUser.deleteMany({ where: { username: { in: [superUsername, campAdminUsername] } } });
     await prisma.$disconnect();
   });
 
   async function superHeader(): Promise<string> {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
   }
 
   async function campAdminHeader(): Promise<string> {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
   }
 

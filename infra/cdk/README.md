@@ -52,7 +52,7 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `certificateArn` | Optional ACM certificate ARN for the admin hostname. When set, the ALB serves HTTPS on port 443 and redirects HTTP to HTTPS. |
 | `stripeSecretKeySecretArn` | Optional full Secrets Manager ARN containing the Stripe restricted/secret API key. Include the generated suffix. |
 | `stripeWebhookSecretArn` | Optional full Secrets Manager ARN containing the Stripe webhook signing secret. Include the generated suffix. |
-| `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `email` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
+| `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `username` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
 
 ## HTTPS and CORS
 
@@ -92,7 +92,7 @@ To enable first-admin bootstrap in the post-deploy step, create a Secrets Manage
 
 ```json
 {
-  "email": "admin@example.org",
+  "username": "admin",
   "password": "long-random-password"
 }
 ```
@@ -114,7 +114,7 @@ The script runs two one-off ECS Fargate tasks using the deployed task definition
 1. `cd /app/server && npx prisma migrate deploy`
 2. `cd /app/server && npm run db:seed:prod`
 
-`prisma migrate deploy` is safe to run on every deploy; it applies only pending migrations. The seed step is only for first-admin bootstrap and is idempotent when the configured admin email already exists. Do not use the seed step for routine password resets.
+`prisma migrate deploy` is safe to run on every deploy; it applies only pending migrations. The seed step is only for first-admin bootstrap and skips creation when any super admin already exists. Do not use the seed step for routine password resets.
 
 Low-level equivalent for the migration task:
 

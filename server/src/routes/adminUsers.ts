@@ -21,17 +21,17 @@ adminUsersRouter.use(requireAuth);
 adminUsersRouter.use(requireRole(AdminRole.super_admin));
 
 const createBody = z.object({
-  email: z.string().email(),
+  username: z.string().trim().min(1).max(100),
   password: z.string().min(12),
   role: z.nativeEnum(AdminRole),
 });
 
 adminUsersRouter.get("/", async (_req, res) => {
   const users = await prisma.adminUser.findMany({
-    orderBy: { email: "asc" },
+    orderBy: { username: "asc" },
     select: {
       id: true,
-      email: true,
+      username: true,
       role: true,
       isActive: true,
       createdAt: true,
@@ -52,12 +52,12 @@ adminUsersRouter.post("/", async (req: AuthedRequest, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const email = parsed.data.email.trim().toLowerCase();
+  const username = parsed.data.username.toLowerCase();
   const passwordHash = await hashPassword(parsed.data.password);
   try {
     const created = await prisma.adminUser.create({
       data: {
-        email,
+        username,
         passwordHash,
         role: parsed.data.role,
         createdById: actor.id,
@@ -65,7 +65,7 @@ adminUsersRouter.post("/", async (req: AuthedRequest, res) => {
       },
       select: {
         id: true,
-        email: true,
+        username: true,
         role: true,
         isActive: true,
         createdAt: true,
@@ -73,7 +73,7 @@ adminUsersRouter.post("/", async (req: AuthedRequest, res) => {
     });
     res.status(201).json(created);
   } catch {
-    res.status(409).json({ error: "Email already in use" });
+    res.status(409).json({ error: "Username already in use" });
   }
 });
 
@@ -107,7 +107,7 @@ adminUsersRouter.patch("/:id", async (req: AuthedRequest, res) => {
       data: { isActive: parsed.data.isActive },
       select: {
         id: true,
-        email: true,
+        username: true,
         role: true,
         isActive: true,
       },
@@ -138,7 +138,7 @@ adminUsersRouter.post("/:id/reset-password", async (req, res) => {
     const updated = await prisma.adminUser.update({
       where: { id },
       data: { passwordHash },
-      select: { id: true, email: true },
+      select: { id: true, username: true },
     });
     res.json(updated);
   } catch {

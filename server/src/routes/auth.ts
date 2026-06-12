@@ -10,7 +10,7 @@ import { requireAuth } from "../middleware/auth.js";
 export const authRouter = Router();
 
 const loginBody = z.object({
-  email: z.string().email(),
+  username: z.string().trim().min(1).max(100),
   password: z.string().min(1),
 });
 
@@ -20,17 +20,17 @@ authRouter.post("/login", async (req, res) => {
     res.status(400).json({ error: "Invalid request" });
     return;
   }
-  const email = parsed.data.email.trim().toLowerCase();
-  const user = await prisma.adminUser.findUnique({ where: { email } });
+  const username = parsed.data.username.toLowerCase();
+  const user = await prisma.adminUser.findUnique({ where: { username } });
   if (!user || !user.isActive) {
     writeOpsLog("admin_login_failed", { reason: "invalid_credentials" });
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "Invalid username or password" });
     return;
   }
   const valid = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!valid) {
     writeOpsLog("admin_login_failed", { reason: "invalid_credentials" });
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "Invalid username or password" });
     return;
   }
   writeOpsLog("admin_login_succeeded", { adminUserId: user.id, role: user.role });
@@ -47,7 +47,7 @@ authRouter.post("/login", async (req, res) => {
   res.json({
     user: {
       id: user.id,
-      email: user.email,
+      username: user.username,
       role: user.role,
     },
   });
@@ -66,7 +66,7 @@ authRouter.get("/me", requireAuth, (req: AuthedRequest, res) => {
   }
   res.json({
     id: user.id,
-    email: user.email,
+    username: user.username,
     role: user.role,
     isActive: user.isActive,
   });

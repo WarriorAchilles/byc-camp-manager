@@ -18,18 +18,18 @@ async function canQueryDatabase(): Promise<boolean> {
 
 const integrationDbReady = await canQueryDatabase();
 
-const superEmail = "super-auth-test@example.com";
-const campEmail = "camp-auth-test@example.com";
+const superUsername = "super-auth-test@example.com";
+const campUsername = "camp-auth-test@example.com";
 const password = "test-password-12chars";
 
 async function resetUsers(): Promise<void> {
   await prisma.adminUser.deleteMany({
-    where: { email: { in: [superEmail, campEmail, "inactive@example.com"] } },
+    where: { username: { in: [superUsername, campUsername, "inactive@example.com"] } },
   });
   const superHash = await hashPassword(password);
   await prisma.adminUser.create({
     data: {
-      email: superEmail,
+      username: superUsername,
       passwordHash: superHash,
       role: AdminRole.super_admin,
       isActive: true,
@@ -37,7 +37,7 @@ async function resetUsers(): Promise<void> {
   });
   await prisma.adminUser.create({
     data: {
-      email: campEmail,
+      username: campUsername,
       passwordHash: superHash,
       role: AdminRole.camp_admin,
       isActive: true,
@@ -58,7 +58,7 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
 
   afterAll(async () => {
     await prisma.adminUser.deleteMany({
-      where: { email: { in: [superEmail, campEmail, "inactive@example.com"] } },
+      where: { username: { in: [superUsername, campUsername, "inactive@example.com"] } },
     });
     await prisma.$disconnect();
   });
@@ -66,9 +66,9 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
   it("logs in successfully and returns user", async () => {
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ email: superEmail, password });
+      .send({ username: superUsername, password });
     expect(res.status).toBe(200);
-    expect(res.body.user.email).toBe(superEmail);
+    expect(res.body.user.username).toBe(superUsername);
     expect(res.body.user.role).toBe("super_admin");
     expect(res.headers["set-cookie"]).toBeDefined();
   });
@@ -76,7 +76,7 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
   it("rejects wrong password", async () => {
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ email: superEmail, password: "wrong-password-here" });
+      .send({ username: superUsername, password: "wrong-password-here" });
     expect(res.status).toBe(401);
   });
 
@@ -84,7 +84,7 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     const inactiveHash = await hashPassword(password);
     await prisma.adminUser.create({
       data: {
-        email: "inactive@example.com",
+        username: "inactive@example.com",
         passwordHash: inactiveHash,
         role: AdminRole.camp_admin,
         isActive: false,
@@ -92,14 +92,14 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     });
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ email: "inactive@example.com", password });
+      .send({ username: "inactive@example.com", password });
     expect(res.status).toBe(401);
   });
 
   it("returns current user from cookie session", async () => {
     const login = await request(app)
       .post("/api/auth/login")
-      .send({ email: superEmail, password });
+      .send({ username: superUsername, password });
     const setCookie = login.headers["set-cookie"];
     const cookieHeader = Array.isArray(setCookie)
       ? setCookie.join("; ")
@@ -107,18 +107,42 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     expect(cookieHeader).toBeDefined();
     const res = await request(app).get("/api/auth/me").set("Cookie", cookieHeader!);
     expect(res.status).toBe(200);
-    expect(res.body.email).toBe(superEmail);
+    expect(res.body.username).toBe(superUsername);
   });
 
   it("blocks camp admin from super-admin user management", async () => {
     const campUser = await prisma.adminUser.findUniqueOrThrow({
-      where: { email: campEmail },
+      where: { username: campUsername },
     });
     const token = signAuthToken({ sub: campUser.id, role: campUser.role });
     const res = await request(app)
       .get("/api/admin/users")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(403);
+  });
+
+  it("allows a super admin to reset another admin password", async () => {
+    const superUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: superUsername },
+    });
+    const campUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: campUsername },
+    });
+    const token = signAuthToken({ sub: superUser.id, role: superUser.role });
+    const newPassword = "new-test-password-12chars";
+
+    const resetResponse = await request(app)
+      .post(`/api/admin/users/${campUser.id}/reset-password`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ newPassword });
+
+    expect(resetResponse.status).toBe(200);
+    expect(resetResponse.body.username).toBe(campUsername);
+
+    const loginResponse = await request(app)
+      .post("/api/auth/login")
+      .send({ username: campUsername, password: newPassword });
+    expect(loginResponse.status).toBe(200);
   });
 
   it("rejects protected admin route without auth", async () => {

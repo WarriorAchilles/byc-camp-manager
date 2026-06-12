@@ -400,7 +400,7 @@ button {
     margin-top: 0.15rem;
   }
 
-  .sidebar-user-email {
+  .sidebar-user-username {
     flex: 1 1 140px;
     margin-bottom: 0;
     font-size: 0.72rem;
@@ -414,7 +414,7 @@ button {
   }
 }
 
-.sidebar-user-email {
+.sidebar-user-username {
   font-size: 0.78rem;
   color: var(--sidebar-muted);
   word-break: break-word;

@@ -7,7 +7,7 @@ export function UsersAdminPage(): React.ReactElement {
   const { user } = useAuth();
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [newEmail, setNewEmail] = useState("");
+  const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<AdminRole>("camp_admin");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -37,12 +37,12 @@ export function UsersAdminPage(): React.ReactElement {
       await apiJson("/api/admin/users", {
         method: "POST",
         body: JSON.stringify({
-          email: newEmail,
+          username: newUsername,
           password: newPassword,
           role: newRole,
         }),
       });
-      setNewEmail("");
+      setNewUsername("");
       setNewPassword("");
       await loadUsers();
     } catch (error) {
@@ -96,12 +96,13 @@ export function UsersAdminPage(): React.ReactElement {
         <form className="stack" onSubmit={(event) => void onCreate(event)}>
           <div className="row">
             <div className="stack" style={{ flex: 1, minWidth: 200 }}>
-              <label htmlFor="new-email">Email</label>
+              <label htmlFor="new-username">Username</label>
               <input
-                id="new-email"
-                type="email"
-                value={newEmail}
-                onChange={(event) => setNewEmail(event.target.value)}
+                id="new-username"
+                type="text"
+                autoComplete="username"
+                value={newUsername}
+                onChange={(event) => setNewUsername(event.target.value)}
                 required
               />
             </div>
@@ -140,7 +141,7 @@ export function UsersAdminPage(): React.ReactElement {
           <table>
             <thead>
               <tr>
-                <th>Email</th>
+                <th>Username</th>
                 <th>Role</th>
                 <th>Active</th>
                 <th>Actions</th>
@@ -149,7 +150,7 @@ export function UsersAdminPage(): React.ReactElement {
             <tbody>
               {users.map((row) => (
                 <tr key={row.id}>
-                  <td>{row.email}</td>
+                  <td>{row.username}</td>
                   <td>{row.role.replace("_", " ")}</td>
                   <td>{row.isActive ? "Yes" : "No"}</td>
                   <td className="row">

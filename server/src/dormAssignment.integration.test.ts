@@ -36,7 +36,7 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "super-dorm-assign-test@example.com";
+const superUsername = "super-dorm-assign-test@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", () => {
@@ -59,11 +59,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
 
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { username: superUsername } });
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.create({
       data: {
-        email: superEmail,
+        username: superUsername,
         passwordHash,
         role: AdminRole.super_admin,
         isActive: true,
@@ -159,12 +159,12 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     await prisma.dorm.deleteMany({});
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { username: superUsername } });
     await prisma.$disconnect();
   });
 
   async function authHeader(): Promise<string> {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     return `Bearer ${token}`;
   }

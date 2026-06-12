@@ -2,7 +2,7 @@
 
 ## Human Tasks Required
 
-- [ ] Provide the initial super admin email address and any required bootstrap secret values before deploying outside local development.
+- [ ] Provide the initial super admin username and any required bootstrap secret values before deploying outside local development.
 - [ ] Confirm whether production admin sessions should use JWTs or server-managed sessions if stakeholders have a preference.
 
 ## Spec References
@@ -24,7 +24,7 @@ Create the runnable application foundation for the protected admin system, inclu
 
 - [ ] Inspect the repository and scaffold missing frontend, backend, database, test, lint, and build tooling using the stack in the spec.
 - [ ] Add environment configuration examples for database connection, auth secrets, and local development ports without committing real secrets.
-- [ ] Create the admin user data model with email, password hash, role, creator reference, and active status.
+- [ ] Create the admin user data model with username, password hash, role, creator reference, and active status.
 - [ ] Implement secure password hashing and authentication endpoints for login, logout, and current-user lookup.
 - [ ] Add auth middleware that protects admin API routes and distinguishes `super_admin` from `camp_admin`.
 - [ ] Build a responsive admin layout with navigation placeholders for camp configuration, people, imports, dorms, check-in, and reports.

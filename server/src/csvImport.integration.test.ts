@@ -31,8 +31,8 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "csv-import-super@example.com";
-const campAdminEmail = "csv-import-camp@example.com";
+const superUsername = "csv-import-super@example.com";
+const campAdminUsername = "csv-import-camp@example.com";
 const password = "test-password-12chars";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -56,14 +56,14 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.adminUser.deleteMany({
-      where: { email: { in: [superEmail, campAdminEmail] } },
+      where: { username: { in: [superUsername, campAdminUsername] } },
     });
 
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.createMany({
       data: [
-        { email: superEmail, passwordHash, role: AdminRole.super_admin, isActive: true },
-        { email: campAdminEmail, passwordHash, role: AdminRole.camp_admin, isActive: true },
+        { username: superUsername, passwordHash, role: AdminRole.super_admin, isActive: true },
+        { username: campAdminUsername, passwordHash, role: AdminRole.camp_admin, isActive: true },
       ],
     });
 
@@ -87,13 +87,13 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.adminUser.deleteMany({
-      where: { email: { in: [superEmail, campAdminEmail] } },
+      where: { username: { in: [superUsername, campAdminUsername] } },
     });
     await prisma.$disconnect();
   });
 
   it("returns 403 for camp_admin on CSV preview", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = "First Name,Last Name,Gender,Date of Birth,Parent Guardian Name,Email Address,Parent Phone\nX,Y,Female,2011-01-01,P,p@e.com,5551234567\n";
     const response = await request(app)
@@ -104,7 +104,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("previews BYC worker dummy file without row errors", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = readFileSync(workerDummyPath, "utf8");
     const response = await request(app)
@@ -117,7 +117,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("previews BYC leader dummy file without row errors", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = readFileSync(leaderDummyPath, "utf8");
     const response = await request(app)
@@ -130,7 +130,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("previews BYC camper dummy file without row errors", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = readFileSync(camperDummyPath, "utf8");
     const response = await request(app)
@@ -144,7 +144,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("commits worker import when duplicate emails appear in the same batch", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = [
       "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
@@ -164,7 +164,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("commits camper import in a transaction", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = readFileSync(camperDummyPath, "utf8");
     const response = await request(app)
@@ -182,7 +182,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("blocks worker commit when a row has errors unless skipInvalidRows is true", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = [
       "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
@@ -209,7 +209,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
   });
 
   it("returns no_valid_rows_to_commit when skipInvalidRows is true but every row has errors", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = [
       "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",

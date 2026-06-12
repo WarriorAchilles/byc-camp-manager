@@ -82,7 +82,7 @@ There are no login-based roles for parents, campers, dorm leaders, or workers. *
 
 ### Authentication
 
-- Email/password authentication for admin users.
+- Username/password authentication for admin users.
 - Super admins can create, deactivate, and reset passwords for any admin user.
 - Session or token-based auth (JWT) for API access.
 - No self-service registration for admin accounts - they must be created by a super admin.
@@ -632,7 +632,7 @@ Dorm leaders are not created through the public worker registration form unless 
 ### Admin User
 
 - User ID
-- Email
+- Username
 - Password hash
 - Role (super_admin / camp_admin)
 - Created by (FK)

@@ -28,8 +28,8 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "super-camp-mgmt-test@example.com";
-const campAdminEmail = "camp-admin-camp-mgmt-test@example.com";
+const superUsername = "super-camp-mgmt-test@example.com";
+const campAdminUsername = "camp-admin-camp-mgmt-test@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", () => {
@@ -49,18 +49,18 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
 
-    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
+    await prisma.adminUser.deleteMany({ where: { username: { in: [superUsername, campAdminUsername] } } });
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.createMany({
       data: [
         {
-          email: superEmail,
+          username: superUsername,
           passwordHash,
           role: AdminRole.super_admin,
           isActive: true,
         },
         {
-          email: campAdminEmail,
+          username: campAdminUsername,
           passwordHash,
           role: AdminRole.camp_admin,
           isActive: true,
@@ -107,7 +107,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     await prisma.dorm.deleteMany({});
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
-    await prisma.adminUser.deleteMany({ where: { email: { in: [superEmail, campAdminEmail] } } });
+    await prisma.adminUser.deleteMany({ where: { username: { in: [superUsername, campAdminUsername] } } });
     await prisma.$disconnect();
   });
 
@@ -128,7 +128,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   }
 
   it("returns 409 when admin entry exceeds capacity until override is confirmed", async () => {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
 
     const first = await request(app)
@@ -155,7 +155,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   it("returns 409 for CSV-style bulk import until override is confirmed", async () => {
     await prisma.camper.deleteMany({ where: { campYearId } });
 
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
 
     const rows = [camperPayload(), camperPayload()];
@@ -175,8 +175,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows only super admins to delete campers", async () => {
-    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
-    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
 
@@ -206,7 +206,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows camp admins to mark and unmark campers as paid", async () => {
-    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
     const created = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
@@ -230,7 +230,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows only super admins to delete age groups, dorms, and camp years", async () => {
-    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
     const bracket = await prisma.ageGroupBracket.findFirstOrThrow({ where: { campYearId } });
 
@@ -252,8 +252,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows only super admins to disable check-in confirmation emails", async () => {
-    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
-    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: campAdminEmail } });
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
 
@@ -272,7 +272,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("creates camp years with optional check-in features disabled by default", async () => {
-    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
 
     const created = await request(app)
@@ -292,7 +292,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("deletes age groups and dorms while preserving and unassigning related records", async () => {
-    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const bracket = await prisma.ageGroupBracket.findFirstOrThrow({ where: { campYearId } });
     const createdCamper = await request(app)
@@ -321,7 +321,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("requires the exact confirmation label before deleting a camp year and its records", async () => {
-    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const createdCamper = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)

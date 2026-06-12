@@ -15,7 +15,7 @@ type AuthState = {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -42,11 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }): React.React
     void refresh();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     setError(null);
     await apiJson<{ user: CurrentUser }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
     await refresh();
   }, [refresh]);

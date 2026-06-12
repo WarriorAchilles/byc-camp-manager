@@ -42,14 +42,14 @@ export type AdminRole = "super_admin" | "camp_admin";
 
 export type CurrentUser = {
   id: string;
-  email: string;
+  username: string;
   role: AdminRole;
   isActive: boolean;
 };
 
 export type AdminUserRow = {
   id: string;
-  email: string;
+  username: string;
   role: AdminRole;
   isActive: boolean;
   createdAt: string;

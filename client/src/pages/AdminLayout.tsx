@@ -89,7 +89,7 @@ export function AdminLayout(): React.ReactElement {
         <div className="sidebar-spacer" aria-hidden="true" />
         {user ? (
           <div className="sidebar-footer">
-            <div className="sidebar-user-email">{user.email}</div>
+            <div className="sidebar-user-username">{user.username}</div>
             <button type="button" className="btn secondary" onClick={() => void logout()}>
               Sign out
             </button>

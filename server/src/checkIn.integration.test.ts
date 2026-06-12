@@ -41,7 +41,7 @@ if (integrationDbReady) {
   }
 }
 
-const superEmail = "super-check-in-test@example.com";
+const superUsername = "super-check-in-test@example.com";
 const password = "test-password-12chars";
 
 describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
@@ -63,11 +63,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
 
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { username: superUsername } });
     const passwordHash = await hashPassword(password);
     await prisma.adminUser.create({
       data: {
-        email: superEmail,
+        username: superUsername,
         passwordHash,
         role: AdminRole.super_admin,
         isActive: true,
@@ -126,19 +126,19 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     await prisma.dorm.deleteMany({});
     await prisma.ageGroupBracket.deleteMany({});
     await prisma.campYear.deleteMany({});
-    await prisma.adminUser.deleteMany({ where: { email: superEmail } });
+    await prisma.adminUser.deleteMany({ where: { username: superUsername } });
     await prisma.$disconnect();
   });
 
   async function authHeader(): Promise<string> {
-    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { email: superEmail } });
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
   }
 
   async function authHeaderForRole(role: AdminRole): Promise<string> {
     const admin = await prisma.adminUser.create({
       data: {
-        email: `${role}-${randomUUID()}@example.com`,
+        username: `${role}-${randomUUID()}@example.com`,
         passwordHash: await hashPassword(password),
         role,
         isActive: true,

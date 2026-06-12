@@ -53,7 +53,7 @@ enum DormGenderDesignation {
 
 model AdminUser {
   id           String    @id @default(uuid())
-  email        String    @unique
+  username     String    @unique
   passwordHash String    @map("password_hash")
   role         AdminRole
   createdById  String?   @map("created_by_id")
