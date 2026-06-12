@@ -83,10 +83,30 @@ export function UsersAdminPage(): React.ReactElement {
     }
   }
 
+  async function deleteUser(targetId: string, username: string): Promise<void> {
+    const confirmed = window.confirm(
+      `Permanently delete "${username}"? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await apiJson(`/api/admin/users/${targetId}`, {
+        method: "DELETE",
+      });
+      await loadUsers();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Delete failed");
+    }
+  }
+
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Admin users</h1>
-      <p className="muted">Super admins can create, deactivate, and reset passwords.</p>
+      <p className="muted">
+        Super admins can create, deactivate, delete, and reset passwords.
+      </p>
 
       {loadError ? <p className="error">{loadError}</p> : null}
       {actionError ? <p className="error">{actionError}</p> : null}
@@ -170,6 +190,14 @@ export function UsersAdminPage(): React.ReactElement {
                       onClick={() => void resetPassword(row.id)}
                     >
                       Reset password
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={row.id === user?.id}
+                      onClick={() => void deleteUser(row.id, row.username)}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>

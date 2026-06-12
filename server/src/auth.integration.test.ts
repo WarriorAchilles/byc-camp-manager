@@ -145,6 +145,53 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     expect(loginResponse.status).toBe(200);
   });
 
+  it("allows a super admin to permanently delete another admin", async () => {
+    const superUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: superUsername },
+    });
+    const campUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: campUsername },
+    });
+    const createdUsername = "created-by-deleted-admin";
+    await prisma.adminUser.create({
+      data: {
+        username: createdUsername,
+        passwordHash: await hashPassword(password),
+        role: AdminRole.camp_admin,
+        createdById: campUser.id,
+      },
+    });
+    const token = signAuthToken({ sub: superUser.id, role: superUser.role });
+
+    const deleteResponse = await request(app)
+      .delete(`/api/admin/users/${campUser.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(deleteResponse.status).toBe(204);
+    await expect(
+      prisma.adminUser.findUnique({ where: { username: campUsername } }),
+    ).resolves.toBeNull();
+    const createdUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: createdUsername },
+    });
+    expect(createdUser.createdById).toBeNull();
+    await prisma.adminUser.delete({ where: { id: createdUser.id } });
+  });
+
+  it("prevents a super admin from deleting their own account", async () => {
+    const superUser = await prisma.adminUser.findUniqueOrThrow({
+      where: { username: superUsername },
+    });
+    const token = signAuthToken({ sub: superUser.id, role: superUser.role });
+
+    const response = await request(app)
+      .delete(`/api/admin/users/${superUser.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("You cannot delete your own account");
+  });
+
   it("rejects protected admin route without auth", async () => {
     const res = await request(app).get("/api/admin/ping");
     expect(res.status).toBe(401);

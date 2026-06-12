@@ -118,6 +118,36 @@ adminUsersRouter.patch("/:id", async (req: AuthedRequest, res) => {
   }
 });
 
+adminUsersRouter.delete("/:id", async (req: AuthedRequest, res) => {
+  const actor = req.adminUser;
+  if (!actor) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const id = routeId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  if (id === actor.id) {
+    res.status(400).json({ error: "You cannot delete your own account" });
+    return;
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.adminUser.updateMany({
+        where: { createdById: id },
+        data: { createdById: null },
+      }),
+      prisma.adminUser.delete({ where: { id } }),
+    ]);
+    res.status(204).send();
+  } catch {
+    res.status(404).json({ error: "User not found" });
+  }
+});
+
 const resetPasswordBody = z.object({
   newPassword: z.string().min(12),
 });

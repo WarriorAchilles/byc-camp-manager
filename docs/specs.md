@@ -83,7 +83,7 @@ There are no login-based roles for parents, campers, dorm leaders, or workers. *
 ### Authentication
 
 - Username/password authentication for admin users.
-- Super admins can create, deactivate, and reset passwords for any admin user.
+- Super admins can create, deactivate, delete, and reset passwords for any admin user.
 - Session or token-based auth (JWT) for API access.
 - No self-service registration for admin accounts - they must be created by a super admin.
 - No public-facing "forgot password" flow - super admins handle password resets.
