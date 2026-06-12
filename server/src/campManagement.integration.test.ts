@@ -134,8 +134,9 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     const first = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", `Bearer ${token}`)
-      .send(camperPayload());
+      .send(camperPayload({ feeDueCents: 16500 }));
     expect(first.status).toBe(201);
+    expect(first.body.feeDueCents).toBe(16500);
 
     const blocked = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)

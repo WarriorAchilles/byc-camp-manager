@@ -11,6 +11,9 @@ type CampYearOption = {
   yearLabel: string;
   activeCamperCount?: number;
   camperCapacity: number | null;
+  earlyCamperFeeCents: number | null;
+  lateCamperFeeCents: number | null;
+  thirdPlusCamperFeeCents: number | null;
 };
 
 type CamperRow = {
@@ -66,6 +69,14 @@ function formatUsdFromCents(cents: number | null | undefined): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
+function dollarsToCents(dollars: string): number {
+  return Math.round(Number(dollars) * 100);
+}
+
+function formatConfiguredCamperPrice(cents: number | null | undefined): string {
+  return cents === null || cents === undefined ? "Not configured" : formatUsdFromCents(cents);
+}
+
 function paymentStatusLabel(paymentStatus: CamperRow["paymentStatus"]): string {
   if (paymentStatus === "paid_cash") {
     return "Paid (cash)";
@@ -113,6 +124,7 @@ export function PeoplePage(): React.ReactElement {
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "paid_cash" | "paid_stripe">(
     "unpaid",
   );
+  const [amountOwed, setAmountOwed] = useState("");
   const [camperDormId, setCamperDormId] = useState<string>("");
   const [overrideAcknowledged, setOverrideAcknowledged] = useState(false);
 
@@ -216,6 +228,7 @@ export function PeoplePage(): React.ReactElement {
     guardianEmail,
     guardianPhone,
     paymentStatus,
+    feeDueCents: dollarsToCents(amountOwed),
     ...(camperDormId ? { dormId: camperDormId } : {}),
     ...(confirmCapacityOverride ? { confirmCapacityOverride: true } : {}),
   });
@@ -532,6 +545,42 @@ export function PeoplePage(): React.ReactElement {
                 <option value="paid_stripe">Paid (Stripe)</option>
               </select>
             </label>
+            <div>
+              <div className="row camper-price-label">
+                <label htmlFor="camper-amount-owed">Amount owed</label>
+                <span className="camper-price-info">
+                  <button
+                    type="button"
+                    className="camper-price-info-trigger"
+                    aria-label="Show camper pricing"
+                    aria-describedby="camper-price-popup"
+                  >
+                    i
+                  </button>
+                  <span id="camper-price-popup" role="tooltip" className="camper-price-popup">
+                    <strong>Camper pricing</strong>
+                    <span>
+                      Early 1st-2nd camper: {formatConfiguredCamperPrice(selectedYear?.earlyCamperFeeCents)}
+                    </span>
+                    <span>
+                      Late 1st-2nd camper: {formatConfiguredCamperPrice(selectedYear?.lateCamperFeeCents)}
+                    </span>
+                    <span>3rd+ camper: {formatConfiguredCamperPrice(selectedYear?.thirdPlusCamperFeeCents)}</span>
+                  </span>
+                </span>
+              </div>
+              <input
+                id="camper-amount-owed"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={amountOwed}
+                onChange={(event) => setAmountOwed(event.target.value)}
+                placeholder="0.00"
+                required
+              />
+            </div>
             {camperDorms.length > 0 ? (
               <label>
                 Camper dorm (optional)

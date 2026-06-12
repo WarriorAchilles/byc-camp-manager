@@ -479,6 +479,55 @@ button {
   align-items: center;
 }
 
+.camper-price-label {
+  justify-content: flex-start;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.camper-price-label label {
+  display: inline;
+}
+
+.camper-price-info {
+  position: relative;
+}
+
+.camper-price-info-trigger {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  height: 1.25rem;
+  justify-content: center;
+  padding: 0;
+  width: 1.25rem;
+}
+
+.camper-price-popup {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  display: none;
+  gap: 0.35rem;
+  left: 0;
+  min-width: 16rem;
+  padding: 0.75rem;
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  z-index: 10;
+}
+
+.camper-price-info:hover .camper-price-popup,
+.camper-price-info:focus-within .camper-price-popup {
+  display: grid;
+}
+
 label {
   font-size: 0.82rem;
   font-weight: 500;
@@ -503,6 +552,7 @@ input[type="email"],
 input[type="password"],
 input[type="text"],
 input[type="date"],
+input[type="datetime-local"],
 input[type="number"],
 select {
   width: 100%;

@@ -40,6 +40,24 @@ function dateInputFromIso(isoDate: string): string {
   return isoDate.slice(0, 10);
 }
 
+function datetimeLocalInputFromIso(isoDate: string | null): string {
+  if (!isoDate) {
+    return "";
+  }
+  const date = new Date(isoDate);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function dollarsInputFromCents(cents: number | null): string {
+  return cents === null ? "" : (cents / 100).toFixed(2);
+}
+
+function nullableDollarsToCents(rawValue: FormDataEntryValue | null): number | null {
+  const value = String(rawValue ?? "").trim();
+  return value === "" ? null : Math.round(Number(value) * 100);
+}
+
 export function CampConfigurationPage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
@@ -354,6 +372,15 @@ export function CampConfigurationPage(): React.ReactElement {
       setError("Capacity must be a positive integer or blank.");
       return;
     }
+    const earlyCamperFeeCents = nullableDollarsToCents(formData.get("earlyCamperFee"));
+    const lateCamperFeeCents = nullableDollarsToCents(formData.get("lateCamperFee"));
+    const thirdPlusCamperFeeCents = nullableDollarsToCents(formData.get("thirdPlusCamperFee"));
+    const camperFees = [earlyCamperFeeCents, lateCamperFeeCents, thirdPlusCamperFeeCents];
+    if (camperFees.some((feeCents) => feeCents !== null && (!Number.isFinite(feeCents) || feeCents < 0))) {
+      setError("Camper fees must be non-negative dollar amounts or blank.");
+      return;
+    }
+    const feeCutoverLocal = String(formData.get("feeCutoverAt") ?? "").trim();
     try {
       await apiJson(`/api/admin/camp-years/${selected.id}`, {
         method: "PATCH",
@@ -363,6 +390,10 @@ export function CampConfigurationPage(): React.ReactElement {
           startDate: String(formData.get("startDate") ?? ""),
           endDate: String(formData.get("endDate") ?? ""),
           camperCapacity: capacityParsed,
+          feeCutoverAt: feeCutoverLocal ? new Date(feeCutoverLocal).toISOString() : null,
+          earlyCamperFeeCents,
+          lateCamperFeeCents,
+          thirdPlusCamperFeeCents,
           discountTierNotes: String(formData.get("discountTierNotes") ?? "").trim() || null,
           merchandisePlaceholderNotes:
             String(formData.get("merchandisePlaceholderNotes") ?? "").trim() || null,
@@ -818,6 +849,54 @@ export function CampConfigurationPage(): React.ReactElement {
               inputMode="numeric"
               placeholder="blank = no cap"
               defaultValue={selected.camperCapacity ?? ""}
+            />
+          </label>
+          <h3 style={{ marginBottom: 0 }}>Camper pricing</h3>
+          <p className="muted" style={{ margin: 0 }}>
+            These prices appear in the info popup beside Amount owed when adding a camper.
+          </p>
+          <label>
+            Early fee for 1st-2nd camper
+            <input
+              name="earlyCamperFee"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="blank = not configured"
+              defaultValue={dollarsInputFromCents(selected.earlyCamperFeeCents)}
+            />
+          </label>
+          <label>
+            Late fee for 1st-2nd camper
+            <input
+              name="lateCamperFee"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="blank = not configured"
+              defaultValue={dollarsInputFromCents(selected.lateCamperFeeCents)}
+            />
+          </label>
+          <label>
+            Fee for 3rd+ camper
+            <input
+              name="thirdPlusCamperFee"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="blank = not configured"
+              defaultValue={dollarsInputFromCents(selected.thirdPlusCamperFeeCents)}
+            />
+          </label>
+          <label>
+            Early-to-late pricing cutover (optional)
+            <input
+              name="feeCutoverAt"
+              type="datetime-local"
+              defaultValue={datetimeLocalInputFromIso(selected.feeCutoverAt)}
             />
           </label>
           <label>

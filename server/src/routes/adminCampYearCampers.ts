@@ -39,6 +39,7 @@ const camperFields = {
   medicalNotes: z.string().nullable().optional(),
   dietaryRestrictions: z.string().nullable().optional(),
   paymentStatus: z.nativeEnum(CamperPaymentStatus),
+  feeDueCents: z.number().int().nonnegative().optional(),
   dormId: z.string().uuid().nullable().optional(),
   medicalReleaseSigned: z.boolean().optional(),
 };
@@ -161,6 +162,7 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       medicalNotes: parsed.data.medicalNotes?.trim() ?? null,
       dietaryRestrictions: parsed.data.dietaryRestrictions?.trim() ?? null,
       paymentStatus: parsed.data.paymentStatus,
+      feeDueCents: parsed.data.feeDueCents,
       qrToken,
       dormId: parsed.data.dormId ?? null,
       medicalReleaseSigned: parsed.data.medicalReleaseSigned ?? false,
@@ -239,6 +241,7 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
           medicalNotes: row.medicalNotes?.trim() ?? null,
           dietaryRestrictions: row.dietaryRestrictions?.trim() ?? null,
           paymentStatus: row.paymentStatus,
+          feeDueCents: row.feeDueCents,
           qrToken,
           dormId: row.dormId ?? null,
           medicalReleaseSigned: row.medicalReleaseSigned ?? false,
@@ -364,6 +367,9 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
   }
   if (partial.paymentStatus !== undefined) {
     data.paymentStatus = partial.paymentStatus;
+  }
+  if (partial.feeDueCents !== undefined) {
+    data.feeDueCents = partial.feeDueCents;
   }
   if (partial.dormId !== undefined) {
     data.dorm = partial.dormId
