@@ -207,14 +207,8 @@ export class BycCampDevStack extends cdk.Stack {
           );
     const optionalBootstrapSecrets: Record<string, ecs.Secret> = {};
     if (initialSuperAdminSecret) {
-      optionalBootstrapSecrets.INITIAL_SUPER_ADMIN_USERNAME = ecs.Secret.fromSecretsManager(
-        initialSuperAdminSecret,
-        "username",
-      );
-      optionalBootstrapSecrets.INITIAL_SUPER_ADMIN_PASSWORD = ecs.Secret.fromSecretsManager(
-        initialSuperAdminSecret,
-        "password",
-      );
+      optionalBootstrapSecrets.INITIAL_SUPER_ADMIN_SECRET_JSON =
+        ecs.Secret.fromSecretsManager(initialSuperAdminSecret);
     }
 
     const container = taskDefinition.addContainer("web", {

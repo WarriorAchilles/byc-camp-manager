@@ -52,7 +52,7 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | `certificateArn` | Optional ACM certificate ARN for the admin hostname. When set, the ALB serves HTTPS on port 443 and redirects HTTP to HTTPS. |
 | `stripeSecretKeySecretArn` | Optional full Secrets Manager ARN containing the Stripe restricted/secret API key. Include the generated suffix. |
 | `stripeWebhookSecretArn` | Optional full Secrets Manager ARN containing the Stripe webhook signing secret. Include the generated suffix. |
-| `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `username` and `password` fields for first-admin bootstrap. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
+| `initialSuperAdminSecretArn` | Optional full Secrets Manager JSON secret ARN with `username` and `password` fields for first-admin bootstrap. Legacy `email` plus `password` secrets are also accepted during username migration. Include the generated suffix, e.g. `...:secret:initial-admin-AbCdEf`. |
 
 ## HTTPS and CORS
 

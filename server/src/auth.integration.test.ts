@@ -18,13 +18,13 @@ async function canQueryDatabase(): Promise<boolean> {
 
 const integrationDbReady = await canQueryDatabase();
 
-const superUsername = "super-auth-test@example.com";
-const campUsername = "camp-auth-test@example.com";
+const superUsername = "super-auth-test";
+const campUsername = "camp-auth-test";
 const password = "test-password-12chars";
 
 async function resetUsers(): Promise<void> {
   await prisma.adminUser.deleteMany({
-    where: { username: { in: [superUsername, campUsername, "inactive@example.com"] } },
+    where: { username: { in: [superUsername, campUsername, "inactive-auth-test"] } },
   });
   const superHash = await hashPassword(password);
   await prisma.adminUser.create({
@@ -58,7 +58,7 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
 
   afterAll(async () => {
     await prisma.adminUser.deleteMany({
-      where: { username: { in: [superUsername, campUsername, "inactive@example.com"] } },
+      where: { username: { in: [superUsername, campUsername, "inactive-auth-test"] } },
     });
     await prisma.$disconnect();
   });
@@ -84,7 +84,7 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     const inactiveHash = await hashPassword(password);
     await prisma.adminUser.create({
       data: {
-        username: "inactive@example.com",
+        username: "inactive-auth-test",
         passwordHash: inactiveHash,
         role: AdminRole.camp_admin,
         isActive: false,
@@ -92,8 +92,15 @@ describe.skipIf(!integrationDbReady)("admin authentication and authorization", (
     });
     const res = await request(app)
       .post("/api/auth/login")
-      .send({ username: "inactive@example.com", password });
+      .send({ username: "inactive-auth-test", password });
     expect(res.status).toBe(401);
+  });
+
+  it("rejects usernames with invalid characters", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "camp admin", password });
+    expect(res.status).toBe(400);
   });
 
   it("returns current user from cookie session", async () => {

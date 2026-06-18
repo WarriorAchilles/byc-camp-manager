@@ -82,7 +82,7 @@ The production Docker image also includes a compiled first-admin bootstrap entry
 npm run db:seed:prod
 ```
 
-Use it only through the AWS post-deploy flow with Secrets Manager-provided `INITIAL_SUPER_ADMIN_USERNAME` and `INITIAL_SUPER_ADMIN_PASSWORD`; it is for first-admin bootstrap, not routine password resets.
+Use it only through the AWS post-deploy flow with a Secrets Manager JSON secret containing `username` and `password`; legacy secrets containing `email` and `password` are still accepted so pre-username deployments can bootstrap after upgrade. It is for first-admin bootstrap, not routine password resets.
 
 ## Health checks
 

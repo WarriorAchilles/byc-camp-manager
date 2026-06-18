@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { loadEnv } from "../config/env.js";
 import { prisma } from "../db.js";
+import { adminUsernameSchema } from "../lib/adminUsername.js";
 import { getCookieName, signAuthToken } from "../lib/authToken.js";
 import { writeOpsLog } from "../lib/opsLog.js";
 import { verifyPassword } from "../lib/password.js";
@@ -10,7 +11,7 @@ import { requireAuth } from "../middleware/auth.js";
 export const authRouter = Router();
 
 const loginBody = z.object({
-  username: z.string().trim().min(1).max(100),
+  username: adminUsernameSchema,
   password: z.string().min(1),
 });
 
@@ -20,8 +21,9 @@ authRouter.post("/login", async (req, res) => {
     res.status(400).json({ error: "Invalid request" });
     return;
   }
-  const username = parsed.data.username.toLowerCase();
-  const user = await prisma.adminUser.findUnique({ where: { username } });
+  const user = await prisma.adminUser.findUnique({
+    where: { username: parsed.data.username },
+  });
   if (!user || !user.isActive) {
     writeOpsLog("admin_login_failed", { reason: "invalid_credentials" });
     res.status(401).json({ error: "Invalid username or password" });

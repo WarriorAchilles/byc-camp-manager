@@ -2,6 +2,7 @@ import prismaClientPkg from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { adminUsernameSchema } from "../lib/adminUsername.js";
 import { hashPassword } from "../lib/password.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -21,7 +22,7 @@ adminUsersRouter.use(requireAuth);
 adminUsersRouter.use(requireRole(AdminRole.super_admin));
 
 const createBody = z.object({
-  username: z.string().trim().min(1).max(100),
+  username: adminUsernameSchema,
   password: z.string().min(12),
   role: z.nativeEnum(AdminRole),
 });
@@ -52,12 +53,11 @@ adminUsersRouter.post("/", async (req: AuthedRequest, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const username = parsed.data.username.toLowerCase();
   const passwordHash = await hashPassword(parsed.data.password);
   try {
     const created = await prisma.adminUser.create({
       data: {
-        username,
+        username: parsed.data.username,
         passwordHash,
         role: parsed.data.role,
         createdById: actor.id,
