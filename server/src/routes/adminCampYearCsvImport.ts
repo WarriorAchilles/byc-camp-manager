@@ -9,6 +9,7 @@ import {
   DORM_LEADER_COLUMN_KEYS,
   runImportPreview,
   WORKER_COLUMN_KEYS,
+  type CamperImportPayload,
   type CsvImportKind,
 } from "../lib/csvImportCore.js";
 import { writeOpsLog } from "../lib/opsLog.js";
@@ -16,7 +17,8 @@ import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const { AdminRole, CamperPaymentStatus, Gender, ImportSource } = prismaClientPkg;
+const { AdminRole, CamperPaymentStatus, CheckInStatus, DormPurpose, Gender, ImportSource } =
+  prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 
@@ -160,27 +162,7 @@ router.post("/commit", async (req: AuthedRequest, res) => {
   const skippedInvalidRows = skipInvalidRows ? rowsWithErrors.length : 0;
 
   if (parsed.data.kind === "camper") {
-    const payloads = preview.payloads as Array<{
-      firstName: string;
-      lastName: string;
-      middleName: string | null;
-      dateOfBirth: string;
-      gender: "male" | "female";
-      streetAddress: string | null;
-      city: string | null;
-      stateOrProvince: string | null;
-      postalCode: string | null;
-      country: string | null;
-      camperCellPhone: string | null;
-      guardianName: string;
-      guardianEmail: string;
-      guardianPhone: string;
-      emergencyContactName: string | null;
-      emergencyContactPhone: string | null;
-      medicalNotes: string | null;
-      dietaryRestrictions: string | null;
-      paymentStatus: "unpaid" | "paid_stripe" | "paid_cash";
-    }>;
+    const payloads = preview.payloads as CamperImportPayload[];
 
     const currentCount = await prisma.camper.count({
       where: { campYearId, archivedAt: null },
@@ -199,16 +181,29 @@ router.post("/commit", async (req: AuthedRequest, res) => {
 
     try {
       const created = await prisma.$transaction(async (tx) => {
+        const camperDorms = await tx.dorm.findMany({
+          where: { campYearId, purpose: DormPurpose.camper },
+          select: { id: true, name: true },
+        });
+        const dormIdByName = new Map(
+          camperDorms.map((dorm) => [dorm.name.trim().toLowerCase(), dorm.id]),
+        );
         const out: { id: string; qrToken: string; firstName: string; lastName: string }[] = [];
         for (const row of payloads) {
           const qrToken = await allocateUniqueCamperQrToken(tx);
           const dob = new Date(`${row.dateOfBirth}T12:00:00.000Z`);
+          const checkedInAt = row.checkedInAt
+            ? new Date(`${row.checkedInAt}T12:00:00.000Z`)
+            : null;
           const payment =
             row.paymentStatus === "paid_stripe"
               ? CamperPaymentStatus.paid_stripe
               : row.paymentStatus === "paid_cash"
                 ? CamperPaymentStatus.paid_cash
                 : CamperPaymentStatus.unpaid;
+          const dormId = row.dormName
+            ? dormIdByName.get(row.dormName.trim().toLowerCase()) ?? null
+            : null;
           const camper = await tx.camper.create({
             data: {
               campYearId,
@@ -230,9 +225,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
               emergencyContactPhone: row.emergencyContactPhone,
               medicalNotes: row.medicalNotes,
               dietaryRestrictions: row.dietaryRestrictions,
+              feeDueCents: row.feeDueCents,
+              feePaidCents: row.feePaidCents,
               paymentStatus: payment,
               qrToken,
-              dormId: null,
+              dormId,
+              checkInStatus: checkedInAt ? CheckInStatus.checked_in : CheckInStatus.not_checked_in,
+              checkedInAt,
               medicalReleaseSigned: false,
               importSource: ImportSource.csv_import,
             },

@@ -17,6 +17,7 @@ describe("csvImportCore", () => {
   it("parses slash dates and ISO dates", () => {
     expect(parseFlexibleDate("2/12/2010")).toEqual({ ok: true, iso: "2010-02-12" });
     expect(parseFlexibleDate("2010-02-12")).toEqual({ ok: true, iso: "2010-02-12" });
+    expect(parseFlexibleDate("41419")).toEqual({ ok: true, iso: "2013-05-25" });
     expect(parseFlexibleDate("").ok).toBe(false);
   });
 
@@ -101,7 +102,7 @@ describe("csvImportCore", () => {
     expect(built.payloads[0]?.paymentStatus).toBe("unpaid");
   });
 
-  it("surfaces camper row errors when medical columns are blank", () => {
+  it("allows camper import rows when guardian and medical columns are not present", () => {
     const headers = ["First name", "Last Name", "Gender", "Date of Birth", "Parent Guardian Name", "Email Address", "Parent Phone"];
     const suggested = suggestColumnMap("camper", headers);
     const row: Record<string, string> = {
@@ -114,8 +115,62 @@ describe("csvImportCore", () => {
       "Parent Phone": "5551234567",
     };
     const built = buildCamperImportPreview([row], mergeColumnMap(suggested, {}));
-    expect(built.previewRows[0]?.errors.some((message) => message.includes("Allergies"))).toBe(true);
-    expect(built.payloads).toHaveLength(0);
+    expect(built.previewRows[0]?.errors ?? []).toEqual([]);
+    expect(built.payloads).toHaveLength(1);
+    expect(built.payloads[0]?.medicalNotes).toBeNull();
+  });
+
+  it("maps BYC26 trial-run camper sheet shape with optional guardian email and fees", () => {
+    const csv = [
+      "First Name,Last Name,Gender,DOB,Age,Dorm,Fees Due,Fees Paid,Due,Pastor,Check in date",
+      "Yempaguim,Akou,Male,41419,13,020-B,165,165,0,Simon Peter Sesay,",
+      "Grace,Arbogast,Female,39566,18,014-A,165,,165,Dewey Moss,45000",
+    ].join("\n");
+    const preview = runImportPreview("camper", csv, undefined);
+    expect(preview.mapError).toBeNull();
+    expect(preview.invalidRowCount).toBe(0);
+    expect(preview.validRowCount).toBe(2);
+    expect(preview.columnMap.guardianEmail).toBeNull();
+    expect(preview.columnMap.dormName).toBe("Dorm");
+    expect(preview.columnMap.feeDue).toBe("Fees Due");
+    expect(preview.columnMap.feePaid).toBe("Fees Paid");
+    expect(preview.columnMap.checkInDate).toBe("Check in date");
+
+    const [paid, unpaid] = preview.payloads as Array<{
+      guardianEmail: string;
+      dateOfBirth: string;
+      dormName: string | null;
+      feeDueCents: number | null;
+      feePaidCents: number | null;
+      checkedInAt: string | null;
+      paymentStatus: string;
+    }>;
+    expect(paid.guardianEmail).toBe("");
+    expect(paid.dateOfBirth).toBe("2013-05-25");
+    expect(paid.dormName).toBe("020-B");
+    expect(paid.feeDueCents).toBe(16500);
+    expect(paid.feePaidCents).toBe(16500);
+    expect(paid.checkedInAt).toBeNull();
+    expect(paid.paymentStatus).toBe("paid_cash");
+    expect(unpaid.dormName).toBe("014-A");
+    expect(unpaid.feeDueCents).toBe(16500);
+    expect(unpaid.feePaidCents).toBe(0);
+    expect(unpaid.checkedInAt).toBe("2023-03-15");
+    expect(unpaid.paymentStatus).toBe("unpaid");
+  });
+
+  it("maps camper payment status separately from fee paid", () => {
+    const csv = [
+      "First Name,Last Name,Gender,DOB,Payment Status",
+      "Pat,Status,Female,41419,paid_cash",
+    ].join("\n");
+    const preview = runImportPreview("camper", csv, undefined);
+    expect(preview.columnMap.paymentStatus).toBe("Payment Status");
+    expect(preview.columnMap.feePaid).toBeNull();
+    expect(preview.invalidRowCount).toBe(0);
+    const payload = preview.payloads[0] as { paymentStatus: string; feePaidCents: number | null };
+    expect(payload.paymentStatus).toBe("paid_cash");
+    expect(payload.feePaidCents).toBeNull();
   });
 
   it("returns capacity-style counts for worker imports", () => {

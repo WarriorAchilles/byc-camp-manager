@@ -121,6 +121,7 @@ export function CheckInPage(): React.ReactElement {
   const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled === true;
   const familyPaymentOptionEnabled =
     selectedCampYear?.checkInFamilyPaymentOptionEnabled === true;
+  const selectedCamperHasGuardianEmail = !!selectedCamper?.guardianEmail.trim();
 
   const loadCampYears = useCallback(async (): Promise<void> => {
     const data = await apiJson<{
@@ -796,9 +797,9 @@ export function CheckInPage(): React.ReactElement {
             <div>
               <dt>Guardian</dt>
               <dd>
-                {selectedCamper.guardianName} · {selectedCamper.guardianPhone}
+                {selectedCamper.guardianName || "Not provided"} · {selectedCamper.guardianPhone || "Not provided"}
                 <br />
-                {selectedCamper.guardianEmail}
+                {selectedCamper.guardianEmail || "No guardian email provided"}
               </dd>
             </div>
           </dl>
@@ -832,7 +833,7 @@ export function CheckInPage(): React.ReactElement {
                 />
                 Mark this camper paid (cash)
               </label>
-              {familyPaymentOptionEnabled ? (
+              {familyPaymentOptionEnabled && selectedCamperHasGuardianEmail ? (
                 <label className="check-inline payment-checkbox-button">
                   <input
                     type="checkbox"

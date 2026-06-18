@@ -87,7 +87,7 @@ export async function runCamperCheckInInTransaction(
   const wasCheckedIn = existing.checkInStatus === CheckInStatus.checked_in;
   let dormAutoAssigned = false;
 
-  if (input.payments.markPaidCashForGuardianFamily) {
+  if (input.payments.markPaidCashForGuardianFamily && existing.guardianEmail.trim()) {
     await tx.camper.updateMany({
       where: {
         campYearId: input.campYearId,
@@ -97,7 +97,7 @@ export async function runCamperCheckInInTransaction(
       },
       data: { paymentStatus: CamperPaymentStatus.paid_cash },
     });
-  } else if (input.payments.markPaidCashForCamper) {
+  } else if (input.payments.markPaidCashForCamper || input.payments.markPaidCashForGuardianFamily) {
     await tx.camper.updateMany({
       where: { id: input.camperId, paymentStatus: CamperPaymentStatus.unpaid },
       data: { paymentStatus: CamperPaymentStatus.paid_cash },

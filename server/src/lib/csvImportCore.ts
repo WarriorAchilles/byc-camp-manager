@@ -15,6 +15,7 @@ export const CAMPER_COLUMN_KEYS = [
   "postalCode",
   "country",
   "camperCellPhone",
+  "dormName",
   "guardianName",
   "guardianEmail",
   "guardianPhone",
@@ -24,6 +25,9 @@ export const CAMPER_COLUMN_KEYS = [
   "physicalLimitations",
   "medicalNotes",
   "dietaryRestrictions",
+  "feeDue",
+  "feePaid",
+  "checkInDate",
   "paymentStatus",
 ] as const;
 
@@ -151,6 +155,7 @@ function suggestCamperMap(headers: string[]): Record<CamperColumnKey, string | n
       "camper cell",
       "student cell",
     ]),
+    dormName: pick(["dorm assignment", "dorm name", "dorm"]),
     guardianName: pick(["parent guardian name", "guardian name", "parent name"]),
     guardianEmail: pick(["parent/guardian e-mail", "guardian email", "email address"]),
     guardianPhone: pick([
@@ -165,6 +170,9 @@ function suggestCamperMap(headers: string[]): Record<CamperColumnKey, string | n
     physicalLimitations: pick(["list any physical limitations", "physical limitations"]),
     medicalNotes: pick(["allergies", "medical info", "medical notes", "health"]),
     dietaryRestrictions: pick(["dietary"]),
+    feeDue: pick(["fees due", "fee due", "amount due", "balance due", "total due"]),
+    feePaid: pick(["fees paid", "fee paid", "amount paid", "paid"]),
+    checkInDate: pick(["check in date", "check-in date", "checked in date", "checked-in date"]),
     paymentStatus: pick(["payment status", "paid", "fee status"]),
   };
 }
@@ -302,6 +310,17 @@ export function parseFlexibleDate(raw: string): { ok: true; iso: string } | { ok
   if (!trimmed) {
     return { ok: false, message: "Date of birth is empty" };
   }
+  const excelSerial = /^\d{5}$/.exec(trimmed);
+  if (excelSerial) {
+    const serial = Number.parseInt(trimmed, 10);
+    if (serial >= 20000 && serial <= 60000) {
+      const millis = (serial - 25569) * 24 * 60 * 60 * 1000;
+      const date = new Date(millis);
+      if (!Number.isNaN(date.getTime())) {
+        return { ok: true, iso: date.toISOString().slice(0, 10) };
+      }
+    }
+  }
   const isoLike = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
   if (isoLike) {
     const year = Number(isoLike[1]);
@@ -394,6 +413,47 @@ export function parsePaymentStatus(raw: string): {
   };
 }
 
+function parseOptionalMoneyAmountToCents(
+  raw: string,
+  fieldLabel: string,
+): { ok: true; cents: number | null } | { ok: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ok: true, cents: null };
+  }
+  let working = trimmed.replace(/\$/g, "").replace(/,/g, "").trim();
+  if (working.startsWith("-")) {
+    return { ok: false, message: `${fieldLabel}: negative amounts are not allowed.` };
+  }
+  working = working.replace(/\s+/g, "");
+  if (!/^\d+(\.\d+)?$/.test(working)) {
+    return { ok: false, message: `${fieldLabel}: unrecognized amount "${raw}".` };
+  }
+  const [wholePart, fractionPart] = working.split(".") as [string, string | undefined];
+  let fractionDigits = "00";
+  if (fractionPart !== undefined) {
+    if (!/^\d+$/.test(fractionPart) || fractionPart.length > 2) {
+      return { ok: false, message: `${fieldLabel}: use at most two decimal places.` };
+    }
+    fractionDigits = fractionPart.padEnd(2, "0").slice(0, 2);
+  }
+  const cents = Number.parseInt(`${wholePart || "0"}${fractionDigits}`, 10);
+  if (!Number.isFinite(cents) || cents < 0) {
+    return { ok: false, message: `${fieldLabel}: amount out of range.` };
+  }
+  return { ok: true, cents };
+}
+
+function paymentStatusFromFees(
+  feeDueCents: number | null,
+  feePaidCents: number | null,
+): "unpaid" | "paid_stripe" | "paid_cash" {
+  if (feeDueCents !== null && feeDueCents > 0 && (feePaidCents ?? 0) >= feeDueCents) {
+    return "paid_cash";
+  }
+  return "unpaid";
+}
+
 export function splitTaskPreferences(raw: string): [string | null, string | null, string | null] {
   if (!raw.trim()) {
     return [null, null, null];
@@ -421,6 +481,7 @@ export type CamperImportPayload = {
   postalCode: string | null;
   country: string | null;
   camperCellPhone: string | null;
+  dormName: string | null;
   guardianName: string;
   guardianEmail: string;
   guardianPhone: string;
@@ -428,6 +489,9 @@ export type CamperImportPayload = {
   emergencyContactPhone: string | null;
   medicalNotes: string | null;
   dietaryRestrictions: string | null;
+  feeDueCents: number | null;
+  feePaidCents: number | null;
+  checkedInAt: string | null;
   paymentStatus: "unpaid" | "paid_stripe" | "paid_cash";
 };
 
@@ -506,7 +570,11 @@ export function buildCamperImportPreview(
   const globalWarnings: string[] = [];
 
   if (!columnMap.paymentStatus) {
-    globalWarnings.push("Payment status column not mapped; rows default to unpaid where missing.");
+    globalWarnings.push(
+      columnMap.feeDue || columnMap.feePaid
+        ? "Payment status column not mapped; rows derive payment status from fee amounts where available."
+        : "Payment status column not mapped; rows default to unpaid where missing.",
+    );
   }
 
   rows.forEach((raw, index) => {
@@ -529,6 +597,7 @@ export function buildCamperImportPreview(
     const middleNameRaw = take("middleName");
     const dobRaw = take("dateOfBirth");
     const genderRaw = take("gender");
+    const dormNameRaw = take("dormName");
     const guardianName = take("guardianName");
     const guardianEmail = take("guardianEmail");
     let guardianPhoneRaw = take("guardianPhone");
@@ -545,6 +614,9 @@ export function buildCamperImportPreview(
     }
 
     const dietaryRaw = take("dietaryRestrictions");
+    const feeDueRaw = take("feeDue");
+    const feePaidRaw = take("feePaid");
+    const checkInDateRaw = take("checkInDate");
     const paymentRaw = take("paymentStatus");
 
     if (!firstName.trim()) {
@@ -564,30 +636,40 @@ export function buildCamperImportPreview(
       errors.push(genderResult.message);
     }
 
-    if (!guardianName.trim()) {
-      errors.push("Parent or guardian name is required.");
-    }
-
-    if (!guardianEmail.trim()) {
-      errors.push("Parent or guardian email is required.");
-    } else {
+    if (guardianEmail.trim()) {
       const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardianEmail.trim());
       if (!emailOk) {
         errors.push("Parent or guardian email is not valid.");
       }
     }
 
-    const phoneResult = normalizePhoneDigits(guardianPhoneRaw);
+    const phoneResult = guardianPhoneRaw.trim()
+      ? normalizePhoneDigits(guardianPhoneRaw)
+      : { ok: true as const, value: "" };
     if (!phoneResult.ok) {
       errors.push(`Parent or guardian phone: ${phoneResult.message}`);
     }
 
-    if (!medicalCombined.text?.trim()) {
-      errors.push("Allergies / medical info is required (map medications, limitations, or a combined medical column).");
+    const feeDueParsed = parseOptionalMoneyAmountToCents(feeDueRaw, "Fees due");
+    if (!feeDueParsed.ok) {
+      errors.push(feeDueParsed.message);
+    }
+    const feePaidParsed = parseOptionalMoneyAmountToCents(feePaidRaw, "Fees paid");
+    if (!feePaidParsed.ok) {
+      errors.push(feePaidParsed.message);
+    }
+    let checkedInAt: string | null = null;
+    if (checkInDateRaw.trim()) {
+      const checkInDateResult = parseFlexibleDate(checkInDateRaw);
+      if (!checkInDateResult.ok) {
+        errors.push(`Check-in date: ${checkInDateResult.message}`);
+      } else {
+        checkedInAt = checkInDateResult.iso;
+      }
     }
 
     const paymentParsed = parsePaymentStatus(paymentRaw);
-    if (paymentParsed.warning) {
+    if (paymentRaw.trim() && paymentParsed.warning) {
       warnings.push(paymentParsed.warning);
     }
 
@@ -602,8 +684,11 @@ export function buildCamperImportPreview(
       dobResult.ok &&
       genderResult.ok &&
       phoneResult.ok &&
-      medicalCombined.text
+      feeDueParsed.ok &&
+      feePaidParsed.ok
     ) {
+      const feeDueCents = feeDueParsed.cents;
+      const feePaidCents = feePaidParsed.cents ?? (feeDueCents !== null ? 0 : null);
       payloads.push({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -616,6 +701,7 @@ export function buildCamperImportPreview(
         postalCode: take("postalCode").trim() || null,
         country: take("country").trim() || null,
         camperCellPhone: camperCell.trim() || null,
+        dormName: dormNameRaw.trim() || null,
         guardianName: guardianName.trim(),
         guardianEmail: guardianEmail.trim().toLowerCase(),
         guardianPhone: phoneResult.value,
@@ -628,9 +714,14 @@ export function buildCamperImportPreview(
           }
           return normalized.ok ? normalized.value : null;
         })(),
-        medicalNotes: medicalCombined.text.trim(),
+        medicalNotes: medicalCombined.text?.trim() || null,
         dietaryRestrictions: dietaryRaw.trim() || null,
-        paymentStatus: paymentParsed.value,
+        feeDueCents,
+        feePaidCents,
+        checkedInAt,
+        paymentStatus: paymentRaw.trim()
+          ? paymentParsed.value
+          : paymentStatusFromFees(feeDueCents, feePaidCents),
       });
     }
   });

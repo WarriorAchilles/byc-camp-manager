@@ -806,6 +806,64 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       expect(logSpy.mock.calls.some((call) => String(call[0]).includes("multi-pay@example.com"))).toBe(false);
     });
 
+    it("omits Stripe customer_email when an imported camper has no guardian email", async () => {
+      const header = await authHeader();
+      await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      const yearRow = await prisma.campYear.findUniqueOrThrow({ where: { id: campYearId } });
+      const kioskToken = yearRow.selfCheckInToken!;
+
+      const camper = await prisma.camper.create({
+        data: {
+          campYearId,
+          firstName: "NoEmail",
+          lastName: "Imported",
+          dateOfBirth: new Date("2085-06-15T12:00:00.000Z"),
+          gender: Gender.male,
+          guardianName: "",
+          guardianEmail: "",
+          guardianPhone: "",
+          paymentStatus: CamperPaymentStatus.unpaid,
+          feeDueCents: 16500,
+          feePaidCents: 0,
+          qrToken: randomUUID(),
+          importSource: ImportSource.csv_import,
+        },
+      });
+
+      const createSession = vi.fn().mockResolvedValue({
+        id: "cs_test_no_guardian_email",
+        url: "https://checkout.stripe.test/session",
+      });
+      const stripeRuntime = {
+        appPublicUrl: "https://camp.example",
+        webhookSecret: "whsec_test",
+        stripe: {
+          checkout: {
+            sessions: {
+              create: createSession,
+            },
+          },
+        },
+      } as unknown as StripeRuntime;
+
+      const checkout = await createSelfCheckInCheckoutSession({
+        campYearId,
+        camperIds: [camper.id],
+        kioskToken,
+        stripeRuntime,
+      });
+
+      expect(checkout).toMatchObject({ ok: true, stripeSessionId: "cs_test_no_guardian_email" });
+      expect(createSession).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          customer_email: expect.anything(),
+        }),
+      );
+    });
+
     it("regenerating kiosk token invalidates the previous QR URL", async () => {
       const header = await authHeader();
       const first = await request(app)

@@ -102,11 +102,14 @@ export async function createSelfCheckInCheckoutSession(input: {
   const cancelUrl =
     `${input.stripeRuntime.appPublicUrl}/self-check-in/${encodeURIComponent(input.kioskToken)}` +
     `?stripe=cancel`;
+  const customerEmail = campers
+    .map((camper) => camper.guardianEmail.trim())
+    .find((email) => email.length > 0);
 
   const session = await input.stripeRuntime.stripe.checkout.sessions.create({
     mode: "payment",
     client_reference_id: uniqueCamperIds.join(","),
-    customer_email: campers[0]?.guardianEmail,
+    ...(customerEmail ? { customer_email: customerEmail } : {}),
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: {

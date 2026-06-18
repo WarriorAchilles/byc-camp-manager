@@ -57,6 +57,7 @@ const FIELD_LABELS: Record<string, string> = {
   postalCode: "Postal / ZIP code",
   country: "Country",
   camperCellPhone: "Camper cell phone",
+  dormName: "Dorm",
   guardianName: "Parent / guardian name",
   guardianEmail: "Parent / guardian email",
   guardianPhone: "Parent / guardian phone",
@@ -75,6 +76,7 @@ const FIELD_LABELS: Record<string, string> = {
   roleLabel: "Age group to lead with (leader form; not worker task preferences)",
   feeDue: "Fees due (dollars or cents)",
   feePaid: "Fees paid (dollars or cents)",
+  checkInDate: "Check-in date",
 };
 
 function fieldLabel(key: string): string {

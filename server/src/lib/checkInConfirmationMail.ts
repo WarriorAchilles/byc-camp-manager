@@ -91,11 +91,16 @@ function createSmtpTransport(mail: MailEnv): Transporter | null {
 export type SendCheckInMailResult =
   | { status: "sent" }
   | { status: "skipped_log"; logLine: string }
+  | { status: "skipped_missing_recipient" }
   | { status: "skipped_missing_smtp_config" }
   | { status: "failed"; message: string };
 
 /** Sends check-in confirmation; never throws — callers rely on this for graceful degradation. */
 export async function sendCheckInConfirmationMail(payload: CheckInMailPayload): Promise<SendCheckInMailResult> {
+  if (!payload.to.trim()) {
+    return { status: "skipped_missing_recipient" };
+  }
+
   const mail = readMailEnvFromProcess();
   const { subject, text, html } = buildCheckInConfirmationContent(payload);
 
