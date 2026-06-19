@@ -75,6 +75,14 @@ type BoardDormWorker = DormRow & {
   workers: BoardWorker[];
   occupantCount: number;
 };
+type BoardPersonPaletteItem = (
+  | { kind: "camper"; person: BoardCamper }
+  | { kind: "dorm_leader"; person: BoardDormLeader }
+  | { kind: "worker"; person: BoardWorker }
+) & {
+  currentDormId: string | null;
+  currentDormName: string | null;
+};
 
 /** Matches server `ageOnCampStartUtc` (camp start vs date of birth, UTC calendar). */
 function ageOnCampStartUtc(dateOfBirth: string, campStartIso: string): number {
@@ -180,9 +188,7 @@ const dragMime = "application/x-byc-dorm-person";
 type AssignPersonKind = "camper" | "worker" | "dorm_leader";
 
 type AssignDropZone =
-  | "unassigned_camper"
-  | "unassigned_worker"
-  | "unassigned_dorm_leader"
+  | "unassigned"
   | { dormPurpose: "camper" | "worker"; dormId: string };
 
 function parseDragPayload(event: DragEvent): {
@@ -217,7 +223,9 @@ export function DormsPage(): React.ReactElement {
   const [campYearId, setCampYearId] = useState("");
   const [activeTab, setActiveTab] = useState<"inventory" | "assignments" | "roster">("assignments");
   const [dormFilter, setDormFilter] = useState<"all" | "camper" | "worker">("all");
-  const [boardSearch, setBoardSearch] = useState("");
+  const [peopleFilter, setPeopleFilter] = useState<"all" | "camper" | "worker">("all");
+  const [peopleSearch, setPeopleSearch] = useState("");
+  const [dormSearch, setDormSearch] = useState("");
   const [createDormOpen, setCreateDormOpen] = useState(false);
   const [openDormMenuId, setOpenDormMenuId] = useState<string | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
@@ -225,6 +233,7 @@ export function DormsPage(): React.ReactElement {
   const dialogTriggerRef = useRef<HTMLElement | null>(null);
   const addDormButtonRef = useRef<HTMLButtonElement | null>(null);
   const openDormMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const activeDragKindRef = useRef<AssignPersonKind | null>(null);
 
   const [dorms, setDorms] = useState<DormRow[]>([]);
   const [brackets, setBrackets] = useState<AgeBracket[]>([]);
@@ -747,100 +756,110 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
   }, [activeTab, rosterDormId, loadRoster]);
 
   const dropAccepts = (personKind: AssignPersonKind, zone: AssignDropZone): boolean => {
-    if (personKind === "dorm_leader") {
-      if (zone === "unassigned_dorm_leader") {
-        return true;
-      }
-      if (zone === "unassigned_camper" || zone === "unassigned_worker") {
-        return false;
-      }
-      return zone.dormPurpose === "camper";
-    }
-    if (personKind === "camper") {
-      if (zone === "unassigned_camper") {
-        return true;
-      }
-      if (zone === "unassigned_worker" || zone === "unassigned_dorm_leader") {
-        return false;
-      }
-      return zone.dormPurpose === "camper";
-    }
-    if (zone === "unassigned_worker") {
-      return true;
-    }
-    if (zone === "unassigned_camper" || zone === "unassigned_dorm_leader") {
-      return false;
-    }
-    return zone.dormPurpose === "worker";
+    if (zone === "unassigned") return true;
+    if (personKind === "worker") return zone.dormPurpose === "worker";
+    return zone.dormPurpose === "camper";
+  };
+
+  const beginPersonDrag = (
+    event: DragEvent,
+    personKind: AssignPersonKind,
+    personId: string,
+  ): void => {
+    activeDragKindRef.current = personKind;
+    event.dataTransfer.setData(dragMime, JSON.stringify({ personKind, personId }));
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const endPersonDrag = (): void => {
+    activeDragKindRef.current = null;
   };
 
   const handleDragOverBench = (event: DragEvent, zone: AssignDropZone): void => {
-    const payload = parseDragPayload(event);
-    if (!payload) {
+    const personKind = activeDragKindRef.current;
+    if (
+      !personKind ||
+      !Array.from(event.dataTransfer.types).includes(dragMime) ||
+      !dropAccepts(personKind, zone)
+    ) {
+      event.dataTransfer.dropEffect = "none";
       return;
     }
-    if (dropAccepts(payload.personKind, zone)) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
   };
 
   const handleDropBench = (event: DragEvent, zone: AssignDropZone): void => {
     event.preventDefault();
+    activeDragKindRef.current = null;
     const payload = parseDragPayload(event);
-    if (!payload || !dropAccepts(payload.personKind, zone)) {
-      return;
-    }
-    const dormId =
-      zone === "unassigned_camper" ||
-      zone === "unassigned_worker" ||
-      zone === "unassigned_dorm_leader"
-        ? null
-        : zone.dormId;
-    if (payload.personKind === "camper") {
-      requestCamperAssign(payload.personId, dormId);
-    } else {
-      void postAssign(payload.personKind, payload.personId, dormId);
-    }
+    if (!payload || !dropAccepts(payload.personKind, zone)) return;
+    const dormId = zone === "unassigned" ? null : zone.dormId;
+    if (payload.personKind === "camper") requestCamperAssign(payload.personId, dormId);
+    else void postAssign(payload.personKind, payload.personId, dormId);
   };
-
   const sortedDormsForRoster = useMemo(
     () => [...dorms].filter((dorm) => dorm.purpose === "camper").sort((left, right) => left.name.localeCompare(right.name)),
     [dorms],
   );
 
-  const normalizedBoardSearch = useMemo(() => boardSearch.trim().toLowerCase(), [boardSearch]);
-  const personMatchesSearch = useCallback(
-    (firstName: string, lastName: string): boolean =>
-      !normalizedBoardSearch || `${firstName} ${lastName}`.toLowerCase().includes(normalizedBoardSearch),
-    [normalizedBoardSearch],
+  const normalizedPeopleSearch = peopleSearch.trim().toLowerCase();
+  const normalizedDormSearch = dormSearch.trim().toLowerCase();
+  const visiblePeople = useMemo(() => {
+    const peopleByKey = new Map<string, BoardPersonPaletteItem>();
+    const addPerson = (item: BoardPersonPaletteItem): void => {
+      peopleByKey.set(`${item.kind}:${item.person.id}`, item);
+    };
+
+    unassignedCampers.forEach((person) =>
+      addPerson({ kind: "camper", person, currentDormId: null, currentDormName: null }),
+    );
+    unassignedDormLeaders.forEach((person) =>
+      addPerson({ kind: "dorm_leader", person, currentDormId: null, currentDormName: null }),
+    );
+    unassignedWorkers.forEach((person) =>
+      addPerson({ kind: "worker", person, currentDormId: null, currentDormName: null }),
+    );
+    camperDorms.forEach((dorm) => {
+      dorm.campers.forEach((person) =>
+        addPerson({ kind: "camper", person, currentDormId: dorm.id, currentDormName: dorm.name }),
+      );
+      dorm.dormLeaders.forEach((person) =>
+        addPerson({ kind: "dorm_leader", person, currentDormId: dorm.id, currentDormName: dorm.name }),
+      );
+    });
+    workerDorms.forEach((dorm) =>
+      dorm.workers.forEach((person) =>
+        addPerson({ kind: "worker", person, currentDormId: dorm.id, currentDormName: dorm.name }),
+      ),
+    );
+
+    return [...peopleByKey.values()]
+      .filter(({ kind }) =>
+        peopleFilter === "all" ||
+        (peopleFilter === "worker" ? kind === "worker" : kind !== "worker"),
+      )
+      .filter(({ person }) =>
+        `${person.firstName} ${person.lastName}`.toLowerCase().includes(normalizedPeopleSearch),
+      )
+      .sort((left, right) =>
+        `${left.person.lastName} ${left.person.firstName}`.localeCompare(
+          `${right.person.lastName} ${right.person.firstName}`,
+        ),
+      );
+  }, [camperDorms, normalizedPeopleSearch, peopleFilter, unassignedCampers, unassignedDormLeaders, unassignedWorkers, workerDorms]);  const visibleCamperDorms = useMemo(
+    () =>
+      dormFilter === "worker"
+        ? []
+        : camperDorms.filter((dorm) => dorm.name.toLowerCase().includes(normalizedDormSearch)),
+    [camperDorms, dormFilter, normalizedDormSearch],
   );
-  const filteredUnassignedCampers = useMemo(
-    () => unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)),
-    [personMatchesSearch, unassignedCampers],
-  );
-  const filteredUnassignedDormLeaders = useMemo(
-    () => unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
-    [personMatchesSearch, unassignedDormLeaders],
-  );
-  const filteredUnassignedWorkers = useMemo(
-    () => unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
-    [personMatchesSearch, unassignedWorkers],
-  );
-  const filteredCamperDorms = useMemo(
-    () => camperDorms.filter((dorm) =>
-      !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
-      dorm.campers.some((camper) => personMatchesSearch(camper.firstName, camper.lastName)) ||
-      dorm.dormLeaders.some((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
-    ),
-    [camperDorms, normalizedBoardSearch, personMatchesSearch],
-  );
-  const filteredWorkerDorms = useMemo(
-    () => workerDorms.filter((dorm) =>
-      !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
-      dorm.workers.some((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
-    ),
-    [normalizedBoardSearch, personMatchesSearch, workerDorms],
+  const visibleWorkerDorms = useMemo(
+    () =>
+      dormFilter === "camper"
+        ? []
+        : workerDorms.filter((dorm) => dorm.name.toLowerCase().includes(normalizedDormSearch)),
+    [dormFilter, normalizedDormSearch, workerDorms],
   );
   return (
     <div className="stack">
@@ -858,18 +877,6 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
       </header>
 
       <div className="dorm-toolbar" aria-label="Dorm board controls">
-        <label className="dorm-search">
-          <span className="sr-only">Search dorms and people</span>
-          <input type="search" placeholder="Search dorms or people..." value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} />
-        </label>
-        <label className="dorm-filter-field">
-          <span className="sr-only">Filter dorm type</span>
-          <select value={dormFilter} onChange={(event) => setDormFilter(event.target.value as "all" | "camper" | "worker")}>
-            <option value="all">All dorms</option>
-            <option value="camper">Camper dorms</option>
-            <option value="worker">Worker dorms</option>
-          </select>
-        </label>
         <label className="dorm-year-field">
           <span>Camp year</span>
           {superAdmin ? (
@@ -1025,367 +1032,74 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
       ) : null}
 
       {activeTab === "assignments" ? (
-        <div className="card stack">
-          <h2 className="sr-only">Assignment board</h2>
+        <section className="card stack dorm-assignment-board" aria-labelledby="assignment-board-title">
+          <h2 id="assignment-board-title" className="sr-only">Assignment board</h2>
           {boardError ? <p className="error">{boardError}</p> : null}
-          {assignMessage ? <p className="muted">{assignMessage}</p> : null}
-          {boardLoading ? <p className="muted">Loading board…</p> : null}
-
-          <h3 hidden={dormFilter === "worker"} className="muted" style={{ margin: 0, fontSize: "0.95rem" }}>
-            Campers
-          </h3>
-          <div hidden={dormFilter === "worker"} className="assign-bench">
-            <aside className="unassigned-rail" aria-label="Unassigned campers and dorm leaders">
-            <div
-              className="assign-column"
-              onDragOver={(event) => handleDragOverBench(event, "unassigned_camper")}
-              onDrop={(event) => handleDropBench(event, "unassigned_camper")}
-            >
-              <div className="muted" style={{ fontWeight: 600 }}>
-                Unassigned campers
+          {assignMessage ? <p className="muted" role="status">{assignMessage}</p> : null}
+          {boardLoading ? <p className="muted">Loading board...</p> : null}
+          <div className="assign-bench">
+            <aside className="unassigned-rail assign-panel" aria-labelledby="people-panel-title" onDragOver={(event) => handleDragOverBench(event, "unassigned")} onDrop={(event) => handleDropBench(event, "unassigned")}>
+              <div className="assign-panel-header">
+                <div><p className="dorm-eyebrow">People</p><h3 id="people-panel-title">All people</h3></div>
+                <span className="assign-count">{visiblePeople.length}</span>
               </div>
-              {filteredUnassignedCampers.length === 0 ? <p className="dorm-empty">No unassigned campers.</p> : null}
-              {filteredUnassignedCampers.map((camper) => (
-                <div key={camper.id} className="assign-person-row">
-                  <div
-                    className="assign-person"
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(
-                        dragMime,
-                        JSON.stringify({ personKind: "camper", personId: camper.id }),
-                      );
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                  >
-                    {camper.firstName} {camper.lastName}{" "}
-                    <span className="muted">({camperBoardDetailLine(camper, boardCampStartIso)})</span>
-                  </div>
-                  <label className="muted" style={{ fontSize: "0.75rem" }}>
-                    Move to (keyboard)
-                    <select
-                      className="assign-move-select"
-                      value={
-                        camper.dormId && camperDorms.some((dorm) => dorm.id === camper.dormId)
-                          ? camper.dormId
-                          : ""
-                      }
-                      aria-label={`Move ${camper.firstName} ${camper.lastName}, ${camperBoardDetailLine(camper, boardCampStartIso)}`}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        requestCamperAssign(camper.id, value === "" ? null : value);
-                      }}
-                    >
-                      <option value="">Unassigned</option>
-                      {camperDorms.map((dorm) => (
-                        <option key={dorm.id} value={dorm.id}>
-                          {dorm.name} ({dorm.occupantCount}/{dorm.bedCapacity})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ))}
-            </div>
-            <div
-              className="assign-column"
-              onDragOver={(event) => handleDragOverBench(event, "unassigned_dorm_leader")}
-              onDrop={(event) => handleDropBench(event, "unassigned_dorm_leader")}
-            >
-              <div className="muted" style={{ fontWeight: 600 }}>
-                Unassigned dorm leaders
+              <label className="assign-panel-search"><span className="sr-only">Search all people</span><input type="search" placeholder="Search people..." value={peopleSearch} onChange={(event) => setPeopleSearch(event.target.value)} /></label>
+              <label className="assign-panel-filter"><span>Show</span><select value={peopleFilter} onChange={(event) => setPeopleFilter(event.target.value as "all" | "camper" | "worker")}><option value="all">All people</option><option value="camper">Campers & dorm leaders</option><option value="worker">Workers</option></select></label>
+              <div className="unassigned-people-list">
+                {visiblePeople.length === 0 ? <p className="dorm-empty">No people match these filters.</p> : null}
+                {visiblePeople.map(({ kind, person, currentDormId, currentDormName }) => {
+                  const targetDorms = kind === "worker" ? workerDorms : camperDorms;
+                  const detail = kind === "camper" ? camperBoardDetailLine(person, boardCampStartIso) : person.gender;
+                  const kindLabel = kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker";
+                  return <div key={`${kind}-${person.id}`} className="assign-person-row">
+                    <div className="assign-person" draggable onDragStart={(event) => beginPersonDrag(event, kind, person.id)} onDragEnd={endPersonDrag}>
+                      <div className="assign-person-name">{person.firstName} {person.lastName}</div>
+                      <div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kindLabel}</span><span>{detail}</span><span>{currentDormName ? `Assigned to ${currentDormName}` : "Unassigned"}</span></div>
+                    </div>
+                    <label className="muted assign-move-label">Move to (keyboard)<select className="assign-move-select" value={currentDormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{targetDorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({dorm.occupantCount}/{dorm.bedCapacity})</option>)}</select></label>
+                  </div>;
+                })}
               </div>
-              <div className="muted" style={{ fontSize: "0.7rem", marginBottom: "0.25rem" }}>
-                Does not use camper beds
-              </div>
-              {filteredUnassignedDormLeaders.length === 0 ? <p className="dorm-empty">No unassigned dorm leaders.</p> : null}
-              {filteredUnassignedDormLeaders.map((leader) => (
-                <div key={leader.id} className="assign-person-row">
-                  <div
-                    className="assign-person"
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(
-                        dragMime,
-                        JSON.stringify({ personKind: "dorm_leader", personId: leader.id }),
-                      );
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                  >
-                    {leader.firstName} {leader.lastName}{" "}
-                    <span className="muted">({leader.gender})</span>
-                  </div>
-                  <label className="muted" style={{ fontSize: "0.75rem" }}>
-                    Move to (keyboard)
-                    <select
-                      className="assign-move-select"
-                      value={
-                        leader.assignedCamperDormId &&
-                        camperDorms.some((dorm) => dorm.id === leader.assignedCamperDormId)
-                          ? leader.assignedCamperDormId
-                          : ""
-                      }
-                      aria-label={`Move dorm leader ${leader.firstName} ${leader.lastName}`}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        void postAssign("dorm_leader", leader.id, value === "" ? null : value);
-                      }}
-                    >
-                      <option value="">Unassigned</option>
-                      {camperDorms.map((dormOption) => (
-                        <option key={dormOption.id} value={dormOption.id}>
-                          {dormOption.name} ({dormOption.occupantCount}/{dormOption.bedCapacity})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ))}
-            </div>
             </aside>
-            <div className="dorm-grid">
-            {filteredCamperDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No camper dorms match this search.</p> : null}
-            {filteredCamperDorms.map((dorm) => (
-              <div
-                key={dorm.id}
-                className="assign-column"
-                onDragOver={(event) =>
-                  handleDragOverBench(event, { dormPurpose: "camper", dormId: dorm.id })
-                }
-                onDrop={(event) => handleDropBench(event, { dormPurpose: "camper", dormId: dorm.id })}
-              >
-                <div className="dorm-card-header">
-                  <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Camper dorm</div></div>
-                  <div className="dorm-card-menu-wrap">
-                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
-                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
-                      {superAdmin ? <>
-                        <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button>
-                        <button type="button" onClick={() => { deleteDormTriggerRef.current = openDormMenuTriggerRef.current; setDeleteDormError(null); setOpenDormMenuId(null); setDormToDelete(dorm); }}>Delete dorm</button>
-                      </> : null}
-                      <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; setRosterDormId(dorm.id); setRosterOpen(true); setOpenDormMenuId(null); setActiveTab("roster"); }}>Printable roster</button>
-                    </div> : null}
-                  </div>
+            <section className="dorm-grid-panel assign-panel" aria-labelledby="dorm-panel-title">
+              <div className="assign-panel-header dorm-panel-header">
+                <div><p className="dorm-eyebrow">Housing</p><h3 id="dorm-panel-title">Dorms</h3></div>
+                <div className="dorm-panel-controls">
+                  <label className="assign-panel-search"><span className="sr-only">Search dorms</span><input type="search" placeholder="Search dorms..." value={dormSearch} onChange={(event) => setDormSearch(event.target.value)} /></label>
+                  <label className="assign-panel-filter"><span className="sr-only">Filter dorms</span><select value={dormFilter} onChange={(event) => setDormFilter(event.target.value as "all" | "camper" | "worker")}><option value="all">All dorms</option><option value="camper">Camper dorms</option><option value="worker">Worker dorms</option></select></label>
                 </div>
-                <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
-                {dorm.campers.map((camper) => (
-                  <div key={camper.id} className="assign-person-row">
-                    <div
-                      className="assign-person"
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData(
-                          dragMime,
-                          JSON.stringify({ personKind: "camper", personId: camper.id }),
-                        );
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                    >
-                      {camper.firstName} {camper.lastName}{" "}
-                      <span className="muted">({camperBoardDetailLine(camper, boardCampStartIso)})</span>
-                    </div>
-                    <label className="muted" style={{ fontSize: "0.75rem" }}>
-                      Move to
-                      <select
-                        className="assign-move-select"
-                        value={
-                          camper.dormId && camperDorms.some((column) => column.id === camper.dormId)
-                            ? camper.dormId
-                            : ""
-                        }
-                        aria-label={`Move ${camper.firstName} ${camper.lastName}, ${camperBoardDetailLine(camper, boardCampStartIso)}`}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          requestCamperAssign(camper.id, value === "" ? null : value);
-                        }}
-                      >
-                        <option value="">Unassigned</option>
-                        {camperDorms.map((column) => (
-                          <option key={column.id} value={column.id}>
-                            {column.name} ({column.occupantCount}/{column.bedCapacity})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ))}
-                <div className="muted" style={{ fontSize: "0.7rem", marginTop: "0.5rem", fontWeight: 600 }}>
-                  Dorm leaders
-                </div>
-                {(dorm.dormLeaders ?? []).map((leader) => (
-                  <div key={leader.id} className="assign-person-row">
-                    <div
-                      className="assign-person"
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData(
-                          dragMime,
-                          JSON.stringify({ personKind: "dorm_leader", personId: leader.id }),
-                        );
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                    >
-                      {leader.firstName} {leader.lastName}{" "}
-                      <span className="muted">({leader.gender})</span>
-                    </div>
-                    <label className="muted" style={{ fontSize: "0.75rem" }}>
-                      Move to
-                      <select
-                        className="assign-move-select"
-                        value={
-                          leader.assignedCamperDormId &&
-                          camperDorms.some((column) => column.id === leader.assignedCamperDormId)
-                            ? leader.assignedCamperDormId
-                            : ""
-                        }
-                        aria-label={`Move dorm leader ${leader.firstName} ${leader.lastName}`}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          void postAssign("dorm_leader", leader.id, value === "" ? null : value);
-                        }}
-                      >
-                        <option value="">Unassigned</option>
-                        {camperDorms.map((column) => (
-                          <option key={column.id} value={column.id}>
-                            {column.name} ({column.occupantCount}/{column.bedCapacity})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ))}
               </div>
-            ))}
-            </div>
+              <div className="dorm-grid">
+                {visibleCamperDorms.length + visibleWorkerDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No dorms match these filters.</p> : null}
+                {[...visibleCamperDorms, ...visibleWorkerDorms].map((dorm) => {
+                  const isCamperDorm = "campers" in dorm;
+                  const occupants: Array<{ kind: "camper"; person: BoardCamper } | { kind: "dorm_leader"; person: BoardDormLeader } | { kind: "worker"; person: BoardWorker }> = isCamperDorm ? [...dorm.campers.map((person) => ({ kind: "camper" as const, person })), ...dorm.dormLeaders.map((person) => ({ kind: "dorm_leader" as const, person }))] : dorm.workers.map((person) => ({ kind: "worker" as const, person }));
+                  return <article key={dorm.id} className="assign-column" onDragOver={(event) => handleDragOverBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })} onDrop={(event) => handleDropBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })}>
+                    <div className="dorm-card-header">
+                      <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} | {isCamperDorm ? "Camper" : "Worker"} dorm</div></div>
+                      {(superAdmin || isCamperDorm) ? <div className="dorm-card-menu-wrap">
+                        <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
+                        {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
+                          {superAdmin ? <><button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button><button type="button" onClick={() => { deleteDormTriggerRef.current = openDormMenuTriggerRef.current; setDeleteDormError(null); setOpenDormMenuId(null); setDormToDelete(dorm); }}>Delete dorm</button></> : null}
+                          {isCamperDorm ? <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; setRosterDormId(dorm.id); setRosterOpen(true); setOpenDormMenuId(null); setActiveTab("roster"); }}>Printable roster</button> : null}
+                        </div> : null}
+                      </div> : null}
+                    </div>
+                    <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
+                    <div className="dorm-occupant-list">
+                      {occupants.length === 0 ? <p className="dorm-empty">Drop {isCamperDorm ? "campers or dorm leaders" : "workers"} here.</p> : null}
+                      {occupants.map(({ kind, person }) => <div key={`${kind}-${person.id}`} className="assign-person-row">
+                        <div className="assign-person" draggable onDragStart={(event) => beginPersonDrag(event, kind, person.id)} onDragEnd={endPersonDrag}><div className="assign-person-name">{person.firstName} {person.lastName}</div><div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker"}</span><span>{person.gender}</span></div></div>
+                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? workerDorms : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({target.occupantCount}/{target.bedCapacity})</option>)}</select></label>
+                      </div>)}
+                    </div>
+                  </article>;
+                })}
+              </div>
+            </section>
           </div>
-
-          <h3 hidden={dormFilter === "camper"} className="muted" style={{ margin: "1rem 0 0", fontSize: "0.95rem" }}>
-            Workers
-          </h3>
-          <div hidden={dormFilter === "camper"} className="assign-bench">
-            <aside className="unassigned-rail" aria-label="Unassigned workers">
-            <div
-              className="assign-column"
-              onDragOver={(event) => handleDragOverBench(event, "unassigned_worker")}
-              onDrop={(event) => handleDropBench(event, "unassigned_worker")}
-            >
-              <div className="muted" style={{ fontWeight: 600 }}>
-                Unassigned workers
-              </div>
-              {filteredUnassignedWorkers.length === 0 ? <p className="dorm-empty">No unassigned workers.</p> : null}
-              {filteredUnassignedWorkers.map((worker) => (
-                <div key={worker.id} className="assign-person-row">
-                  <div
-                    className="assign-person"
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(
-                        dragMime,
-                        JSON.stringify({ personKind: "worker", personId: worker.id }),
-                      );
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                  >
-                    {worker.firstName} {worker.lastName}{" "}
-                    <span className="muted">({worker.gender})</span>
-                  </div>
-                  <label className="muted" style={{ fontSize: "0.75rem" }}>
-                    Move to (keyboard)
-                    <select
-                      className="assign-move-select"
-                      value={
-                        worker.dormId && workerDorms.some((dorm) => dorm.id === worker.dormId)
-                          ? worker.dormId
-                          : ""
-                      }
-                      aria-label={`Move ${worker.firstName} ${worker.lastName}`}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        void postAssign("worker", worker.id, value === "" ? null : value);
-                      }}
-                    >
-                      <option value="">Unassigned</option>
-                      {workerDorms.map((dorm) => (
-                        <option key={dorm.id} value={dorm.id}>
-                          {dorm.name} ({dorm.occupantCount}/{dorm.bedCapacity})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ))}
-            </div>
-            </aside>
-            <div className="dorm-grid">
-            {filteredWorkerDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No worker dorms match this search.</p> : null}
-            {filteredWorkerDorms.map((dorm) => (
-              <div
-                key={dorm.id}
-                className="assign-column"
-                onDragOver={(event) =>
-                  handleDragOverBench(event, { dormPurpose: "worker", dormId: dorm.id })
-                }
-                onDrop={(event) => handleDropBench(event, { dormPurpose: "worker", dormId: dorm.id })}
-              >
-                <div className="dorm-card-header">
-                  <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Worker dorm</div></div>
-                  {superAdmin ? <div className="dorm-card-menu-wrap">
-                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
-                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button>
-                      <button type="button" onClick={() => { deleteDormTriggerRef.current = openDormMenuTriggerRef.current; setDeleteDormError(null); setOpenDormMenuId(null); setDormToDelete(dorm); }}>Delete dorm</button>
-                    </div> : null}
-                  </div> : null}
-                </div>
-                <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
-                {dorm.workers.map((worker) => (
-                  <div key={worker.id} className="assign-person-row">
-                    <div
-                      className="assign-person"
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData(
-                          dragMime,
-                          JSON.stringify({ personKind: "worker", personId: worker.id }),
-                        );
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                    >
-                      {worker.firstName} {worker.lastName}{" "}
-                      <span className="muted">({worker.gender})</span>
-                    </div>
-                    <label className="muted" style={{ fontSize: "0.75rem" }}>
-                      Move to
-                      <select
-                        className="assign-move-select"
-                        value={
-                          worker.dormId && workerDorms.some((column) => column.id === worker.dormId)
-                            ? worker.dormId
-                            : ""
-                        }
-                        aria-label={`Move ${worker.firstName} ${worker.lastName}`}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          void postAssign("worker", worker.id, value === "" ? null : value);
-                        }}
-                      >
-                        <option value="">Unassigned</option>
-                        {workerDorms.map((column) => (
-                          <option key={column.id} value={column.id}>
-                            {column.name} ({column.occupantCount}/{column.bedCapacity})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ))}
-              </div>
-            ))}
-            </div>
-          </div>
-        </div>
+        </section>
       ) : null}
-
       {activeTab === "roster" && rosterOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActiveDialog(); }}>
           <div ref={settingsDialogRef} tabIndex={-1} className="modal-card stack dorm-roster-panel dorm-print-root" role="dialog" aria-modal="true" aria-labelledby="dorm-roster-title">
