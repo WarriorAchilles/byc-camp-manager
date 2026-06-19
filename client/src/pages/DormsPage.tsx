@@ -215,7 +215,13 @@ export function DormsPage(): React.ReactElement {
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState("");
-  const [activeTab, setActiveTab] = useState<"inventory" | "assignments" | "roster">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "assignments" | "roster">("assignments");
+  const [dormFilter, setDormFilter] = useState<"all" | "camper" | "worker">("all");
+  const [boardSearch, setBoardSearch] = useState("");
+  const [createDormOpen, setCreateDormOpen] = useState(false);
+  const [openDormMenuId, setOpenDormMenuId] = useState<string | null>(null);
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const settingsDialogRef = useRef<HTMLDivElement | null>(null);
 
   const [dorms, setDorms] = useState<DormRow[]>([]);
   const [brackets, setBrackets] = useState<AgeBracket[]>([]);
@@ -411,9 +417,9 @@ export function DormsPage(): React.ReactElement {
       setNewCapacity("8");
       setNewBracketId("");
       await loadInventory();
-      if (activeTab === "assignments") {
-        await loadBoard();
-      }
+      await loadBoard();
+      setCreateDormOpen(false);
+      setActiveTab("assignments");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not create dorm.";
       setInventoryError(message);
@@ -452,11 +458,10 @@ export function DormsPage(): React.ReactElement {
             editPurpose === "camper" && editBracketId ? editBracketId : null,
         }),
       });
-      setEditingId(null);
       await loadInventory();
-      if (activeTab === "assignments") {
-        await loadBoard();
-      }
+      await loadBoard();
+      setEditingId(null);
+      setActiveTab("assignments");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not update dorm.";
       setInventoryError(message);
@@ -597,6 +602,35 @@ export function DormsPage(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [camperAssignModal]);
 
+  useEffect(() => {
+    if (activeTab === "assignments") {
+      return;
+    }
+    const closeDialog = (): void => {
+      setCreateDormOpen(false);
+      setEditingId(null);
+      setRosterOpen(false);
+      setActiveTab("assignments");
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") closeDialog();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.requestAnimationFrame(() => settingsDialogRef.current?.querySelector<HTMLElement>("input, select, button")?.focus());
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!openDormMenuId) return;
+    const closeMenu = (): void => setOpenDormMenuId(null);
+    const onKeyDown = (event: KeyboardEvent): void => { if (event.key === "Escape") closeMenu(); };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("click", closeMenu);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("click", closeMenu);
+    };
+  }, [openDormMenuId]);
   const handleAutoAssign = async (): Promise<void> => {
     if (!campYearId) {
       return;
@@ -706,70 +740,67 @@ export function DormsPage(): React.ReactElement {
   };
 
   const sortedDormsForRoster = useMemo(
-    () => [...dorms].sort((left, right) => left.name.localeCompare(right.name)),
+    () => [...dorms].filter((dorm) => dorm.purpose === "camper").sort((left, right) => left.name.localeCompare(right.name)),
     [dorms],
   );
 
+  const normalizedBoardSearch = boardSearch.trim().toLowerCase();
+  const personMatchesSearch = (firstName: string, lastName: string): boolean =>
+    !normalizedBoardSearch || `${firstName} ${lastName}`.toLowerCase().includes(normalizedBoardSearch);
+  const filteredCamperDorms = camperDorms.filter((dorm) =>
+    !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
+    dorm.campers.some((camper) => personMatchesSearch(camper.firstName, camper.lastName)) ||
+    dorm.dormLeaders.some((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
+  );
+  const filteredWorkerDorms = workerDorms.filter((dorm) =>
+    !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
+    dorm.workers.some((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
+  );
   return (
     <div className="stack">
-      <header>
-        <h1 style={{ marginTop: 0 }}>Dorms</h1>
-        <p className="muted">
-          Configure dorm inventory (super admin), run auto-assignment, drag campers, workers, and dorm leaders
-          between columns, or open a roster. Leaders use camper dorms only and do not consume beds. Keyboard:
-          use each row&apos;s &quot;Move to&quot; menu.
-        </p>
+      <header className="dorm-page-header">
+        <div>
+          <p className="dorm-eyebrow">Housing operations</p>
+          <h1>Camp dorm assignments</h1>
+          <p className="muted dorm-page-intro">Drag people into a dorm or use each person&apos;s move menu for keyboard assignment.</p>
+        </div>
+        {superAdmin ? (
+          <button type="button" className="btn primary dorm-add-button" onClick={() => { setCreateDormOpen(true); setActiveTab("inventory"); }}>
+            Add new dorm
+          </button>
+        ) : null}
       </header>
 
-      <div className="row">
-        <label className="stack" style={{ flex: "1 1 200px" }}>
+      <div className="dorm-toolbar" aria-label="Dorm board controls">
+        <label className="dorm-search">
+          <span className="sr-only">Search dorms and people</span>
+          <input type="search" placeholder="Search dorms or people..." value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} />
+        </label>
+        <label className="dorm-filter-field">
+          <span className="sr-only">Filter dorm type</span>
+          <select value={dormFilter} onChange={(event) => setDormFilter(event.target.value as "all" | "camper" | "worker")}>
+            <option value="all">All dorms</option>
+            <option value="camper">Camper dorms</option>
+            <option value="worker">Worker dorms</option>
+          </select>
+        </label>
+        <label className="dorm-year-field">
           <span>Camp year</span>
           {superAdmin ? (
-            <select
-              value={campYearId}
-              onChange={(event) => {
-                setCampYearId(event.target.value);
-                setRosterDormId("");
-                setRoster(null);
-              }}
-            >
+            <select value={campYearId} onChange={(event) => { setCampYearId(event.target.value); setRosterDormId(""); setRoster(null); }}>
               {campYears.length === 0 ? <option value="">No camp years</option> : null}
-              {campYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name} ({year.yearLabel})
-                </option>
-              ))}
+              {campYears.map((year) => <option key={year.id} value={year.id}>{year.name} ({year.yearLabel})</option>)}
             </select>
-          ) : (
-            <CampYearReadOnly
-              showLabel={false}
-              campYears={campYears}
-              campYearId={campYearId}
-              valueStyle={{ marginTop: "0.25rem" }}
-            />
-          )}
+          ) : <CampYearReadOnly showLabel={false} campYears={campYears} campYearId={campYearId} />}
         </label>
+        <button type="button" className="btn secondary" disabled={!campYearId || autoAssignBusy} onClick={() => void handleAutoAssign()}>
+          {autoAssignBusy ? "Assigning..." : "Auto-assign"}
+        </button>
       </div>
-
-      <div className="row" style={{ gap: "0.35rem" }}>
-        {(["inventory", "assignments", "roster"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            className="btn secondary"
-            style={{
-              opacity: activeTab === tab ? 1 : 0.75,
-              borderColor: activeTab === tab ? "var(--accent)" : undefined,
-            }}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === "inventory" ? "Inventory" : tab === "assignments" ? "Assignments" : "Roster"}
-          </button>
-        ))}
-      </div>
-
       {activeTab === "inventory" ? (
-        <div className="card stack">
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCreateDormOpen(false); setEditingId(null); setActiveTab("assignments"); } }}>
+          <div ref={settingsDialogRef} className="modal-card stack dorm-settings-dialog" role="dialog" aria-modal="true" aria-labelledby={createDormOpen ? "create-dorm-title" : "edit-dorm-title"}>
+          <button type="button" className="dorm-dialog-close" aria-label="Close dorm settings" onClick={() => { setCreateDormOpen(false); setEditingId(null); setActiveTab("assignments"); }}>X</button>
           {!superAdmin ? (
             <p className="muted">
               Only super admins can create or edit dorms. You can still view the list below and use
@@ -779,9 +810,9 @@ export function DormsPage(): React.ReactElement {
           {inventoryError ? <p className="error">{inventoryError}</p> : null}
           {inventoryLoading ? <p className="muted">Loading…</p> : null}
 
-          {superAdmin ? (
+          {superAdmin && createDormOpen ? (
             <form className="stack" onSubmit={handleCreateDorm}>
-              <h2 style={{ margin: 0 }}>Add dorm</h2>
+              <h2 id="create-dorm-title" style={{ margin: 0 }}>Add dorm</h2>
               <label className="stack">
                 Name
                 <input value={newName} onChange={(event) => setNewName(event.target.value)} required />
@@ -839,65 +870,9 @@ export function DormsPage(): React.ReactElement {
             </form>
           ) : null}
 
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Purpose</th>
-                  <th>Gender</th>
-                  <th>Beds</th>
-                  <th>Age group</th>
-                  {superAdmin ? <th>Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {dorms.map((dorm) => {
-                  const bracketLabel =
-                    dorm.ageGroupBracketId &&
-                    brackets.find((bracket) => bracket.id === dorm.ageGroupBracketId);
-                  return (
-                    <tr key={dorm.id}>
-                      <td>{dorm.name}</td>
-                      <td>{dorm.purpose}</td>
-                      <td>{dorm.genderDesignation}</td>
-                      <td>{dorm.bedCapacity}</td>
-                      <td>
-                        {bracketLabel
-                          ? `${bracketLabel.label} (${bracketLabel.minAge}–${bracketLabel.maxAge})`
-                          : "—"}
-                      </td>
-                      {superAdmin ? (
-                        <td>
-                          <div className="row">
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              onClick={() => beginEdit(dorm)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              disabled={deletingDormId === dorm.id}
-                              onClick={() => setDormToDelete(dorm)}
-                            >
-                              {deletingDormId === dorm.id ? "Deleting…" : "Delete"}
-                            </button>
-                          </div>
-                        </td>
-                      ) : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
           {superAdmin && editingId ? (
             <form className="stack" onSubmit={handleSaveEdit}>
-              <h3 style={{ margin: 0 }}>Edit dorm</h3>
+              <h2 id="edit-dorm-title" style={{ margin: 0 }}>Edit dorm settings</h2>
               <label className="stack">
                 Name
                 <input value={editName} onChange={(event) => setEditName(event.target.value)} required />
@@ -953,36 +928,28 @@ export function DormsPage(): React.ReactElement {
                 <button type="submit" className="btn">
                   Save
                 </button>
-                <button type="button" className="btn secondary" onClick={() => setEditingId(null)}>
+                <button type="button" className="btn secondary" onClick={() => { setEditingId(null); setActiveTab("assignments"); }}>
                   Cancel
                 </button>
               </div>
             </form>
           ) : null}
         </div>
+        </div>
       ) : null}
 
       {activeTab === "assignments" ? (
         <div className="card stack">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0 }}>Assignment board</h2>
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={!campYearId || autoAssignBusy}
-              onClick={() => void handleAutoAssign()}
-            >
-              {autoAssignBusy ? "Running…" : "Run auto-assign (unassigned only)"}
-            </button>
-          </div>
+          <h2 className="sr-only">Assignment board</h2>
           {boardError ? <p className="error">{boardError}</p> : null}
           {assignMessage ? <p className="muted">{assignMessage}</p> : null}
           {boardLoading ? <p className="muted">Loading board…</p> : null}
 
-          <h3 className="muted" style={{ margin: 0, fontSize: "0.95rem" }}>
+          <h3 hidden={dormFilter === "worker"} className="muted" style={{ margin: 0, fontSize: "0.95rem" }}>
             Campers
           </h3>
-          <div className="assign-bench">
+          <div hidden={dormFilter === "worker"} className="assign-bench">
+            <aside className="unassigned-rail" aria-label="Unassigned campers and dorm leaders">
             <div
               className="assign-column"
               onDragOver={(event) => handleDragOverBench(event, "unassigned_camper")}
@@ -991,7 +958,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontWeight: 600 }}>
                 Unassigned campers
               </div>
-              {unassignedCampers.map((camper) => (
+              {unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)).length === 0 ? <p className="dorm-empty">No unassigned campers.</p> : null}
+              {unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)).map((camper) => (
                 <div key={camper.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1044,7 +1012,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontSize: "0.7rem", marginBottom: "0.25rem" }}>
                 Does not use camper beds
               </div>
-              {unassignedDormLeaders.map((leader) => (
+              {unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)).length === 0 ? <p className="dorm-empty">No unassigned dorm leaders.</p> : null}
+              {unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)).map((leader) => (
                 <div key={leader.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1087,7 +1056,10 @@ export function DormsPage(): React.ReactElement {
                 </div>
               ))}
             </div>
-            {camperDorms.map((dorm) => (
+            </aside>
+            <div className="dorm-grid">
+            {filteredCamperDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No camper dorms match this search.</p> : null}
+            {filteredCamperDorms.map((dorm) => (
               <div
                 key={dorm.id}
                 className="assign-column"
@@ -1096,15 +1068,17 @@ export function DormsPage(): React.ReactElement {
                 }
                 onDrop={(event) => handleDropBench(event, { dormPurpose: "camper", dormId: dorm.id })}
               >
-                <div style={{ fontWeight: 600 }}>
-                  {dorm.name}{" "}
-                  <span className="muted">
-                    ({dorm.occupantCount}/{dorm.bedCapacity})
-                  </span>
+                <div className="dorm-card-header">
+                  <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Camper dorm</div></div>
+                  <div className="dorm-card-menu-wrap">
+                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
+                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
+                      {superAdmin ? <button type="button" onClick={() => { beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button> : null}
+                      <button type="button" onClick={() => { setRosterDormId(dorm.id); setRosterOpen(true); setOpenDormMenuId(null); setActiveTab("roster"); }}>Printable roster</button>
+                    </div> : null}
+                  </div>
                 </div>
-                <div className="muted" style={{ fontSize: "0.75rem" }}>
-                  {dorm.genderDesignation} · camper
-                </div>
+                <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
                 {dorm.campers.map((camper) => (
                   <div key={camper.id} className="assign-person-row">
                     <div
@@ -1193,12 +1167,14 @@ export function DormsPage(): React.ReactElement {
                 ))}
               </div>
             ))}
+            </div>
           </div>
 
-          <h3 className="muted" style={{ margin: "1rem 0 0", fontSize: "0.95rem" }}>
+          <h3 hidden={dormFilter === "camper"} className="muted" style={{ margin: "1rem 0 0", fontSize: "0.95rem" }}>
             Workers
           </h3>
-          <div className="assign-bench">
+          <div hidden={dormFilter === "camper"} className="assign-bench">
+            <aside className="unassigned-rail" aria-label="Unassigned workers">
             <div
               className="assign-column"
               onDragOver={(event) => handleDragOverBench(event, "unassigned_worker")}
@@ -1207,7 +1183,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontWeight: 600 }}>
                 Unassigned workers
               </div>
-              {unassignedWorkers.map((worker) => (
+              {unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)).length === 0 ? <p className="dorm-empty">No unassigned workers.</p> : null}
+              {unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)).map((worker) => (
                 <div key={worker.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1249,7 +1226,10 @@ export function DormsPage(): React.ReactElement {
                 </div>
               ))}
             </div>
-            {workerDorms.map((dorm) => (
+            </aside>
+            <div className="dorm-grid">
+            {filteredWorkerDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No worker dorms match this search.</p> : null}
+            {filteredWorkerDorms.map((dorm) => (
               <div
                 key={dorm.id}
                 className="assign-column"
@@ -1258,15 +1238,14 @@ export function DormsPage(): React.ReactElement {
                 }
                 onDrop={(event) => handleDropBench(event, { dormPurpose: "worker", dormId: dorm.id })}
               >
-                <div style={{ fontWeight: 600 }}>
-                  {dorm.name}{" "}
-                  <span className="muted">
-                    ({dorm.occupantCount}/{dorm.bedCapacity})
-                  </span>
+                <div className="dorm-card-header">
+                  <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Worker dorm</div></div>
+                  {superAdmin ? <div className="dorm-card-menu-wrap">
+                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
+                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => { beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button></div> : null}
+                  </div> : null}
                 </div>
-                <div className="muted" style={{ fontSize: "0.75rem" }}>
-                  {dorm.genderDesignation} · worker
-                </div>
+                <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
                 {dorm.workers.map((worker) => (
                   <div key={worker.id} className="assign-person-row">
                     <div
@@ -1310,13 +1289,16 @@ export function DormsPage(): React.ReactElement {
                 ))}
               </div>
             ))}
+            </div>
           </div>
         </div>
       ) : null}
 
-      {activeTab === "roster" ? (
-        <div className="card stack">
-          <h2 style={{ margin: 0 }}>Dorm roster</h2>
+      {activeTab === "roster" && rosterOpen ? (
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setRosterOpen(false); setActiveTab("assignments"); } }}>
+          <div ref={settingsDialogRef} className="modal-card stack dorm-roster-panel dorm-print-root" role="dialog" aria-modal="true" aria-labelledby="dorm-roster-title">
+          <button type="button" className="dorm-dialog-close" aria-label="Close roster" onClick={() => { setRosterOpen(false); setActiveTab("assignments"); }}>X</button>
+          <h2 id="dorm-roster-title" style={{ margin: 0 }}>Dorm roster</h2>
           <label className="stack">
             Dorm
             <select
@@ -1341,6 +1323,9 @@ export function DormsPage(): React.ReactElement {
             onClick={() => void loadRoster()}
           >
             Refresh roster
+          </button>
+          <button type="button" className="btn primary" disabled={!roster || rosterLoading} onClick={() => window.print()}>
+            Print roster
           </button>
           {rosterError ? <p className="error">{rosterError}</p> : null}
           {rosterLoading ? <p className="muted">Loading…</p> : null}
@@ -1440,6 +1425,7 @@ export function DormsPage(): React.ReactElement {
               ) : null}
             </div>
           ) : null}
+        </div>
         </div>
       ) : null}
 
