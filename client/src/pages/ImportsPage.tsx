@@ -455,7 +455,7 @@ export function ImportsPage(): ReactElement {
     !feeLoading;
 
   return (
-    <div className="stack" style={{ gap: "1.25rem", maxWidth: "960px" }}>
+    <div className="stack" style={{ gap: "1.25rem"}}>
       <div>
         <h1 style={{ marginTop: 0 }}>CSV import</h1>
         <p className="muted">

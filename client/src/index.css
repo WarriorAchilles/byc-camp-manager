@@ -425,7 +425,6 @@ button {
 .layout > main {
   flex: 1;
   padding: clamp(1rem, 2.5vw, 1.75rem);
-  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
 }
@@ -879,10 +878,6 @@ tbody tr:hover td {
 }
 
 /* Check-in (arrival dashboard) */
-.check-in-page {
-  max-width: 52rem;
-}
-
 .check-in-toolbar {
   margin-bottom: 1rem;
 }
@@ -1119,12 +1114,6 @@ tbody tr:hover td {
   justify-content: flex-end;
 }
 
-@media (min-width: 720px) {
-  .check-in-page {
-    max-width: 56rem;
-  }
-}
-
 .check-in-done-modal {
   max-width: 28rem;
 }
@@ -1189,10 +1178,6 @@ tbody tr:hover td {
 .check-in-kiosk-canvas {
   display: block;
   margin: 0 auto;
-}
-
-.self-check-in-qr-page {
-  max-width: 52rem;
 }
 
 .self-check-in-page {
@@ -1406,10 +1391,6 @@ tbody tr:hover td {
 }
 
 /* —— Reports (step 06) —— */
-.reports-page {
-  max-width: 56rem;
-}
-
 .reports-toolbar {
   display: flex;
   flex-direction: column;
