@@ -184,6 +184,26 @@ describe("csvImportCore", () => {
     expect(preview.payloads).toHaveLength(1);
   });
 
+  it("allows worker imports with only first name, last name, and gender", () => {
+    const csv = "First Name,Last Name,Gender\nAlex,Worker,Female\n";
+    const preview = runImportPreview("worker", csv, undefined);
+
+    expect(preview.invalidRowCount).toBe(0);
+    expect(preview.validRowCount).toBe(1);
+    expect(preview.payloads[0]).toMatchObject({
+      email: "",
+      firstName: "Alex",
+      lastName: "Worker",
+      gender: "female",
+      cellPhone: "",
+      streetAddress: "",
+      city: "",
+      stateOrProvince: "",
+      postalCode: "",
+      country: "",
+    });
+  });
+
   it("splits worker task preferences into three slots", () => {
     const columnMap = mergeColumnMap(
       {
@@ -235,6 +255,21 @@ describe("csvImportCore", () => {
     const payload = preview.payloads[0] as { phone: string; roleLabel: string | null };
     expect(payload.phone).toBe("5559876543");
     expect(payload.roleLabel).toBe("10-13");
+  });
+
+  it("allows dorm leader imports with only first name, last name, and gender", () => {
+    const csv = "First Name,Last Name,Gender\nTaylor,Leader,Male\n";
+    const preview = runImportPreview("dorm_leader", csv, undefined);
+
+    expect(preview.invalidRowCount).toBe(0);
+    expect(preview.validRowCount).toBe(1);
+    expect(preview.payloads[0]).toMatchObject({
+      email: "",
+      firstName: "Taylor",
+      lastName: "Leader",
+      gender: "male",
+      phone: "",
+    });
   });
 
   it("rejects invalid column map references", () => {

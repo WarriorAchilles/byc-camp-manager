@@ -773,9 +773,7 @@ export function buildWorkerImportPreview(
     const tasksRaw = take("taskPreferences");
     const shirt = take("tShirtSize");
 
-    if (!email.trim()) {
-      errors.push("Email is required.");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       errors.push("Email is not valid.");
     }
     if (!firstName.trim()) {
@@ -800,7 +798,9 @@ export function buildWorkerImportPreview(
       errors.push(genderResult.message);
     }
 
-    const cellResult = normalizePhoneDigits(cellRaw);
+    const cellResult = cellRaw.trim()
+      ? normalizePhoneDigits(cellRaw)
+      : { ok: true as const, value: "" };
     if (!cellResult.ok) {
       errors.push(`Cell phone: ${cellResult.message}`);
     }
@@ -815,21 +815,6 @@ export function buildWorkerImportPreview(
       }
     }
 
-    if (!street.trim()) {
-      errors.push("Street address is required.");
-    }
-    if (!city.trim()) {
-      errors.push("City is required.");
-    }
-    if (!state.trim()) {
-      errors.push("State or province is required.");
-    }
-    if (!zip.trim()) {
-      errors.push("Postal code is required.");
-    }
-    if (!country.trim()) {
-      errors.push("Country is required.");
-    }
 
     const [taskFirst, taskSecond, taskThird] = splitTaskPreferences(tasksRaw);
     if (tasksRaw.trim() && !taskFirst) {
@@ -845,7 +830,6 @@ export function buildWorkerImportPreview(
       errors.length === 0 &&
       genderResult.ok &&
       cellResult.ok &&
-      email.trim() &&
       firstName.trim() &&
       lastName.trim()
     ) {
@@ -910,9 +894,7 @@ export function buildDormLeaderImportPreview(
     const altRaw = take("altPhone");
     const roleLabelRaw = take("roleLabel");
 
-    if (!email.trim()) {
-      errors.push("Email is required.");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       errors.push("Email is not valid.");
     }
     if (!firstName.trim()) {
@@ -931,7 +913,9 @@ export function buildDormLeaderImportPreview(
     if (!cellRaw.trim() && altRaw.trim()) {
       warnings.push("Primary cell empty; used alternate number for phone.");
     }
-    const phoneResult = normalizePhoneDigits(phoneRaw);
+    const phoneResult = phoneRaw.trim()
+      ? normalizePhoneDigits(phoneRaw)
+      : { ok: true as const, value: "" };
     if (!phoneResult.ok) {
       errors.push(`Phone: ${phoneResult.message}`);
     }
