@@ -222,6 +222,9 @@ export function DormsPage(): React.ReactElement {
   const [openDormMenuId, setOpenDormMenuId] = useState<string | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
   const settingsDialogRef = useRef<HTMLDivElement | null>(null);
+  const dialogTriggerRef = useRef<HTMLElement | null>(null);
+  const addDormButtonRef = useRef<HTMLButtonElement | null>(null);
+  const openDormMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const [dorms, setDorms] = useState<DormRow[]>([]);
   const [brackets, setBrackets] = useState<AgeBracket[]>([]);
@@ -242,6 +245,9 @@ export function DormsPage(): React.ReactElement {
   const [editBracketId, setEditBracketId] = useState("");
   const [deletingDormId, setDeletingDormId] = useState<string | null>(null);
   const [dormToDelete, setDormToDelete] = useState<DormRow | null>(null);
+  const [deleteDormError, setDeleteDormError] = useState<string | null>(null);
+  const deleteDormDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteDormTriggerRef = useRef<HTMLButtonElement | null>(null);
   const deleteDormConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const [camperDorms, setCamperDorms] = useState<BoardDormCamper[]>([]);
@@ -267,6 +273,29 @@ export function DormsPage(): React.ReactElement {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
 
+  const restoreFocus = useCallback((trigger: HTMLElement | null): void => {
+    window.requestAnimationFrame(() => trigger?.focus());
+  }, []);
+
+  const closeActiveDialog = useCallback((): void => {
+    const trigger = dialogTriggerRef.current;
+    dialogTriggerRef.current = null;
+    setCreateDormOpen(false);
+    setEditingId(null);
+    setRosterOpen(false);
+    setActiveTab("assignments");
+    restoreFocus(trigger);
+  }, [restoreFocus]);
+
+  const closeDeleteDialog = useCallback((): void => {
+    const trigger = deleteDormTriggerRef.current;
+    deleteDormTriggerRef.current = null;
+    setDormToDelete(null);
+    setDeleteDormError(null);
+    window.requestAnimationFrame(() => {
+      (trigger?.isConnected ? trigger : addDormButtonRef.current)?.focus();
+    });
+  }, []);
   const loadCampYears = useCallback(async () => {
     try {
       const data = await apiJson<{
@@ -418,8 +447,7 @@ export function DormsPage(): React.ReactElement {
       setNewBracketId("");
       await loadInventory();
       await loadBoard();
-      setCreateDormOpen(false);
-      setActiveTab("assignments");
+      closeActiveDialog();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not create dorm.";
       setInventoryError(message);
@@ -460,8 +488,7 @@ export function DormsPage(): React.ReactElement {
       });
       await loadInventory();
       await loadBoard();
-      setEditingId(null);
-      setActiveTab("assignments");
+      closeActiveDialog();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not update dorm.";
       setInventoryError(message);
@@ -469,25 +496,41 @@ export function DormsPage(): React.ReactElement {
   };
 
   useEffect(() => {
-    if (!dormToDelete) {
-      return;
-    }
+    if (!dormToDelete) return;
+    const dialog = deleteDormDialogRef.current;
+    const focusableSelector = "button:not([disabled]), [tabindex]:not([tabindex='-1'])";
     deleteDormConfirmRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && deletingDormId === null) {
-        setDormToDelete(null);
+        closeDeleteDialog();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dormToDelete, deletingDormId]);
-
+  }, [closeDeleteDialog, deletingDormId, dormToDelete]);
   const handleDeleteDorm = async (): Promise<void> => {
     const dorm = dormToDelete;
     if (!superAdmin || !campYearId || !dorm) {
       return;
     }
-    setInventoryError(null);
+    setDeleteDormError(null);
     setDeletingDormId(dorm.id);
     try {
       await apiJson(`/api/admin/camp-years/${campYearId}/dorms/${dorm.id}`, {
@@ -500,14 +543,15 @@ export function DormsPage(): React.ReactElement {
         setRosterDormId("");
         setRoster(null);
       }
-      setDormToDelete(null);
+
       await loadInventory();
       if (activeTab === "assignments") {
         await loadBoard();
       }
+      closeDeleteDialog();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Could not delete dorm.";
-      setInventoryError(message);
+      setDeleteDormError(message);
     } finally {
       setDeletingDormId(null);
     }
@@ -603,34 +647,55 @@ export function DormsPage(): React.ReactElement {
   }, [camperAssignModal]);
 
   useEffect(() => {
-    if (activeTab === "assignments") {
-      return;
-    }
-    const closeDialog = (): void => {
-      setCreateDormOpen(false);
-      setEditingId(null);
-      setRosterOpen(false);
-      setActiveTab("assignments");
-    };
+    if (activeTab === "assignments") return;
+    const dialog = settingsDialogRef.current;
+const focusableSelector = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])";
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") closeDialog();
+      if (event.key === "Escape") {
+        closeActiveDialog();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    window.requestAnimationFrame(() => settingsDialogRef.current?.querySelector<HTMLElement>("input, select, button")?.focus());
+    window.requestAnimationFrame(() => {
+      const logicalFirst = dialog?.querySelector<HTMLElement>("input:not([disabled]), select:not([disabled]), textarea:not([disabled])");
+      (logicalFirst ?? dialog)?.focus();
+    });
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTab]);
-
+  }, [activeTab, closeActiveDialog]);
   useEffect(() => {
     if (!openDormMenuId) return;
     const closeMenu = (): void => setOpenDormMenuId(null);
-    const onKeyDown = (event: KeyboardEvent): void => { if (event.key === "Escape") closeMenu(); };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        const trigger = openDormMenuTriggerRef.current;
+        closeMenu();
+        restoreFocus(trigger);
+      }
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("click", closeMenu);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("click", closeMenu);
     };
-  }, [openDormMenuId]);
+  }, [openDormMenuId, restoreFocus]);
   const handleAutoAssign = async (): Promise<void> => {
     if (!campYearId) {
       return;
@@ -744,17 +809,38 @@ export function DormsPage(): React.ReactElement {
     [dorms],
   );
 
-  const normalizedBoardSearch = boardSearch.trim().toLowerCase();
-  const personMatchesSearch = (firstName: string, lastName: string): boolean =>
-    !normalizedBoardSearch || `${firstName} ${lastName}`.toLowerCase().includes(normalizedBoardSearch);
-  const filteredCamperDorms = camperDorms.filter((dorm) =>
-    !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
-    dorm.campers.some((camper) => personMatchesSearch(camper.firstName, camper.lastName)) ||
-    dorm.dormLeaders.some((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
+  const normalizedBoardSearch = useMemo(() => boardSearch.trim().toLowerCase(), [boardSearch]);
+  const personMatchesSearch = useCallback(
+    (firstName: string, lastName: string): boolean =>
+      !normalizedBoardSearch || `${firstName} ${lastName}`.toLowerCase().includes(normalizedBoardSearch),
+    [normalizedBoardSearch],
   );
-  const filteredWorkerDorms = workerDorms.filter((dorm) =>
-    !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
-    dorm.workers.some((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
+  const filteredUnassignedCampers = useMemo(
+    () => unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)),
+    [personMatchesSearch, unassignedCampers],
+  );
+  const filteredUnassignedDormLeaders = useMemo(
+    () => unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
+    [personMatchesSearch, unassignedDormLeaders],
+  );
+  const filteredUnassignedWorkers = useMemo(
+    () => unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
+    [personMatchesSearch, unassignedWorkers],
+  );
+  const filteredCamperDorms = useMemo(
+    () => camperDorms.filter((dorm) =>
+      !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
+      dorm.campers.some((camper) => personMatchesSearch(camper.firstName, camper.lastName)) ||
+      dorm.dormLeaders.some((leader) => personMatchesSearch(leader.firstName, leader.lastName)),
+    ),
+    [camperDorms, normalizedBoardSearch, personMatchesSearch],
+  );
+  const filteredWorkerDorms = useMemo(
+    () => workerDorms.filter((dorm) =>
+      !normalizedBoardSearch || dorm.name.toLowerCase().includes(normalizedBoardSearch) ||
+      dorm.workers.some((worker) => personMatchesSearch(worker.firstName, worker.lastName)),
+    ),
+    [normalizedBoardSearch, personMatchesSearch, workerDorms],
   );
   return (
     <div className="stack">
@@ -765,7 +851,7 @@ export function DormsPage(): React.ReactElement {
           <p className="muted dorm-page-intro">Drag people into a dorm or use each person&apos;s move menu for keyboard assignment.</p>
         </div>
         {superAdmin ? (
-          <button type="button" className="btn primary dorm-add-button" onClick={() => { setCreateDormOpen(true); setActiveTab("inventory"); }}>
+          <button ref={addDormButtonRef} type="button" className="btn primary dorm-add-button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget; setCreateDormOpen(true); setActiveTab("inventory"); }}>
             Add new dorm
           </button>
         ) : null}
@@ -798,9 +884,9 @@ export function DormsPage(): React.ReactElement {
         </button>
       </div>
       {activeTab === "inventory" ? (
-        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCreateDormOpen(false); setEditingId(null); setActiveTab("assignments"); } }}>
-          <div ref={settingsDialogRef} className="modal-card stack dorm-settings-dialog" role="dialog" aria-modal="true" aria-labelledby={createDormOpen ? "create-dorm-title" : "edit-dorm-title"}>
-          <button type="button" className="dorm-dialog-close" aria-label="Close dorm settings" onClick={() => { setCreateDormOpen(false); setEditingId(null); setActiveTab("assignments"); }}>X</button>
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActiveDialog(); }}>
+          <div ref={settingsDialogRef} tabIndex={-1} className="modal-card stack dorm-settings-dialog" role="dialog" aria-modal="true" aria-labelledby={createDormOpen ? "create-dorm-title" : "edit-dorm-title"}>
+          <button type="button" className="dorm-dialog-close" aria-label="Close dorm settings" onClick={closeActiveDialog}>X</button>
           {!superAdmin ? (
             <p className="muted">
               Only super admins can create or edit dorms. You can still view the list below and use
@@ -928,7 +1014,7 @@ export function DormsPage(): React.ReactElement {
                 <button type="submit" className="btn">
                   Save
                 </button>
-                <button type="button" className="btn secondary" onClick={() => { setEditingId(null); setActiveTab("assignments"); }}>
+                <button type="button" className="btn secondary" onClick={() => { closeActiveDialog(); }}>
                   Cancel
                 </button>
               </div>
@@ -958,8 +1044,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontWeight: 600 }}>
                 Unassigned campers
               </div>
-              {unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)).length === 0 ? <p className="dorm-empty">No unassigned campers.</p> : null}
-              {unassignedCampers.filter((camper) => personMatchesSearch(camper.firstName, camper.lastName)).map((camper) => (
+              {filteredUnassignedCampers.length === 0 ? <p className="dorm-empty">No unassigned campers.</p> : null}
+              {filteredUnassignedCampers.map((camper) => (
                 <div key={camper.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1012,8 +1098,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontSize: "0.7rem", marginBottom: "0.25rem" }}>
                 Does not use camper beds
               </div>
-              {unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)).length === 0 ? <p className="dorm-empty">No unassigned dorm leaders.</p> : null}
-              {unassignedDormLeaders.filter((leader) => personMatchesSearch(leader.firstName, leader.lastName)).map((leader) => (
+              {filteredUnassignedDormLeaders.length === 0 ? <p className="dorm-empty">No unassigned dorm leaders.</p> : null}
+              {filteredUnassignedDormLeaders.map((leader) => (
                 <div key={leader.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1071,10 +1157,13 @@ export function DormsPage(): React.ReactElement {
                 <div className="dorm-card-header">
                   <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Camper dorm</div></div>
                   <div className="dorm-card-menu-wrap">
-                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
+                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
                     {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
-                      {superAdmin ? <button type="button" onClick={() => { beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button> : null}
-                      <button type="button" onClick={() => { setRosterDormId(dorm.id); setRosterOpen(true); setOpenDormMenuId(null); setActiveTab("roster"); }}>Printable roster</button>
+                      {superAdmin ? <>
+                        <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button>
+                        <button type="button" onClick={() => { deleteDormTriggerRef.current = openDormMenuTriggerRef.current; setDeleteDormError(null); setOpenDormMenuId(null); setDormToDelete(dorm); }}>Delete dorm</button>
+                      </> : null}
+                      <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; setRosterDormId(dorm.id); setRosterOpen(true); setOpenDormMenuId(null); setActiveTab("roster"); }}>Printable roster</button>
                     </div> : null}
                   </div>
                 </div>
@@ -1183,8 +1272,8 @@ export function DormsPage(): React.ReactElement {
               <div className="muted" style={{ fontWeight: 600 }}>
                 Unassigned workers
               </div>
-              {unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)).length === 0 ? <p className="dorm-empty">No unassigned workers.</p> : null}
-              {unassignedWorkers.filter((worker) => personMatchesSearch(worker.firstName, worker.lastName)).map((worker) => (
+              {filteredUnassignedWorkers.length === 0 ? <p className="dorm-empty">No unassigned workers.</p> : null}
+              {filteredUnassignedWorkers.map((worker) => (
                 <div key={worker.id} className="assign-person-row">
                   <div
                     className="assign-person"
@@ -1241,8 +1330,11 @@ export function DormsPage(): React.ReactElement {
                 <div className="dorm-card-header">
                   <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} · Worker dorm</div></div>
                   {superAdmin ? <div className="dorm-card-menu-wrap">
-                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
-                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => { beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button></div> : null}
+                    <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
+                    {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
+                      <button type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget.closest(".dorm-card-menu-wrap")?.querySelector<HTMLElement>(".dorm-menu-button") ?? event.currentTarget; beginEdit(dorm); setCreateDormOpen(false); setOpenDormMenuId(null); setActiveTab("inventory"); }}>Edit dorm</button>
+                      <button type="button" onClick={() => { deleteDormTriggerRef.current = openDormMenuTriggerRef.current; setDeleteDormError(null); setOpenDormMenuId(null); setDormToDelete(dorm); }}>Delete dorm</button>
+                    </div> : null}
                   </div> : null}
                 </div>
                 <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
@@ -1295,9 +1387,9 @@ export function DormsPage(): React.ReactElement {
       ) : null}
 
       {activeTab === "roster" && rosterOpen ? (
-        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setRosterOpen(false); setActiveTab("assignments"); } }}>
-          <div ref={settingsDialogRef} className="modal-card stack dorm-roster-panel dorm-print-root" role="dialog" aria-modal="true" aria-labelledby="dorm-roster-title">
-          <button type="button" className="dorm-dialog-close" aria-label="Close roster" onClick={() => { setRosterOpen(false); setActiveTab("assignments"); }}>X</button>
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActiveDialog(); }}>
+          <div ref={settingsDialogRef} tabIndex={-1} className="modal-card stack dorm-roster-panel dorm-print-root" role="dialog" aria-modal="true" aria-labelledby="dorm-roster-title">
+          <button type="button" className="dorm-dialog-close" aria-label="Close roster" onClick={closeActiveDialog}>X</button>
           <h2 id="dorm-roster-title" style={{ margin: 0 }}>Dorm roster</h2>
           <label className="stack">
             Dorm
@@ -1435,11 +1527,13 @@ export function DormsPage(): React.ReactElement {
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && deletingDormId === null) {
-              setDormToDelete(null);
+              closeDeleteDialog();
             }
           }}
         >
           <div
+            ref={deleteDormDialogRef}
+            tabIndex={-1}
             className="card stack modal-card"
             role="dialog"
             aria-modal="true"
@@ -1453,17 +1547,18 @@ export function DormsPage(): React.ReactElement {
               Delete <strong>{dormToDelete.name}</strong>? Assigned people will remain in this camp
               year and become unassigned.
             </p>
+            {deleteDormError ? <p className="error" role="alert" aria-live="assertive">{deleteDormError}</p> : null}
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button
                 type="button"
                 className="btn secondary"
                 disabled={deletingDormId !== null}
-                onClick={() => setDormToDelete(null)}
+                ref={deleteDormConfirmRef}
+                onClick={closeDeleteDialog}
               >
                 Cancel
               </button>
               <button
-                ref={deleteDormConfirmRef}
                 type="button"
                 className="btn danger"
                 disabled={deletingDormId !== null}
