@@ -380,7 +380,8 @@ export function CamperSelfCheckInPage(): ReactElement {
             <div className="self-check-in-dorm-list">
               {success.campers.map((camper) => (
                 <p className="self-check-in-dorm" key={`${camper.name}-${camper.dormLabel}`}>
-                  <span className="self-check-in-dorm-label">{camper.name}</span>
+                  <span className="self-check-in-camper-name">{camper.name}</span>
+                  <span className="self-check-in-dorm-label">Your dorm assignment:</span>
                   <span className="self-check-in-dorm-value">{camper.dormLabel}</span>
                 </p>
               ))}

@@ -1305,6 +1305,12 @@ tbody tr:hover td {
   background: var(--surface-muted);
 }
 
+.self-check-in-camper-name {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
 .self-check-in-dorm-label {
   display: block;
   font-size: 0.78rem;
