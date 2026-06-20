@@ -94,6 +94,8 @@ type PeoplePageProps = {
 
 type AddPersonKind = "camper" | "worker" | "leader";
 
+type PeopleListKind = "camper" | "worker" | "dorm_leader";
+
 type PersonToDelete = {
   id: string;
   firstName: string;
@@ -115,6 +117,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const superAdmin = user?.role === "super_admin";
   const canAddPeople = superAdmin;
   const [addPersonKind, setAddPersonKind] = useState<AddPersonKind>("camper");
+  const [peopleListKind, setPeopleListKind] = useState<PeopleListKind>("camper");
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState<string>("");
@@ -838,9 +841,47 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
 
       {mode === "list" ? (
         <>
-          <div className="card">
+          <div className="people-tabs" role="tablist" aria-label="People type">
+            <button
+              id="campers-tab"
+              type="button"
+              role="tab"
+              aria-selected={peopleListKind === "camper"}
+              aria-controls="campers-panel"
+              className={`btn secondary${peopleListKind === "camper" ? " active" : ""}`}
+              onClick={() => setPeopleListKind("camper")}
+            >
+              Campers ({campers.length})
+            </button>
+            <button
+              id="workers-tab"
+              type="button"
+              role="tab"
+              aria-selected={peopleListKind === "worker"}
+              aria-controls="workers-panel"
+              className={`btn secondary${peopleListKind === "worker" ? " active" : ""}`}
+              onClick={() => setPeopleListKind("worker")}
+            >
+              Workers ({workers.length})
+            </button>
+            <button
+              id="dorm-leaders-tab"
+              type="button"
+              role="tab"
+              aria-selected={peopleListKind === "dorm_leader"}
+              aria-controls="dorm-leaders-panel"
+              className={`btn secondary${peopleListKind === "dorm_leader" ? " active" : ""}`}
+              onClick={() => setPeopleListKind("dorm_leader")}
+            >
+              Dorm leaders ({dormLeaders.length})
+            </button>
+          </div>
+
+          {deletePersonError ? <p className="error">{deletePersonError}</p> : null}
+
+          {peopleListKind === "camper" ? (
+          <div id="campers-panel" role="tabpanel" aria-labelledby="campers-tab" className="card">
         <h2 style={{ marginTop: 0 }}>Campers</h2>
-        {deletePersonError ? <p className="error">{deletePersonError}</p> : null}
         {paymentStatusError ? <p className="error">{paymentStatusError}</p> : null}
         {campers.length === 0 ? (
           <p className="muted">No campers yet for this year.</p>
@@ -915,8 +956,10 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
           </div>
         )}
           </div>
+          ) : null}
 
-      <div className="card">
+      {peopleListKind === "worker" ? (
+      <div id="workers-panel" role="tabpanel" aria-labelledby="workers-tab" className="card">
         <h2 style={{ marginTop: 0 }}>Workers</h2>
         {workers.length === 0 ? (
           <p className="muted">No workers yet for this year.</p>
@@ -973,8 +1016,10 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
           </div>
         )}
       </div>
+      ) : null}
 
-      <div className="card stack">
+      {peopleListKind === "dorm_leader" ? (
+      <div id="dorm-leaders-panel" role="tabpanel" aria-labelledby="dorm-leaders-tab" className="card stack">
         <h2 style={{ marginTop: 0 }}>Dorm leaders</h2>
         {dormLeaders.length > 0 ? (
           <p className="muted" style={{ margin: 0 }}>
@@ -1038,6 +1083,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
           </div>
         )}
       </div>
+      ) : null}
 
       {canAddPeople ? (
         <p className="muted">

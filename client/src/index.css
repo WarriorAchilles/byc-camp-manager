@@ -478,16 +478,24 @@ button {
   align-items: center;
 }
 
-.people-add-tabs {
+.people-add-tabs,
+.people-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
-.people-add-tabs .btn.secondary.active {
+.people-add-tabs .btn.secondary.active,
+.people-tabs .btn.secondary.active {
   background: var(--brand-slate-700);
   border-color: var(--brand-slate-700);
+  color: #fffaf8;
+}
+
+.people-add-tabs .btn.secondary.active:hover:not(:disabled),
+.people-tabs .btn.secondary.active:hover:not(:disabled) {
+  background: var(--brand-slate-700);
   color: #fffaf8;
 }
 
