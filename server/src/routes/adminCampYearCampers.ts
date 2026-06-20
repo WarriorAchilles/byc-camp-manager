@@ -54,6 +54,9 @@ const createBody = z.object({
 const updateBody = z
   .object({
     ...camperFields,
+    guardianName: z.string(),
+    guardianEmail: z.union([z.literal(""), z.string().email()]),
+    guardianPhone: z.string(),
     checkInStatus: z.nativeEnum(CheckInStatus).optional(),
   })
   .partial();

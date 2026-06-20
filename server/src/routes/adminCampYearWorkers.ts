@@ -41,6 +41,13 @@ const createBody = z.object(workerBody);
 const updateBody = z
   .object({
     ...workerBody,
+    email: z.union([z.literal(""), z.string().email()]),
+    cellPhone: z.string(),
+    streetAddress: z.string(),
+    city: z.string(),
+    stateOrProvince: z.string(),
+    postalCode: z.string(),
+    country: z.string(),
     checkInStatus: z.nativeEnum(CheckInStatus).optional(),
     archivedAt: z.string().datetime().nullable().optional(),
   })
@@ -50,8 +57,8 @@ const convertToDormLeaderBody = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   gender: z.nativeEnum(Gender).optional(),
-  email: z.string().email().optional(),
-  phone: z.string().min(1).optional(),
+  email: z.union([z.literal(""), z.string().email()]).optional(),
+  phone: z.string().optional(),
   roleLabel: z.string().nullable().optional(),
   assignedCamperDormId: z.string().uuid().nullable().optional(),
 });

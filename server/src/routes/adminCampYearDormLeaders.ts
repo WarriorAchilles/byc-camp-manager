@@ -29,6 +29,8 @@ const createBody = z.object(leaderBody);
 const updateBody = z
   .object({
     ...leaderBody,
+    email: z.union([z.literal(""), z.string().email()]),
+    phone: z.string(),
     checkInStatus: z.nativeEnum(CheckInStatus).optional(),
     archivedAt: z.string().datetime().nullable().optional(),
   })
@@ -37,18 +39,18 @@ const updateBody = z
 const isoDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 
 const convertToWorkerBody = z.object({
-  email: z.string().email(),
+  email: z.union([z.literal(""), z.string().email()]),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   dateOfBirth: isoDateString.nullable().optional(),
   gender: z.nativeEnum(Gender),
-  cellPhone: z.string().min(1),
+  cellPhone: z.string(),
   altPhone: z.string().nullable().optional(),
-  streetAddress: z.string().min(1),
-  city: z.string().min(1),
-  stateOrProvince: z.string().min(1),
-  postalCode: z.string().min(1),
-  country: z.string().min(1),
+  streetAddress: z.string(),
+  city: z.string(),
+  stateOrProvince: z.string(),
+  postalCode: z.string(),
+  country: z.string(),
   taskPreferenceFirst: z.string().nullable().optional(),
   taskPreferenceSecond: z.string().nullable().optional(),
   taskPreferenceThird: z.string().nullable().optional(),

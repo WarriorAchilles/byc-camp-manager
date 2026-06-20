@@ -243,7 +243,7 @@ export function PersonEditDialog({
             {input("dateOfBirth", "Date of birth", true, "date")}
             {input("camperCellPhone", "Camper cell phone")}
             {input("streetAddress", "Street address")}{input("city", "City")}{input("stateOrProvince", "State / province")}{input("postalCode", "Postal code")}{input("country", "Country")}
-            {input("guardianName", "Guardian name", true)}{input("guardianEmail", "Guardian email", true, "email")}{input("guardianPhone", "Guardian phone", true)}
+            {input("guardianName", "Guardian name")}{input("guardianEmail", "Guardian email", false, "email")}{input("guardianPhone", "Guardian phone")}
             {input("emergencyContactName", "Emergency contact name")}{input("emergencyContactPhone", "Emergency contact phone")}
             <label>Medical notes<textarea value={value("medicalNotes")} onChange={(event) => setValue("medicalNotes", event.target.value)} /></label>
             <label>Dietary restrictions<textarea value={value("dietaryRestrictions")} onChange={(event) => setValue("dietaryRestrictions", event.target.value)} /></label>
@@ -254,14 +254,14 @@ export function PersonEditDialog({
             {checkInSelect}
           </> : null}
           {kind === "worker" ? <>
-            {input("email", "Email", true, "email")}{input("dateOfBirth", "Date of birth", false, "date")}{input("cellPhone", "Cell phone", true)}{input("altPhone", "Alternate phone")}
-            {input("streetAddress", "Street address", true)}{input("city", "City", true)}{input("stateOrProvince", "State / province", true)}{input("postalCode", "Postal code", true)}{input("country", "Country", true)}
+            {input("email", "Email", false, "email")}{input("dateOfBirth", "Date of birth", false, "date")}{input("cellPhone", "Cell phone")}{input("altPhone", "Alternate phone")}
+            {input("streetAddress", "Street address")}{input("city", "City")}{input("stateOrProvince", "State / province")}{input("postalCode", "Postal code")}{input("country", "Country")}
             {input("taskPreferenceFirst", "First task preference")}{input("taskPreferenceSecond", "Second task preference")}{input("taskPreferenceThird", "Third task preference")}{input("tShirtSize", "T-shirt size")}
             <label>Dorm<select value={value("dormId")} onChange={(event) => setValue("dormId", event.target.value)}><option value="">Unassigned</option>{dorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({dorm.purpose})</option>)}</select></label>
             {initialKind === "worker" ? checkInSelect : null}
           </> : null}
           {kind === "dorm_leader" ? <>
-            {input("email", "Email", true, "email")}{input("cellPhone", "Phone", true)}{input("roleLabel", "Role label")}
+            {input("email", "Email", false, "email")}{input("cellPhone", "Phone")}{input("roleLabel", "Role label")}
             <label>Camper dorm<select value={value("assignedCamperDormId")} onChange={(event) => setValue("assignedCamperDormId", event.target.value)}><option value="">Unassigned</option>{dorms.filter((dorm) => dorm.purpose === "camper").map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}</select></label>
             {initialKind === "dorm_leader" ? checkInSelect : null}
           </> : null}
