@@ -1801,6 +1801,11 @@ tbody tr:hover td {
   font-size: 0.72rem;
 }
 
+.people-filter-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .unassigned-people-list {
   min-height: 10rem;
   overflow-y: auto;

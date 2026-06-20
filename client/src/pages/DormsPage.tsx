@@ -223,7 +223,11 @@ export function DormsPage(): React.ReactElement {
   const [campYearId, setCampYearId] = useState("");
   const [activeTab, setActiveTab] = useState<"inventory" | "assignments" | "roster">("assignments");
   const [dormFilter, setDormFilter] = useState<"all" | "camper" | "worker">("all");
-  const [peopleFilter, setPeopleFilter] = useState<"all" | "camper" | "worker">("all");
+  const [peopleGenderFilter, setPeopleGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [peopleRoleFilter, setPeopleRoleFilter] = useState<"all" | AssignPersonKind>("all");
+  const [peopleAssignmentFilter, setPeopleAssignmentFilter] = useState<
+    "all" | "assigned" | "unassigned"
+  >("unassigned");
   const [peopleSearch, setPeopleSearch] = useState("");
   const [dormSearch, setDormSearch] = useState("");
   const [createDormOpen, setCreateDormOpen] = useState(false);
@@ -835,10 +839,20 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
     );
 
     return [...peopleByKey.values()]
-      .filter(({ kind }) =>
-        peopleFilter === "all" ||
-        (peopleFilter === "worker" ? kind === "worker" : kind !== "worker"),
+      .filter(({ kind }) => peopleRoleFilter === "all" || kind === peopleRoleFilter)
+      .filter(
+        ({ person }) =>
+          peopleGenderFilter === "all" || person.gender === peopleGenderFilter,
       )
+      .filter(({ currentDormId }) => {
+        if (peopleAssignmentFilter === "assigned") {
+          return currentDormId !== null;
+        }
+        if (peopleAssignmentFilter === "unassigned") {
+          return currentDormId === null;
+        }
+        return true;
+      })
       .filter(({ person }) =>
         `${person.firstName} ${person.lastName}`.toLowerCase().includes(normalizedPeopleSearch),
       )
@@ -847,7 +861,18 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
           `${right.person.lastName} ${right.person.firstName}`,
         ),
       );
-  }, [camperDorms, normalizedPeopleSearch, peopleFilter, unassignedCampers, unassignedDormLeaders, unassignedWorkers, workerDorms]);  const visibleCamperDorms = useMemo(
+  }, [
+    camperDorms,
+    normalizedPeopleSearch,
+    peopleAssignmentFilter,
+    peopleGenderFilter,
+    peopleRoleFilter,
+    unassignedCampers,
+    unassignedDormLeaders,
+    unassignedWorkers,
+    workerDorms,
+  ]);
+  const visibleCamperDorms = useMemo(
     () =>
       dormFilter === "worker"
         ? []
@@ -1044,7 +1069,33 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                 <span className="assign-count">{visiblePeople.length}</span>
               </div>
               <label className="assign-panel-search"><span className="sr-only">Search all people</span><input type="search" placeholder="Search people..." value={peopleSearch} onChange={(event) => setPeopleSearch(event.target.value)} /></label>
-              <label className="assign-panel-filter"><span>Show</span><select value={peopleFilter} onChange={(event) => setPeopleFilter(event.target.value as "all" | "camper" | "worker")}><option value="all">All people</option><option value="camper">Campers & dorm leaders</option><option value="worker">Workers</option></select></label>
+              <div className="people-filter-grid" aria-label="Filter people">
+                <label className="assign-panel-filter">
+                  <span>Gender</span>
+                  <select value={peopleGenderFilter} onChange={(event) => setPeopleGenderFilter(event.target.value as "all" | "male" | "female")}>
+                    <option value="all">All genders</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+                <label className="assign-panel-filter">
+                  <span>Role</span>
+                  <select value={peopleRoleFilter} onChange={(event) => setPeopleRoleFilter(event.target.value as "all" | AssignPersonKind)}>
+                    <option value="all">All roles</option>
+                    <option value="camper">Campers</option>
+                    <option value="dorm_leader">Dorm leaders</option>
+                    <option value="worker">Workers</option>
+                  </select>
+                </label>
+                <label className="assign-panel-filter">
+                  <span>Assignment</span>
+                  <select value={peopleAssignmentFilter} onChange={(event) => setPeopleAssignmentFilter(event.target.value as "all" | "assigned" | "unassigned")}>
+                    <option value="all">All assignments</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="unassigned">Unassigned</option>
+                  </select>
+                </label>
+              </div>
               <div className="unassigned-people-list">
                 {visiblePeople.length === 0 ? <p className="dorm-empty">No people match these filters.</p> : null}
                 {visiblePeople.map(({ kind, person, currentDormId, currentDormName }) => {
