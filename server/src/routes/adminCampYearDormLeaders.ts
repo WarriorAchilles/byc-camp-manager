@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -214,5 +215,37 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   });
   res.json(updated);
 });
+
+router.delete(
+  "/:dormLeaderId",
+  requireRole(AdminRole.super_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) {
+      return;
+    }
+    const dormLeaderId = pathParam(req.params.dormLeaderId);
+    if (!dormLeaderId || !z.string().uuid().safeParse(dormLeaderId).success) {
+      res.status(400).json({ error: "Invalid dorm leader id" });
+      return;
+    }
+
+    const result = await prisma.dormLeader.updateMany({
+      where: { id: dormLeaderId, campYearId, archivedAt: null },
+      data: { archivedAt: new Date() },
+    });
+    if (result.count === 0) {
+      res.status(404).json({ error: "Dorm leader not found" });
+      return;
+    }
+
+    writeOpsLog("dorm_leader_deleted", {
+      adminUserId: req.adminUser?.id,
+      campYearId,
+      dormLeaderId,
+    });
+    res.status(204).send();
+  },
+);
 
 export const adminCampYearDormLeadersRouter = router;

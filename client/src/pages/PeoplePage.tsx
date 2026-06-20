@@ -93,6 +93,14 @@ type PeoplePageProps = {
 
 type AddPersonKind = "camper" | "worker" | "leader";
 
+type PersonToDelete = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  kind: "camper" | "worker" | "dorm leader";
+  path: "campers" | "workers" | "dorm-leaders";
+};
+
 export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactElement {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -112,12 +120,12 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [workerFormError, setWorkerFormError] = useState<string | null>(null);
   const [leaderFormError, setLeaderFormError] = useState<string | null>(null);
   const [capacityWarning, setCapacityWarning] = useState<CapacityBody | null>(null);
-  const [deleteCamperError, setDeleteCamperError] = useState<string | null>(null);
-  const [deletingCamperId, setDeletingCamperId] = useState<string | null>(null);
-  const [camperToDelete, setCamperToDelete] = useState<CamperRow | null>(null);
+  const [deletePersonError, setDeletePersonError] = useState<string | null>(null);
+  const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
+  const [personToDelete, setPersonToDelete] = useState<PersonToDelete | null>(null);
   const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
   const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
-  const deleteCamperConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const deletePersonConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
   const workerDorms = allDorms.filter((dorm) => dorm.purpose === "worker");
@@ -340,43 +348,43 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   };
 
   useEffect(() => {
-    if (!camperToDelete) {
+    if (!personToDelete) {
       return;
     }
-    deleteCamperConfirmRef.current?.focus();
+    deletePersonConfirmRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && deletingCamperId === null) {
-        setCamperToDelete(null);
+      if (event.key === "Escape" && deletingPersonId === null) {
+        setPersonToDelete(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [camperToDelete, deletingCamperId]);
+  }, [personToDelete, deletingPersonId]);
 
-  const handleDeleteCamper = async (): Promise<void> => {
-    const camper = camperToDelete;
-    if (!superAdmin || !campYearId || deletingCamperId !== null) {
+  const handleDeletePerson = async (): Promise<void> => {
+    const person = personToDelete;
+    if (!superAdmin || !campYearId || deletingPersonId !== null) {
       return;
     }
-    if (!camper) {
+    if (!person) {
       return;
     }
 
-    setDeleteCamperError(null);
-    setDeletingCamperId(camper.id);
+    setDeletePersonError(null);
+    setDeletingPersonId(person.id);
     try {
-      await apiJson(`/api/admin/camp-years/${campYearId}/campers/${camper.id}`, {
+      await apiJson(`/api/admin/camp-years/${campYearId}/${person.path}/${person.id}`, {
         method: "DELETE",
       });
-      setCamperToDelete(null);
+      setPersonToDelete(null);
       await Promise.all([loadPeopleData(campYearId), loadCampYears()]);
     } catch (caught) {
       const httpError = caught as ApiHttpError;
-      setDeleteCamperError(
-        httpError instanceof Error ? httpError.message : "Could not delete camper.",
+      setDeletePersonError(
+        httpError instanceof Error ? httpError.message : `Could not delete ${person.kind}.`,
       );
     } finally {
-      setDeletingCamperId(null);
+      setDeletingPersonId(null);
     }
   };
 
@@ -824,7 +832,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         <>
           <div className="card">
         <h2 style={{ marginTop: 0 }}>Campers</h2>
-        {deleteCamperError ? <p className="error">{deleteCamperError}</p> : null}
+        {deletePersonError ? <p className="error">{deletePersonError}</p> : null}
         {paymentStatusError ? <p className="error">{paymentStatusError}</p> : null}
         {campers.length === 0 ? (
           <p className="muted">No campers yet for this year.</p>
@@ -871,10 +879,16 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                           <button
                             type="button"
                             className="btn danger"
-                            disabled={deletingCamperId !== null || updatingPaymentCamperId !== null}
-                            onClick={() => setCamperToDelete(camper)}
+                            disabled={deletingPersonId !== null || updatingPaymentCamperId !== null}
+                            onClick={() =>
+                              setPersonToDelete({
+                                ...camper,
+                                kind: "camper",
+                                path: "campers",
+                              })
+                            }
                           >
-                            {deletingCamperId === camper.id ? "Deleting…" : "Delete"}
+                            {deletingPersonId === camper.id ? "Deleting…" : "Delete"}
                           </button>
                         ) : null}
                       </div>
@@ -900,6 +914,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Email</th>
                   <th>Gender</th>
                   <th>Source</th>
+                  {superAdmin ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -911,6 +926,24 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     <td>{worker.email}</td>
                     <td>{worker.gender}</td>
                     <td>{worker.importSource}</td>
+                    {superAdmin ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={deletingPersonId !== null}
+                          onClick={() =>
+                            setPersonToDelete({
+                              ...worker,
+                              kind: "worker",
+                              path: "workers",
+                            })
+                          }
+                        >
+                          {deletingPersonId === worker.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -938,6 +971,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Phone</th>
                   <th>Camper dorm</th>
                   <th>Source</th>
+                  {superAdmin ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -950,6 +984,24 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     <td>{leader.phone}</td>
                     <td>{leader.assignedCamperDorm?.name ?? "—"}</td>
                     <td>{leader.importSource}</td>
+                    {superAdmin ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={deletingPersonId !== null}
+                          onClick={() =>
+                            setPersonToDelete({
+                              ...leader,
+                              kind: "dorm leader",
+                              path: "dorm-leaders",
+                            })
+                          }
+                        >
+                          {deletingPersonId === leader.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -968,13 +1020,13 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         </>
       ) : null}
 
-      {camperToDelete ? (
+      {personToDelete ? (
         <div
           className="modal-backdrop"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && deletingCamperId === null) {
-              setCamperToDelete(null);
+            if (event.target === event.currentTarget && deletingPersonId === null) {
+              setPersonToDelete(null);
             }
           }}
         >
@@ -982,36 +1034,36 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
             className="card stack modal-card"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="delete-camper-title"
+            aria-labelledby="delete-person-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="delete-camper-title" style={{ marginTop: 0 }}>
-              Delete camper?
+            <h2 id="delete-person-title" style={{ marginTop: 0 }}>
+              Delete {personToDelete.kind}?
             </h2>
             <p style={{ margin: 0 }}>
               Delete{" "}
               <strong>
-                {camperToDelete.firstName} {camperToDelete.lastName}
+                {personToDelete.firstName} {personToDelete.lastName}
               </strong>
-              ? This removes the camper from active camp records.
+              ? This removes the {personToDelete.kind} from active camp records.
             </p>
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button
                 type="button"
                 className="btn secondary"
-                disabled={deletingCamperId !== null}
-                onClick={() => setCamperToDelete(null)}
+                disabled={deletingPersonId !== null}
+                onClick={() => setPersonToDelete(null)}
               >
                 Cancel
               </button>
               <button
-                ref={deleteCamperConfirmRef}
+                ref={deletePersonConfirmRef}
                 type="button"
                 className="btn danger"
-                disabled={deletingCamperId !== null}
-                onClick={() => void handleDeleteCamper()}
+                disabled={deletingPersonId !== null}
+                onClick={() => void handleDeletePerson()}
               >
-                {deletingCamperId !== null ? "Deleting…" : "Delete camper"}
+                {deletingPersonId !== null ? "Deleting…" : `Delete ${personToDelete.kind}`}
               </button>
             </div>
           </div>

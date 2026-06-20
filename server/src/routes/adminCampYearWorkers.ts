@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
+import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -261,6 +262,34 @@ router.patch("/:workerId", async (req: AuthedRequest, res) => {
     data,
   });
   res.json(updated);
+});
+
+router.delete("/:workerId", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const workerId = pathParam(req.params.workerId);
+  if (!workerId || !z.string().uuid().safeParse(workerId).success) {
+    res.status(400).json({ error: "Invalid worker id" });
+    return;
+  }
+
+  const result = await prisma.worker.updateMany({
+    where: { id: workerId, campYearId, archivedAt: null },
+    data: { archivedAt: new Date() },
+  });
+  if (result.count === 0) {
+    res.status(404).json({ error: "Worker not found" });
+    return;
+  }
+
+  writeOpsLog("worker_deleted", {
+    adminUserId: req.adminUser?.id,
+    campYearId,
+    workerId,
+  });
+  res.status(204).send();
 });
 
 export const adminCampYearWorkersRouter = router;

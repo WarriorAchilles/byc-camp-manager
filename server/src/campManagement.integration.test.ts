@@ -127,6 +127,22 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     };
   }
 
+  function workerPayload(): Record<string, unknown> {
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return {
+      email: `worker-${suffix}@example.com`,
+      firstName: "Work",
+      lastName: `Test${suffix}`,
+      gender: Gender.female,
+      cellPhone: "5559876543",
+      streetAddress: "123 Main St",
+      city: "Indianapolis",
+      stateOrProvince: "IN",
+      postalCode: "46201",
+      country: "USA",
+    };
+  }
+
   it("returns 409 when admin entry exceeds capacity until override is confirmed", async () => {
     const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
@@ -203,6 +219,60 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       .get(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", `Bearer ${superAdminToken}`);
     expect(listed.body.campers).toHaveLength(0);
+  });
+
+  it("allows only super admins to delete workers and dorm leaders", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+
+    const worker = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/workers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(workerPayload());
+    expect(worker.status).toBe(201);
+
+    const leader = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-leaders`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        firstName: "Lead",
+        lastName: "Test",
+        gender: Gender.male,
+        email: "leader-delete-test@example.com",
+        phone: "5551112222",
+        assignedCamperDormId: camperDormId,
+      });
+    expect(leader.status).toBe(201);
+
+    for (const path of [`workers/${worker.body.id}`, `dorm-leaders/${leader.body.id}`]) {
+      const forbidden = await request(app)
+        .delete(`/api/admin/camp-years/${campYearId}/${path}`)
+        .set("Authorization", `Bearer ${campAdminToken}`);
+      expect(forbidden.status).toBe(403);
+
+      const deleted = await request(app)
+        .delete(`/api/admin/camp-years/${campYearId}/${path}`)
+        .set("Authorization", `Bearer ${superAdminToken}`);
+      expect(deleted.status).toBe(204);
+    }
+
+    const archivedWorker = await prisma.worker.findUniqueOrThrow({ where: { id: worker.body.id } });
+    const archivedLeader = await prisma.dormLeader.findUniqueOrThrow({ where: { id: leader.body.id } });
+    expect(archivedWorker.archivedAt).not.toBeNull();
+    expect(archivedLeader.archivedAt).not.toBeNull();
+
+    const [workers, leaders] = await Promise.all([
+      request(app)
+        .get(`/api/admin/camp-years/${campYearId}/workers`)
+        .set("Authorization", `Bearer ${superAdminToken}`),
+      request(app)
+        .get(`/api/admin/camp-years/${campYearId}/dorm-leaders`)
+        .set("Authorization", `Bearer ${superAdminToken}`),
+    ]);
+    expect(workers.body.workers).toHaveLength(0);
+    expect(leaders.body.dormLeaders).toHaveLength(0);
   });
 
   it("allows camp admins to mark and unmark campers as paid", async () => {
