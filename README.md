@@ -15,6 +15,8 @@ npm ci
 npm run dev
 ```
 
+Running `npm install` from the repository root installs dependencies for all npm workspaces: `client`, `server`, and `infra/cdk`. You do not need to run it separately in those directories.
+
 The Vite dev server proxies `/api` to the API on port 4000. Configure `server/.env` with at least `DATABASE_URL` and `JWT_SECRET` (see `docs/deployment.md`).
 
 ## Production build, migrations, and operations
