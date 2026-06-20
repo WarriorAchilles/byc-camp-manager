@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
+import { PersonEditDialog, type EditablePersonKind } from "../components/PersonEditDialog";
 import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
@@ -101,6 +102,13 @@ type PersonToDelete = {
   path: "campers" | "workers" | "dorm-leaders";
 };
 
+type PersonToEdit = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  kind: EditablePersonKind;
+};
+
 export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactElement {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -125,10 +133,10 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [personToDelete, setPersonToDelete] = useState<PersonToDelete | null>(null);
   const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
   const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
+  const [personToEdit, setPersonToEdit] = useState<PersonToEdit | null>(null);
   const deletePersonConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
-  const workerDorms = allDorms.filter((dorm) => dorm.purpose === "worker");
 
   const [firstName, setFirstName] = useState("Taylor");
   const [lastName, setLastName] = useState("Camper");
@@ -744,21 +752,21 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               Country
               <input value={wCountry} onChange={(event) => setWCountry(event.target.value)} required />
             </label>
-            {workerDorms.length > 0 ? (
+            {allDorms.length > 0 ? (
               <label>
-                Worker dorm (optional)
+                Dorm (optional)
                 <select value={workerDormId} onChange={(event) => setWorkerDormId(event.target.value)}>
                   <option value="">— Unassigned —</option>
-                  {workerDorms.map((dorm) => (
+                  {allDorms.map((dorm) => (
                     <option key={dorm.id} value={dorm.id}>
-                      {dorm.name}
+                      {dorm.name} ({dorm.purpose})
                     </option>
                   ))}
                 </select>
               </label>
             ) : (
               <p className="muted">
-                No worker dorms yet. Add a dorm with purpose “worker” on the{" "}
+                No dorms yet. Add one on the{" "}
                 <Link to="/admin/dorms">Dorms</Link> page.
               </p>
             )}
@@ -866,6 +874,13 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                         <button
                           type="button"
                           className="btn secondary"
+                          onClick={() => setPersonToEdit({ ...camper, kind: "camper" })}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn secondary"
                           disabled={updatingPaymentCamperId !== null}
                           onClick={() => void handleToggleCamperPayment(camper)}
                         >
@@ -914,7 +929,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Email</th>
                   <th>Gender</th>
                   <th>Source</th>
-                  {superAdmin ? <th>Actions</th> : null}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -926,8 +941,15 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     <td>{worker.email}</td>
                     <td>{worker.gender}</td>
                     <td>{worker.importSource}</td>
-                    {superAdmin ? (
-                      <td>
+                    <td>
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          onClick={() => setPersonToEdit({ ...worker, kind: "worker" })}
+                        >
+                          Edit
+                        </button>{" "}
+                        {superAdmin ? (
                         <button
                           type="button"
                           className="btn danger"
@@ -942,8 +964,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                         >
                           {deletingPersonId === worker.id ? "Deleting…" : "Delete"}
                         </button>
+                        ) : null}
                       </td>
-                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -971,7 +993,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Phone</th>
                   <th>Camper dorm</th>
                   <th>Source</th>
-                  {superAdmin ? <th>Actions</th> : null}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -984,8 +1006,15 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     <td>{leader.phone}</td>
                     <td>{leader.assignedCamperDorm?.name ?? "—"}</td>
                     <td>{leader.importSource}</td>
-                    {superAdmin ? (
-                      <td>
+                    <td>
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          onClick={() => setPersonToEdit({ ...leader, kind: "dorm_leader" })}
+                        >
+                          Edit
+                        </button>{" "}
+                        {superAdmin ? (
                         <button
                           type="button"
                           className="btn danger"
@@ -1000,8 +1029,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                         >
                           {deletingPersonId === leader.id ? "Deleting…" : "Delete"}
                         </button>
+                        ) : null}
                       </td>
-                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -1068,6 +1097,20 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
             </div>
           </div>
         </div>
+      ) : null}
+      {personToEdit && campYearId ? (
+        <PersonEditDialog
+          campYearId={campYearId}
+          personId={personToEdit.id}
+          initialKind={personToEdit.kind}
+          personName={`${personToEdit.firstName} ${personToEdit.lastName}`}
+          dorms={allDorms}
+          canChangeType={superAdmin}
+          onClose={() => setPersonToEdit(null)}
+          onSaved={async () => {
+            await Promise.all([loadPeopleData(campYearId), loadCampYears()]);
+          }}
+        />
       ) : null}
     </div>
   );

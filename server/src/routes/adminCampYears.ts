@@ -393,10 +393,16 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
   });
 
   if (dorm.purpose === DormPurpose.camper) {
-    const campers = await prisma.camper.findMany({
-      where: { dormId, campYearId, archivedAt: null },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    });
+    const [campers, workers] = await Promise.all([
+      prisma.camper.findMany({
+        where: { dormId, campYearId, archivedAt: null },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+      prisma.worker.findMany({
+        where: { dormId, campYearId, archivedAt: null },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+    ]);
     const camperRows = campers.map((camper) => {
       const age = ageOnCampStartUtc(camper.dateOfBirth, year.startDate);
       return {
@@ -460,7 +466,7 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       filterCheckInStatus: rosterFilters.checkInStatus ?? null,
       filterGender: rosterFilters.gender ?? null,
       filterAgeGroupBracketId: rosterFilters.ageGroupBracketId ?? null,
-      occupantCount: filteredCampers.length,
+      occupantCount: filteredCampers.length + workers.length,
     });
 
     res.json({
@@ -478,9 +484,16 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
         bedCapacity: dorm.bedCapacity,
         ageGroupBracket: dorm.ageGroupBracket,
       },
-      occupantCount: campers.length,
+      occupantCount: campers.length + workers.length,
       dormLeaders,
       campers: filteredCampers,
+      workers: workers.map((worker) => ({
+        id: worker.id,
+        firstName: worker.firstName,
+        lastName: worker.lastName,
+        age: worker.dateOfBirth ? ageOnCampStartUtc(worker.dateOfBirth, year.startDate) : null,
+        checkInStatus: worker.checkInStatus,
+      })),
       medicalNotesSummaryLines,
     });
     return;

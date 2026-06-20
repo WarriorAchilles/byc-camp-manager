@@ -501,6 +501,25 @@ button {
   text-decoration: none;
 }
 
+.person-edit-dialog {
+  max-width: 760px;
+  max-height: 92vh;
+}
+
+.person-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.person-edit-grid textarea {
+  min-height: 5rem;
+}
+
+@media (max-width: 640px) {
+  .person-edit-grid { grid-template-columns: 1fr; }
+}
+
 .camper-price-label {
   justify-content: flex-start;
   gap: 0.4rem;

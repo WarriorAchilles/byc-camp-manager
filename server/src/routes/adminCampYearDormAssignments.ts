@@ -5,7 +5,6 @@ import { prisma } from "../db.js";
 import {
   ageOnCampStartUtc,
   assertCamperDormPurpose,
-  assertWorkerDormPurpose,
   autoAssignCampersGreedy,
   autoAssignWorkersGreedy,
   warningsAfterCamperAssignedToCamperDorm,
@@ -73,7 +72,10 @@ router.get("/board", async (req: AuthedRequest, res) => {
   const boardCamperDorms = camperDorms.map((dorm) => ({
     ...dorm,
     campers: campers.filter((camper) => camper.dormId === dorm.id),
-    occupantCount: campers.filter((camper) => camper.dormId === dorm.id).length,
+    workers: workers.filter((worker) => worker.dormId === dorm.id),
+    occupantCount:
+      campers.filter((camper) => camper.dormId === dorm.id).length +
+      workers.filter((worker) => worker.dormId === dorm.id).length,
     dormLeaders: dormLeaders.filter((leader) => leader.assignedCamperDormId === dorm.id),
   }));
 
@@ -87,7 +89,9 @@ router.get("/board", async (req: AuthedRequest, res) => {
     (camper) => !camper.dormId || !camperDormIds.has(camper.dormId),
   );
   const unassignedWorkers = workers.filter(
-    (worker) => !worker.dormId || !workerDormIds.has(worker.dormId),
+    (worker) =>
+      !worker.dormId ||
+      (!workerDormIds.has(worker.dormId) && !camperDormIds.has(worker.dormId)),
   );
 
   const unassignedDormLeaders = dormLeaders.filter(
@@ -136,7 +140,9 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
 
   const camperCounts = new Map<string, number>();
   for (const dorm of camperDormRows) {
-    const count = campers.filter((c) => c.dormId === dorm.id).length;
+    const count =
+      campers.filter((c) => c.dormId === dorm.id).length +
+      workers.filter((w) => w.dormId === dorm.id).length;
     camperCounts.set(dorm.id, count);
   }
   const workerCounts = new Map<string, number>();
@@ -335,14 +341,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       return;
     }
 
-    const countOthers = await prisma.camper.count({
-      where: {
-        dormId,
-        campYearId,
-        archivedAt: null,
-        id: { not: personId },
-      },
-    });
+    const [otherCampers, assignedWorkers] = await Promise.all([
+      prisma.camper.count({
+        where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
+      }),
+      prisma.worker.count({ where: { dormId, campYearId, archivedAt: null } }),
+    ]);
+    const countOthers = otherCampers + assignedWorkers;
     if (countOthers >= dorm.bedCapacity) {
       res.status(400).json({ error: "Dorm is at bed capacity" });
       return;
@@ -409,19 +414,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     res.status(400).json({ error: "Dorm not found for this camp year" });
     return;
   }
-  if (assertWorkerDormPurpose(dorm.purpose) === "invalid") {
-    res.status(400).json({ error: "Workers can only be assigned to worker dorms" });
-    return;
-  }
-
-  const countOthers = await prisma.worker.count({
-    where: {
-      dormId,
-      campYearId,
-      archivedAt: null,
-      id: { not: personId },
-    },
-  });
+  const [otherWorkers, assignedCampers] = await Promise.all([
+    prisma.worker.count({
+      where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
+    }),
+    prisma.camper.count({ where: { dormId, campYearId, archivedAt: null } }),
+  ]);
+  const countOthers = otherWorkers + assignedCampers;
   if (countOthers >= dorm.bedCapacity) {
     res.status(400).json({ error: "Dorm is at bed capacity" });
     return;

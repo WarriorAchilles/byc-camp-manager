@@ -46,7 +46,17 @@ const updateBody = z
   })
   .partial();
 
-async function assertWorkerDormForYear(
+const convertToDormLeaderBody = z.object({
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  gender: z.nativeEnum(Gender).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().min(1).optional(),
+  roleLabel: z.string().nullable().optional(),
+  assignedCamperDormId: z.string().uuid().nullable().optional(),
+});
+
+async function assertDormForWorkerYear(
   campYearId: string,
   dormId: string | null | undefined,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
@@ -59,9 +69,6 @@ async function assertWorkerDormForYear(
   });
   if (!dorm) {
     return { ok: false, status: 400, message: "Dorm not found for this camp year" };
-  }
-  if (dorm.purpose !== DormPurpose.worker) {
-    return { ok: false, status: 400, message: "Worker dorm assignment must reference a worker dorm" };
   }
   return { ok: true };
 }
@@ -99,7 +106,7 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
     return;
   }
 
-  const dormCheck = await assertWorkerDormForYear(campYearId, parsed.data.dormId ?? null);
+  const dormCheck = await assertDormForWorkerYear(campYearId, parsed.data.dormId ?? null);
   if (!dormCheck.ok) {
     res.status(dormCheck.status).json({ error: dormCheck.message });
     return;
@@ -180,7 +187,7 @@ router.patch("/:workerId", async (req: AuthedRequest, res) => {
   }
 
   if (parsed.data.dormId !== undefined) {
-    const dormCheck = await assertWorkerDormForYear(campYearId, parsed.data.dormId ?? null);
+    const dormCheck = await assertDormForWorkerYear(campYearId, parsed.data.dormId ?? null);
     if (!dormCheck.ok) {
       res.status(dormCheck.status).json({ error: dormCheck.message });
       return;
@@ -263,6 +270,89 @@ router.patch("/:workerId", async (req: AuthedRequest, res) => {
   });
   res.json(updated);
 });
+
+router.post(
+  "/:workerId/convert-to-dorm-leader",
+  requireRole(AdminRole.super_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) {
+      return;
+    }
+    const workerId = pathParam(req.params.workerId);
+    if (!workerId || !z.string().uuid().safeParse(workerId).success) {
+      res.status(400).json({ error: "Invalid worker id" });
+      return;
+    }
+    const parsed = convertToDormLeaderBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+
+    const worker = await prisma.worker.findFirst({
+      where: { id: workerId, campYearId, archivedAt: null },
+    });
+    if (!worker) {
+      res.status(404).json({ error: "Worker not found" });
+      return;
+    }
+
+    const assignedDorm = worker.dormId
+      ? await prisma.dorm.findFirst({
+          where: { id: worker.dormId, campYearId },
+          select: { id: true, purpose: true },
+        })
+      : null;
+    const targetDormId =
+      parsed.data.assignedCamperDormId !== undefined
+        ? parsed.data.assignedCamperDormId
+        : assignedDorm?.purpose === DormPurpose.camper
+          ? assignedDorm.id
+          : null;
+    if (targetDormId) {
+      const targetDorm = await prisma.dorm.findFirst({
+        where: { id: targetDormId, campYearId, purpose: DormPurpose.camper },
+        select: { id: true },
+      });
+      if (!targetDorm) {
+        res.status(400).json({ error: "Dorm leader assignment must reference a camper dorm" });
+        return;
+      }
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const dormLeader = await tx.dormLeader.create({
+        data: {
+          campYearId,
+          firstName: parsed.data.firstName?.trim() ?? worker.firstName,
+          lastName: parsed.data.lastName?.trim() ?? worker.lastName,
+          gender: parsed.data.gender ?? worker.gender,
+          email: parsed.data.email?.trim().toLowerCase() ?? worker.email,
+          phone: parsed.data.phone?.trim() ?? worker.cellPhone,
+          roleLabel: parsed.data.roleLabel?.trim() ?? null,
+          assignedCamperDormId: targetDormId,
+          checkInStatus: worker.checkInStatus,
+          checkedInAt: worker.checkedInAt,
+          importSource: worker.importSource,
+        },
+      });
+      await tx.worker.update({
+        where: { id: workerId },
+        data: { archivedAt: new Date(), dormId: null },
+      });
+      return dormLeader;
+    });
+
+    writeOpsLog("worker_converted_to_dorm_leader", {
+      adminUserId: req.adminUser?.id,
+      campYearId,
+      workerId,
+      dormLeaderId: created.id,
+    });
+    res.status(201).json(created);
+  },
+);
 
 router.delete("/:workerId", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);

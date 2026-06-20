@@ -275,6 +275,67 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(leaders.body.dormLeaders).toHaveLength(0);
   });
 
+  it("allows only super admins to convert a worker to a dorm leader", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/workers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(workerPayload());
+
+    const forbidden = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/workers/${created.body.id}/convert-to-dorm-leader`)
+      .set("Authorization", `Bearer ${campAdminToken}`);
+    expect(forbidden.status).toBe(403);
+
+    const converted = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/workers/${created.body.id}/convert-to-dorm-leader`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+    expect(converted.status).toBe(201);
+    expect(converted.body.email).toBe(created.body.email);
+    expect(converted.body.phone).toBe(created.body.cellPhone);
+
+    const worker = await prisma.worker.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(worker.archivedAt).not.toBeNull();
+    expect(await prisma.dormLeader.findUnique({ where: { id: converted.body.id } })).not.toBeNull();
+  });
+
+  it("converts a dorm leader to a worker with worker-specific information", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const token = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const leader = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-leaders`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        firstName: "Lead",
+        lastName: "Person",
+        gender: Gender.female,
+        email: "leader-convert@example.com",
+        phone: "5552223333",
+        assignedCamperDormId: camperDormId,
+      });
+
+    const converted = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-leaders/${leader.body.id}/convert-to-worker`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        ...workerPayload(),
+        firstName: "Edited",
+        lastName: "Worker",
+        email: "edited-worker@example.com",
+        dormId: camperDormId,
+      });
+    expect(converted.status).toBe(201);
+    expect(converted.body.firstName).toBe("Edited");
+    expect(converted.body.dormId).toBe(camperDormId);
+
+    const archivedLeader = await prisma.dormLeader.findUniqueOrThrow({ where: { id: leader.body.id } });
+    expect(archivedLeader.archivedAt).not.toBeNull();
+    expect(archivedLeader.assignedCamperDormId).toBeNull();
+  });
+
   it("allows camp admins to mark and unmark campers as paid", async () => {
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });

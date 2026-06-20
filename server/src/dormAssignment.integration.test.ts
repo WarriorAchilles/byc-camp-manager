@@ -169,14 +169,20 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     return `Bearer ${token}`;
   }
 
-  it("rejects assigning a worker to a camper dorm", async () => {
+  it("assigns a worker to a camper dorm and includes them on the board", async () => {
     const auth = await authHeader();
     const response = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/dorm-assignments/assign`)
       .set("Authorization", auth)
       .send({ personKind: "worker", personId: workerId, dormId: camperDormId });
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain("Workers can only");
+    expect(response.status).toBe(200);
+
+    const board = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/dorm-assignments/board`)
+      .set("Authorization", auth);
+    const camperDorm = board.body.camperDorms.find((dorm: { id: string }) => dorm.id === camperDormId);
+    expect(camperDorm.workers).toHaveLength(1);
+    expect(camperDorm.occupantCount).toBe(1);
   });
 
   it("rejects assigning a camper to a worker dorm", async () => {
@@ -218,6 +224,17 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(response.body.occupantCount).toBe(1);
     expect(response.body.campers).toHaveLength(1);
     expect(response.body.dorm.bedCapacity).toBe(10);
+  });
+
+  it("includes assigned workers in a camper dorm roster and capacity", async () => {
+    await prisma.worker.update({ where: { id: workerId }, data: { dormId: camperDormId } });
+    const auth = await authHeader();
+    const response = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/dorms/${camperDormId}/roster`)
+      .set("Authorization", auth);
+    expect(response.status).toBe(200);
+    expect(response.body.occupantCount).toBe(1);
+    expect(response.body.workers).toHaveLength(1);
   });
 
   it("rejects camper assignment when dorm is at bed capacity", async () => {

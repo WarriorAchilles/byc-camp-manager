@@ -198,7 +198,7 @@ export function warningsAfterWorkerAssignedToWorkerDorm(input: {
     return [];
   }
   if (!workerDormGenderMatches(input.dormGender, input.workerGender)) {
-    return ["Gender does not match this worker dorm; assignment saved as an exception."];
+    return ["Gender does not match this dorm; assignment saved as an exception."];
   }
   return [];
 }

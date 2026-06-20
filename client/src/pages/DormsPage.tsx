@@ -66,6 +66,7 @@ type BoardDormLeader = {
 type BoardDormCamper = DormRow & {
   ageGroupBracket: AgeBracket | null;
   campers: BoardCamper[];
+  workers: BoardWorker[];
   dormLeaders: BoardDormLeader[];
   occupantCount: number;
 };
@@ -75,6 +76,12 @@ type BoardDormWorker = DormRow & {
   workers: BoardWorker[];
   occupantCount: number;
 };
+
+function isBoardCamperDorm(
+  dorm: BoardDormCamper | BoardDormWorker,
+): dorm is BoardDormCamper {
+  return "dormLeaders" in dorm;
+}
 type BoardPersonPaletteItem = (
   | { kind: "camper"; person: BoardCamper }
   | { kind: "dorm_leader"; person: BoardDormLeader }
@@ -761,7 +768,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
 
   const dropAccepts = (personKind: AssignPersonKind, zone: AssignDropZone): boolean => {
     if (zone === "unassigned") return true;
-    if (personKind === "worker") return zone.dormPurpose === "worker";
+    if (personKind === "worker") return true;
     return zone.dormPurpose === "camper";
   };
 
@@ -830,6 +837,9 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
       );
       dorm.dormLeaders.forEach((person) =>
         addPerson({ kind: "dorm_leader", person, currentDormId: dorm.id, currentDormName: dorm.name }),
+      );
+      dorm.workers.forEach((person) =>
+        addPerson({ kind: "worker", person, currentDormId: dorm.id, currentDormName: dorm.name }),
       );
     });
     workerDorms.forEach((dorm) =>
@@ -1099,7 +1109,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
               <div className="unassigned-people-list">
                 {visiblePeople.length === 0 ? <p className="dorm-empty">No people match these filters.</p> : null}
                 {visiblePeople.map(({ kind, person, currentDormId, currentDormName }) => {
-                  const targetDorms = kind === "worker" ? workerDorms : camperDorms;
+                  const targetDorms = kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms;
                   const detail = kind === "camper" ? camperBoardDetailLine(person, boardCampStartIso) : person.gender;
                   const kindLabel = kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker";
                   return <div key={`${kind}-${person.id}`} className="assign-person-row">
@@ -1123,8 +1133,8 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
               <div className="dorm-grid">
                 {visibleCamperDorms.length + visibleWorkerDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No dorms match these filters.</p> : null}
                 {[...visibleCamperDorms, ...visibleWorkerDorms].map((dorm) => {
-                  const isCamperDorm = "campers" in dorm;
-                  const occupants: Array<{ kind: "camper"; person: BoardCamper } | { kind: "dorm_leader"; person: BoardDormLeader } | { kind: "worker"; person: BoardWorker }> = isCamperDorm ? [...dorm.campers.map((person) => ({ kind: "camper" as const, person })), ...dorm.dormLeaders.map((person) => ({ kind: "dorm_leader" as const, person }))] : dorm.workers.map((person) => ({ kind: "worker" as const, person }));
+                  const isCamperDorm = isBoardCamperDorm(dorm);
+                  const occupants: Array<{ kind: "camper"; person: BoardCamper } | { kind: "dorm_leader"; person: BoardDormLeader } | { kind: "worker"; person: BoardWorker }> = isCamperDorm ? [...dorm.campers.map((person) => ({ kind: "camper" as const, person })), ...dorm.dormLeaders.map((person) => ({ kind: "dorm_leader" as const, person })), ...dorm.workers.map((person) => ({ kind: "worker" as const, person }))] : dorm.workers.map((person) => ({ kind: "worker" as const, person }));
                   return <article key={dorm.id} className="assign-column" onDragOver={(event) => handleDragOverBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })} onDrop={(event) => handleDropBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })}>
                     <div className="dorm-card-header">
                       <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} | {isCamperDorm ? "Camper" : "Worker"} dorm</div></div>
@@ -1138,10 +1148,10 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                     </div>
                     <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
                     <div className="dorm-occupant-list">
-                      {occupants.length === 0 ? <p className="dorm-empty">Drop {isCamperDorm ? "campers or dorm leaders" : "workers"} here.</p> : null}
+                      {occupants.length === 0 ? <p className="dorm-empty">Drop {isCamperDorm ? "campers, workers, or dorm leaders" : "workers"} here.</p> : null}
                       {occupants.map(({ kind, person }) => <div key={`${kind}-${person.id}`} className="assign-person-row">
                         <div className="assign-person" draggable onDragStart={(event) => beginPersonDrag(event, kind, person.id)} onDragEnd={endPersonDrag}><div className="assign-person-name">{person.firstName} {person.lastName}</div><div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker"}</span><span>{person.gender}</span></div></div>
-                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? workerDorms : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({target.occupantCount}/{target.bedCapacity})</option>)}</select></label>
+                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({target.occupantCount}/{target.bedCapacity})</option>)}</select></label>
                       </div>)}
                     </div>
                   </article>;

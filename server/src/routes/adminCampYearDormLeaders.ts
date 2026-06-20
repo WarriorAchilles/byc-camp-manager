@@ -34,6 +34,28 @@ const updateBody = z
   })
   .partial();
 
+const isoDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+
+const convertToWorkerBody = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  dateOfBirth: isoDateString.nullable().optional(),
+  gender: z.nativeEnum(Gender),
+  cellPhone: z.string().min(1),
+  altPhone: z.string().nullable().optional(),
+  streetAddress: z.string().min(1),
+  city: z.string().min(1),
+  stateOrProvince: z.string().min(1),
+  postalCode: z.string().min(1),
+  country: z.string().min(1),
+  taskPreferenceFirst: z.string().nullable().optional(),
+  taskPreferenceSecond: z.string().nullable().optional(),
+  taskPreferenceThird: z.string().nullable().optional(),
+  tShirtSize: z.string().nullable().optional(),
+  dormId: z.string().uuid().nullable().optional(),
+});
+
 async function assertCamperDormForLeader(
   campYearId: string,
   dormId: string | null | undefined,
@@ -215,6 +237,85 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   });
   res.json(updated);
 });
+
+router.post(
+  "/:dormLeaderId/convert-to-worker",
+  requireRole(AdminRole.super_admin),
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) return;
+    const dormLeaderId = pathParam(req.params.dormLeaderId);
+    if (!dormLeaderId || !z.string().uuid().safeParse(dormLeaderId).success) {
+      res.status(400).json({ error: "Invalid dorm leader id" });
+      return;
+    }
+    const parsed = convertToWorkerBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+    const leader = await prisma.dormLeader.findFirst({
+      where: { id: dormLeaderId, campYearId, archivedAt: null },
+    });
+    if (!leader) {
+      res.status(404).json({ error: "Dorm leader not found" });
+      return;
+    }
+    if (parsed.data.dormId) {
+      const dorm = await prisma.dorm.findFirst({
+        where: { id: parsed.data.dormId, campYearId },
+        select: { id: true },
+      });
+      if (!dorm) {
+        res.status(400).json({ error: "Dorm not found for this camp year" });
+        return;
+      }
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const worker = await tx.worker.create({
+        data: {
+          campYearId,
+          email: parsed.data.email.trim().toLowerCase(),
+          firstName: parsed.data.firstName.trim(),
+          lastName: parsed.data.lastName.trim(),
+          dateOfBirth: parsed.data.dateOfBirth
+            ? new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`)
+            : null,
+          gender: parsed.data.gender,
+          cellPhone: parsed.data.cellPhone.trim(),
+          altPhone: parsed.data.altPhone?.trim() ?? null,
+          streetAddress: parsed.data.streetAddress.trim(),
+          city: parsed.data.city.trim(),
+          stateOrProvince: parsed.data.stateOrProvince.trim(),
+          postalCode: parsed.data.postalCode.trim(),
+          country: parsed.data.country.trim(),
+          taskPreferenceFirst: parsed.data.taskPreferenceFirst?.trim() ?? null,
+          taskPreferenceSecond: parsed.data.taskPreferenceSecond?.trim() ?? null,
+          taskPreferenceThird: parsed.data.taskPreferenceThird?.trim() ?? null,
+          tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
+          dormId: parsed.data.dormId ?? null,
+          checkInStatus: leader.checkInStatus,
+          checkedInAt: leader.checkedInAt,
+          importSource: leader.importSource,
+        },
+      });
+      await tx.dormLeader.update({
+        where: { id: dormLeaderId },
+        data: { archivedAt: new Date(), assignedCamperDormId: null },
+      });
+      return worker;
+    });
+
+    writeOpsLog("dorm_leader_converted_to_worker", {
+      adminUserId: req.adminUser?.id,
+      campYearId,
+      dormLeaderId,
+      workerId: created.id,
+    });
+    res.status(201).json(created);
+  },
+);
 
 router.delete(
   "/:dormLeaderId",
