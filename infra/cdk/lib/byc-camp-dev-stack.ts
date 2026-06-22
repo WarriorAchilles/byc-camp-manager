@@ -73,7 +73,7 @@ export class BycCampDevStack extends cdk.Stack {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_16,
       }),
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),
       credentials: rds.Credentials.fromGeneratedSecret("postgres"),
       databaseName: "byc_camp",
       allocatedStorage: 20,
@@ -125,7 +125,7 @@ export class BycCampDevStack extends cdk.Stack {
       : new ecr_assets.DockerImageAsset(this, "AppImage", {
           directory: path.join(__dirname, "..", "..", ".."),
           file: "deploy/Dockerfile",
-          platform: ecr_assets.Platform.LINUX_AMD64,
+          platform: ecr_assets.Platform.LINUX_ARM64,
         });
 
     const cluster = new ecs.Cluster(this, "Cluster", {
@@ -147,7 +147,7 @@ export class BycCampDevStack extends cdk.Stack {
       memoryLimitMiB: 512,
       cpu: 256,
       runtimePlatform: {
-        cpuArchitecture: ecs.CpuArchitecture.X86_64,
+        cpuArchitecture: ecs.CpuArchitecture.ARM64,
         operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
       },
     });
