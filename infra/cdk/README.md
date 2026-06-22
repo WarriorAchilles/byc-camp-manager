@@ -11,6 +11,24 @@
 npx cdk bootstrap aws://ACCOUNT_ID/REGION
 ```
 
+### ARM64 builds on x64 Docker hosts
+
+The Fargate image targets ARM64. If Docker Desktop runs on an x64 machine and an ARM64
+build fails with `exec format error` or an early `RUN` step exits unexpectedly, register
+the ARM64 binfmt/QEMU handler:
+
+```powershell
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+```
+
+Docker Desktop may require this command again after a restart. Verify support with:
+
+```powershell
+docker run --rm --platform linux/arm64 node:22-bookworm-slim uname -m
+```
+
+The verification command should print `aarch64`.
+
 ## Install and build
 
 ```bash
