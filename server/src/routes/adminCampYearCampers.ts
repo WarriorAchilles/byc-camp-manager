@@ -317,6 +317,10 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
 
   const data: Prisma.CamperUpdateInput = {};
   const partial = parsed.data;
+  const transitioningToPaid =
+    partial.paymentStatus !== undefined &&
+    partial.paymentStatus !== CamperPaymentStatus.unpaid &&
+    existing.paymentStatus === CamperPaymentStatus.unpaid;
   if (partial.firstName !== undefined) {
     data.firstName = partial.firstName.trim();
   }
@@ -373,11 +377,14 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
   }
   if (partial.paymentStatus !== undefined) {
     data.paymentStatus = partial.paymentStatus;
+    if (transitioningToPaid) {
+      data.feePaidCents = partial.feeDueCents ?? existing.feeDueCents ?? 0;
+    }
   }
   if (partial.feeDueCents !== undefined) {
     data.feeDueCents = partial.feeDueCents;
   }
-  if (partial.feePaidCents !== undefined) {
+  if (partial.feePaidCents !== undefined && !transitioningToPaid) {
     data.feePaidCents = partial.feePaidCents;
   }
   if (partial.dormId !== undefined) {

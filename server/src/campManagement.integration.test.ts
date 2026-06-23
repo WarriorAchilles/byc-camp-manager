@@ -360,15 +360,16 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     const created = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", `Bearer ${campAdminToken}`)
-      .send(camperPayload());
+      .send(camperPayload({ feeDueCents: 16500, feePaidCents: 5000 }));
     expect(created.status).toBe(201);
 
     const markedPaid = await request(app)
       .patch(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
       .set("Authorization", `Bearer ${campAdminToken}`)
-      .send({ paymentStatus: CamperPaymentStatus.paid_cash });
+      .send({ paymentStatus: CamperPaymentStatus.paid_cash, feePaidCents: 5000 });
     expect(markedPaid.status).toBe(200);
     expect(markedPaid.body.paymentStatus).toBe(CamperPaymentStatus.paid_cash);
+    expect(markedPaid.body.feePaidCents).toBe(16500);
 
     const markedUnpaid = await request(app)
       .patch(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
