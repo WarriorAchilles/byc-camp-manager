@@ -90,6 +90,7 @@ export function PersonEditDialog({
           dietaryRestrictions: textValue(row.dietaryRestrictions),
           paymentStatus: textValue(row.paymentStatus),
           feeDue: typeof row.feeDueCents === "number" ? String(row.feeDueCents / 100) : "",
+          feePaid: typeof row.feePaidCents === "number" ? String(row.feePaidCents / 100) : "",
           dormId: textValue(row.dormId),
           medicalReleaseSigned: row.medicalReleaseSigned === true,
           checkInStatus: textValue(row.checkInStatus),
@@ -168,6 +169,9 @@ export function PersonEditDialog({
           paymentStatus: value("paymentStatus"),
           ...(value("feeDue").trim()
             ? { feeDueCents: Math.round(Number(value("feeDue")) * 100) }
+            : {}),
+          ...(value("feePaid").trim()
+            ? { feePaidCents: Math.round(Number(value("feePaid")) * 100) }
             : {}),
           dormId: nullable(value("dormId")),
           medicalReleaseSigned: values.medicalReleaseSigned === true,
@@ -249,6 +253,7 @@ export function PersonEditDialog({
             <label>Dietary restrictions<textarea value={value("dietaryRestrictions")} onChange={(event) => setValue("dietaryRestrictions", event.target.value)} /></label>
             <label>Payment status<select value={value("paymentStatus")} onChange={(event) => setValue("paymentStatus", event.target.value)}><option value="unpaid">Unpaid</option><option value="paid_cash">Paid cash</option><option value="paid_stripe">Paid Stripe</option></select></label>
             {input("feeDue", "Fee due (USD)", false, "number")}
+            {input("feePaid", "Fee paid (USD)", false, "number")}
             <label>Dorm<select value={value("dormId")} onChange={(event) => setValue("dormId", event.target.value)}><option value="">Unassigned</option>{dorms.filter((dorm) => dorm.purpose === "camper").map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}</select></label>
             <label className="row"><input type="checkbox" checked={values.medicalReleaseSigned === true} onChange={(event) => setValue("medicalReleaseSigned", event.target.checked)} /> Medical release signed</label>
             {checkInSelect}

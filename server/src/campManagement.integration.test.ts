@@ -336,6 +336,24 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(archivedLeader.assignedCamperDormId).toBeNull();
   });
 
+  it("allows camp admins to update the amount a camper has paid", async () => {
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send(camperPayload({ feeDueCents: 16500 }));
+    expect(created.status).toBe(201);
+
+    const updated = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ feePaidCents: 7500 });
+    expect(updated.status).toBe(200);
+    expect(updated.body.feePaidCents).toBe(7500);
+    expect(updated.body.feeDueCents).toBe(16500);
+  });
+
   it("allows camp admins to mark and unmark campers as paid", async () => {
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
