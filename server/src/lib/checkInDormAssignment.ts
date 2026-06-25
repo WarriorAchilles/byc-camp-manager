@@ -37,22 +37,55 @@ export async function autoAssignCamperDormIfUnassigned(
     return false;
   }
 
-  const grouped = await tx.camper.groupBy({
-    by: ["dormId"],
-    where: {
-      campYearId: input.campYearId,
-      archivedAt: null,
-      dormId: { in: dormIds },
-    },
-    _count: { _all: true },
-  });
+  const [groupedCampers, groupedWorkers, groupedDormLeaders] = await Promise.all([
+    tx.camper.groupBy({
+      by: ['dormId'],
+      where: {
+        campYearId: input.campYearId,
+        archivedAt: null,
+        dormId: { in: dormIds },
+      },
+      _count: { _all: true },
+    }),
+    tx.worker.groupBy({
+      by: ['dormId'],
+      where: {
+        campYearId: input.campYearId,
+        archivedAt: null,
+        dormId: { in: dormIds },
+      },
+      _count: { _all: true },
+    }),
+    tx.dormLeader.groupBy({
+      by: ['assignedCamperDormId'],
+      where: {
+        campYearId: input.campYearId,
+        archivedAt: null,
+        assignedCamperDormId: { in: dormIds },
+      },
+      _count: { _all: true },
+    }),
+  ]);
   const counts = new Map<string, number>();
   for (const id of dormIds) {
     counts.set(id, 0);
   }
-  for (const row of grouped) {
+  for (const row of groupedCampers) {
     if (row.dormId) {
-      counts.set(row.dormId, row._count._all);
+      counts.set(row.dormId, (counts.get(row.dormId) ?? 0) + row._count._all);
+    }
+  }
+  for (const row of groupedWorkers) {
+    if (row.dormId) {
+      counts.set(row.dormId, (counts.get(row.dormId) ?? 0) + row._count._all);
+    }
+  }
+  for (const row of groupedDormLeaders) {
+    if (row.assignedCamperDormId) {
+      counts.set(
+        row.assignedCamperDormId,
+        (counts.get(row.assignedCamperDormId) ?? 0) + row._count._all,
+      );
     }
   }
 

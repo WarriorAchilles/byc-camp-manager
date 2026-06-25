@@ -75,7 +75,8 @@ router.get("/board", async (req: AuthedRequest, res) => {
     workers: workers.filter((worker) => worker.dormId === dorm.id),
     occupantCount:
       campers.filter((camper) => camper.dormId === dorm.id).length +
-      workers.filter((worker) => worker.dormId === dorm.id).length,
+      workers.filter((worker) => worker.dormId === dorm.id).length +
+      dormLeaders.filter((leader) => leader.assignedCamperDormId === dorm.id).length,
     dormLeaders: dormLeaders.filter((leader) => leader.assignedCamperDormId === dorm.id),
   }));
 
@@ -134,6 +135,9 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
   const workers = await prisma.worker.findMany({
     where: { campYearId, archivedAt: null },
   });
+  const dormLeaders = await prisma.dormLeader.findMany({
+    where: { campYearId, archivedAt: null },
+  });
 
   const camperDormRows = dorms.filter((d) => d.purpose === DormPurpose.camper);
   const workerDormRows = dorms.filter((d) => d.purpose === DormPurpose.worker);
@@ -142,7 +146,8 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
   for (const dorm of camperDormRows) {
     const count =
       campers.filter((c) => c.dormId === dorm.id).length +
-      workers.filter((w) => w.dormId === dorm.id).length;
+      workers.filter((w) => w.dormId === dorm.id).length +
+      dormLeaders.filter((leader) => leader.assignedCamperDormId === dorm.id).length;
     camperCounts.set(dorm.id, count);
   }
   const workerCounts = new Map<string, number>();
@@ -288,6 +293,23 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       return;
     }
 
+    const [assignedCampers, assignedWorkers, otherDormLeaders] = await Promise.all([
+      prisma.camper.count({ where: { dormId, campYearId, archivedAt: null } }),
+      prisma.worker.count({ where: { dormId, campYearId, archivedAt: null } }),
+      prisma.dormLeader.count({
+        where: {
+          assignedCamperDormId: dormId,
+          campYearId,
+          archivedAt: null,
+          id: { not: personId },
+        },
+      }),
+    ]);
+    if (assignedCampers + assignedWorkers + otherDormLeaders >= dorm.bedCapacity) {
+      res.status(400).json({ error: 'Dorm is at bed capacity' });
+      return;
+    }
+
     await prisma.dormLeader.update({
       where: { id: personId },
       data: { assignedCamperDormId: dormId },
@@ -341,13 +363,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       return;
     }
 
-    const [otherCampers, assignedWorkers] = await Promise.all([
+    const [otherCampers, assignedWorkers, assignedDormLeaders] = await Promise.all([
       prisma.camper.count({
         where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
       }),
       prisma.worker.count({ where: { dormId, campYearId, archivedAt: null } }),
+      prisma.dormLeader.count({
+        where: { assignedCamperDormId: dormId, campYearId, archivedAt: null },
+      }),
     ]);
-    const countOthers = otherCampers + assignedWorkers;
+    const countOthers = otherCampers + assignedWorkers + assignedDormLeaders;
     if (countOthers >= dorm.bedCapacity) {
       res.status(400).json({ error: "Dorm is at bed capacity" });
       return;
@@ -414,13 +439,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     res.status(400).json({ error: "Dorm not found for this camp year" });
     return;
   }
-  const [otherWorkers, assignedCampers] = await Promise.all([
+  const [otherWorkers, assignedCampers, assignedDormLeaders] = await Promise.all([
     prisma.worker.count({
       where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
     }),
     prisma.camper.count({ where: { dormId, campYearId, archivedAt: null } }),
+    prisma.dormLeader.count({
+      where: { assignedCamperDormId: dormId, campYearId, archivedAt: null },
+    }),
   ]);
-  const countOthers = otherWorkers + assignedCampers;
+  const countOthers = otherWorkers + assignedCampers + assignedDormLeaders;
   if (countOthers >= dorm.bedCapacity) {
     res.status(400).json({ error: "Dorm is at bed capacity" });
     return;

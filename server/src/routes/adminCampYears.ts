@@ -466,7 +466,7 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       filterCheckInStatus: rosterFilters.checkInStatus ?? null,
       filterGender: rosterFilters.gender ?? null,
       filterAgeGroupBracketId: rosterFilters.ageGroupBracketId ?? null,
-      occupantCount: filteredCampers.length + workers.length,
+      occupantCount: filteredCampers.length + workers.length + dormLeaders.length,
     });
 
     res.json({
@@ -484,7 +484,7 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
         bedCapacity: dorm.bedCapacity,
         ageGroupBracket: dorm.ageGroupBracket,
       },
-      occupantCount: campers.length + workers.length,
+      occupantCount: campers.length + workers.length + dormLeaders.length,
       dormLeaders,
       campers: filteredCampers,
       workers: workers.map((worker) => ({

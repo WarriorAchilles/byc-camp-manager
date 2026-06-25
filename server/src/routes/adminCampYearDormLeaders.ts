@@ -61,23 +61,39 @@ const convertToWorkerBody = z.object({
 async function assertCamperDormForLeader(
   campYearId: string,
   dormId: string | null | undefined,
+  excludedDormLeaderId?: string,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
   if (!dormId) {
     return { ok: true };
   }
   const dorm = await prisma.dorm.findFirst({
     where: { id: dormId, campYearId },
-    select: { purpose: true },
+    select: { purpose: true, bedCapacity: true },
   });
   if (!dorm) {
-    return { ok: false, status: 400, message: "Dorm not found for this camp year" };
+    return { ok: false, status: 400, message: 'Dorm not found for this camp year' };
   }
   if (dorm.purpose !== DormPurpose.camper) {
     return {
       ok: false,
       status: 400,
-      message: "Dorm leader assignment must reference a camper dorm",
+      message: 'Dorm leader assignment must reference a camper dorm',
     };
+  }
+  const [assignedCampers, assignedWorkers, assignedDormLeaders] = await Promise.all([
+    prisma.camper.count({ where: { campYearId, dormId, archivedAt: null } }),
+    prisma.worker.count({ where: { campYearId, dormId, archivedAt: null } }),
+    prisma.dormLeader.count({
+      where: {
+        campYearId,
+        assignedCamperDormId: dormId,
+        archivedAt: null,
+        ...(excludedDormLeaderId ? { id: { not: excludedDormLeaderId } } : {}),
+      },
+    }),
+  ]);
+  if (assignedCampers + assignedWorkers + assignedDormLeaders >= dorm.bedCapacity) {
+    return { ok: false, status: 400, message: 'Dorm is at bed capacity' };
   }
   return { ok: true };
 }
@@ -185,7 +201,11 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   }
 
   if (parsed.data.assignedCamperDormId !== undefined) {
-    const dormCheck = await assertCamperDormForLeader(campYearId, parsed.data.assignedCamperDormId ?? null);
+    const dormCheck = await assertCamperDormForLeader(
+      campYearId,
+      parsed.data.assignedCamperDormId ?? null,
+      dormLeaderId,
+    );
     if (!dormCheck.ok) {
       res.status(dormCheck.status).json({ error: dormCheck.message });
       return;

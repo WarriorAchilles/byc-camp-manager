@@ -387,7 +387,7 @@ Super admins can create and configure dorms with the following properties:
   - **Camper dorms** - Always **single gender**: **Boys** or **Girls** only. Co-ed is not available for camper dorms.
   - **Worker dorms** - Configurable per dorm: **Boys**, **Girls**, or **Co-ed**. Co-ed supports married couples, families with young children, or any camp policy that allows mixed-gender worker housing; single-gender worker dorms are available when the camp prefers to separate by gender.
 - **Age group** - One of the configured age group brackets (**camper dorms only**; worker dorms do not use camper age brackets for assignment logic)
-- **Bed count / capacity**
+- **Bed count / capacity** - Every assigned person consumes one bed, including each dorm leader assigned to a camper dorm.
 - **Assigned dorm leader(s)** (**camper dorms**; worker dorms do not need assigned leaders)
 
 ### Auto-Assignment
