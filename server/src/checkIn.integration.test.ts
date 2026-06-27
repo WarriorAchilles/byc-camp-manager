@@ -616,6 +616,82 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       logSpy.mockRestore();
     });
 
+    it("public self check-in search and batch check-in include workers and dorm leaders", async () => {
+      const header = await authHeader();
+      await request(app)
+        .post(`/api/admin/camp-years/${campYearId}/self-check-in/token`)
+        .set("Authorization", header)
+        .send({});
+      const yearRow = await prisma.campYear.findUniqueOrThrow({ where: { id: campYearId } });
+      const kioskToken = yearRow.selfCheckInToken!;
+
+      const worker = await prisma.worker.create({
+        data: {
+          campYearId,
+          email: "self-worker@example.com",
+          firstName: "Selma",
+          lastName: "Selfcheck",
+          gender: Gender.female,
+          cellPhone: "555",
+          streetAddress: "1 St",
+          city: "X",
+          stateOrProvince: "Y",
+          postalCode: "Z",
+          country: "US",
+          dormId: workerDormId,
+          importSource: ImportSource.admin_entry,
+        },
+      });
+      const leader = await prisma.dormLeader.create({
+        data: {
+          campYearId,
+          firstName: "Simon",
+          lastName: "Selfcheck",
+          gender: Gender.male,
+          email: "self-leader@example.com",
+          phone: "555",
+          assignedCamperDormId: camperDormId,
+          importSource: ImportSource.admin_entry,
+        },
+      });
+
+      const search = await request(app)
+        .get(`/api/public/self-check-in/${kioskToken}/search`)
+        .query({ q: "Selfcheck" });
+      expect(search.status).toBe(200);
+      expect(search.body.people).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: worker.id, personKind: "worker", firstName: "Selma" }),
+          expect.objectContaining({ id: leader.id, personKind: "dorm_leader", firstName: "Simon" }),
+        ]),
+      );
+      expect(search.body.people[0]).not.toHaveProperty("email");
+      expect(search.body.people[0]).not.toHaveProperty("phone");
+
+      const checkIn = await request(app)
+        .post(`/api/public/self-check-in/${kioskToken}/check-in`)
+        .send({ workerIds: [worker.id], dormLeaderIds: [leader.id] });
+      expect(checkIn.status).toBe(200);
+      expect(checkIn.body.people).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            person: expect.objectContaining({ id: worker.id, personKind: "worker", dormAssignment: "Worker Lodge" }),
+            checkInCompletedThisRequest: true,
+          }),
+          expect.objectContaining({
+            person: expect.objectContaining({ id: leader.id, personKind: "dorm_leader", dormAssignment: "Camper Hall A" }),
+            checkInCompletedThisRequest: true,
+          }),
+        ]),
+      );
+
+      const [workerRow, leaderRow] = await Promise.all([
+        prisma.worker.findUniqueOrThrow({ where: { id: worker.id } }),
+        prisma.dormLeader.findUniqueOrThrow({ where: { id: leader.id } }),
+      ]);
+      expect(workerRow.checkInStatus).toBe(CheckInStatus.checked_in);
+      expect(leaderRow.checkInStatus).toBe(CheckInStatus.checked_in);
+    });
     it("public check-in rejects unknown camper id", async () => {
       const header = await authHeader();
       await request(app)
@@ -908,3 +984,4 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     });
   });
 });
+

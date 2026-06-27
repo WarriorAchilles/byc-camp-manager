@@ -13,7 +13,32 @@ export function camperWhereForNameTokens(
   campYearId: string,
   tokens: string[],
 ): Prisma.CamperWhereInput {
-  let where: Prisma.CamperWhereInput = { campYearId, archivedAt: null };
+  return nameWhereForTokens<Prisma.CamperWhereInput>(campYearId, tokens);
+}
+
+/** Name search for workers in a camp year (archived excluded). */
+export function workerWhereForNameTokens(
+  campYearId: string,
+  tokens: string[],
+): Prisma.WorkerWhereInput {
+  return nameWhereForTokens<Prisma.WorkerWhereInput>(campYearId, tokens);
+}
+
+/** Name search for dorm leaders in a camp year (archived excluded). */
+export function dormLeaderWhereForNameTokens(
+  campYearId: string,
+  tokens: string[],
+): Prisma.DormLeaderWhereInput {
+  return nameWhereForTokens<Prisma.DormLeaderWhereInput>(campYearId, tokens);
+}
+
+function nameWhereForTokens<
+  T extends
+    | Prisma.CamperWhereInput
+    | Prisma.WorkerWhereInput
+    | Prisma.DormLeaderWhereInput,
+>(campYearId: string, tokens: string[]): T {
+  let where = { campYearId, archivedAt: null } as T;
   if (tokens.length >= 2) {
     const [a, b] = [tokens[0], tokens[1]];
     where = {
@@ -32,7 +57,7 @@ export function camperWhereForNameTokens(
           ],
         },
       ],
-    };
+    } as T;
   } else {
     const t = tokens[0];
     where = {
@@ -41,7 +66,7 @@ export function camperWhereForNameTokens(
         { firstName: { contains: t, mode: "insensitive" } },
         { lastName: { contains: t, mode: "insensitive" } },
       ],
-    };
+    } as T;
   }
   return where;
 }

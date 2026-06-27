@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
+import {
+  camperWhereForNameTokens,
+  dormLeaderWhereForNameTokens,
+  nameSearchTokens,
+  workerWhereForNameTokens,
+} from "../lib/camperNameSearch.js";
 import { runCamperCheckInInTransaction } from "../lib/camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { writeOpsLog } from "../lib/opsLog.js";
@@ -16,9 +21,28 @@ import {
 } from "../lib/stripeCheckout.js";
 import prismaClientPkg from "@prisma/client";
 
-const { CamperPaymentStatus } = prismaClientPkg;
+const { CamperPaymentStatus, CheckInStatus } = prismaClientPkg;
 
 const router = Router();
+
+type SelfCheckInPersonKind = "camper" | "worker" | "dorm_leader";
+
+type SelfCheckInPerson = {
+  id: string;
+  personKind: SelfCheckInPersonKind;
+  firstName: string;
+  lastName: string;
+  middleInitial: string | null;
+  checkInStatus: string;
+  dormAssignment: string | null;
+};
+
+type SelfCheckInResult = {
+  person: SelfCheckInPerson;
+  alreadyCheckedIn: boolean;
+  checkInCompletedThisRequest: boolean;
+  dormAutoAssigned: boolean;
+};
 
 function middleInitialFromName(middleName: string | null): string | null {
   const t = middleName?.trim();
@@ -28,14 +52,39 @@ function middleInitialFromName(middleName: string | null): string | null {
   return t.charAt(0).toUpperCase();
 }
 
+function sortPeopleByName(people: SelfCheckInPerson[]): SelfCheckInPerson[] {
+  return [...people].sort((left, right) => {
+    const last = left.lastName.localeCompare(right.lastName);
+    if (last !== 0) {
+      return last;
+    }
+    const first = left.firstName.localeCompare(right.firstName);
+    if (first !== 0) {
+      return first;
+    }
+    return left.personKind.localeCompare(right.personKind);
+  });
+}
+
 const publicCheckInBody = z.object({
   manualPaymentAccepted: z.boolean().optional(),
 });
 
-const publicBatchCheckInBody = z.object({
-  camperIds: z.array(z.string().uuid()).min(1).max(20),
-  manualPaymentAccepted: z.boolean().optional(),
-});
+const publicBatchCheckInBody = z
+  .object({
+    camperIds: z.array(z.string().uuid()).max(20).optional(),
+    workerIds: z.array(z.string().uuid()).max(20).optional(),
+    dormLeaderIds: z.array(z.string().uuid()).max(20).optional(),
+    manualPaymentAccepted: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      (body.camperIds?.length ?? 0) +
+        (body.workerIds?.length ?? 0) +
+        (body.dormLeaderIds?.length ?? 0) >
+      0,
+    { message: "At least one person is required" },
+  );
 
 const publicStripeCheckoutBody = z.object({
   camperIds: z.array(z.string().uuid()).min(1).max(20).optional(),
@@ -99,29 +148,79 @@ router.get("/:token/search", async (req, res) => {
     return;
   }
 
-  const where = camperWhereForNameTokens(result.year.id, tokens);
+  const [campers, workers, dormLeaders] = await Promise.all([
+    prisma.camper.findMany({
+      where: camperWhereForNameTokens(result.year.id, tokens),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        middleName: true,
+        checkInStatus: true,
+        dorm: { select: { name: true } },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 40,
+    }),
+    prisma.worker.findMany({
+      where: workerWhereForNameTokens(result.year.id, tokens),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        checkInStatus: true,
+        dorm: { select: { name: true } },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 40,
+    }),
+    prisma.dormLeader.findMany({
+      where: dormLeaderWhereForNameTokens(result.year.id, tokens),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        checkInStatus: true,
+        assignedCamperDorm: { select: { name: true } },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 40,
+    }),
+  ]);
 
-  const campers = await prisma.camper.findMany({
-    where,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      middleName: true,
-      checkInStatus: true,
-    },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    take: 40,
-  });
-
-  res.json({
-    campers: campers.map((camper) => ({
+  const people = sortPeopleByName([
+    ...campers.map((camper): SelfCheckInPerson => ({
       id: camper.id,
+      personKind: "camper",
       firstName: camper.firstName,
       lastName: camper.lastName,
       middleInitial: middleInitialFromName(camper.middleName),
       checkInStatus: camper.checkInStatus,
+      dormAssignment: camper.dorm?.name ?? null,
     })),
+    ...workers.map((worker): SelfCheckInPerson => ({
+      id: worker.id,
+      personKind: "worker",
+      firstName: worker.firstName,
+      lastName: worker.lastName,
+      middleInitial: null,
+      checkInStatus: worker.checkInStatus,
+      dormAssignment: worker.dorm?.name ?? null,
+    })),
+    ...dormLeaders.map((leader): SelfCheckInPerson => ({
+      id: leader.id,
+      personKind: "dorm_leader",
+      firstName: leader.firstName,
+      lastName: leader.lastName,
+      middleInitial: null,
+      checkInStatus: leader.checkInStatus,
+      dormAssignment: leader.assignedCamperDorm?.name ?? null,
+    })),
+  ]).slice(0, 40);
+
+  res.json({
+    people,
+    campers: people.filter((person) => person.personKind === "camper"),
   });
 });
 
@@ -285,13 +384,34 @@ router.post("/:token/check-in", async (req, res) => {
   }
 
   const campYearId = result.year.id;
-  const uniqueCamperIds = [...new Set(parsed.data.camperIds)];
+  const uniqueCamperIds = [...new Set(parsed.data.camperIds ?? [])];
+  const uniqueWorkerIds = [...new Set(parsed.data.workerIds ?? [])];
+  const uniqueDormLeaderIds = [...new Set(parsed.data.dormLeaderIds ?? [])];
   const currentCampers = await prisma.camper.findMany({
     where: { id: { in: uniqueCamperIds }, campYearId, archivedAt: null },
     select: { id: true, paymentStatus: true, feeDueCents: true, feePaidCents: true },
   });
   if (currentCampers.length !== uniqueCamperIds.length) {
     res.status(404).json({ error: "One or more campers were not found" });
+    return;
+  }
+
+  const [workerCount, dormLeaderCount] = await Promise.all([
+    uniqueWorkerIds.length > 0
+      ? prisma.worker.count({ where: { id: { in: uniqueWorkerIds }, campYearId, archivedAt: null } })
+      : 0,
+    uniqueDormLeaderIds.length > 0
+      ? prisma.dormLeader.count({
+          where: { id: { in: uniqueDormLeaderIds }, campYearId, archivedAt: null },
+        })
+      : 0,
+  ]);
+  if (workerCount !== uniqueWorkerIds.length) {
+    res.status(404).json({ error: "One or more workers were not found" });
+    return;
+  }
+  if (dormLeaderCount !== uniqueDormLeaderIds.length) {
+    res.status(404).json({ error: "One or more dorm leaders were not found" });
     return;
   }
 
@@ -314,7 +434,8 @@ router.post("/:token/check-in", async (req, res) => {
 
   const now = new Date();
   const checkInResults = await prisma.$transaction(async (tx) => {
-    const results = [];
+    const people: SelfCheckInResult[] = [];
+
     for (const camperId of uniqueCamperIds) {
       const txResult = await runCamperCheckInInTransaction(tx, {
         campYearId,
@@ -324,35 +445,166 @@ router.post("/:token/check-in", async (req, res) => {
         payments: {},
       });
       if (txResult) {
-        results.push(txResult);
+        people.push({
+          person: {
+            id: txResult.camper.id,
+            personKind: "camper",
+            firstName: txResult.camper.firstName,
+            lastName: txResult.camper.lastName,
+            middleInitial: middleInitialFromName(txResult.camper.middleName),
+            checkInStatus: txResult.camper.checkInStatus,
+            dormAssignment: txResult.camper.dorm?.name ?? null,
+          },
+          alreadyCheckedIn: !txResult.transitionedToCheckedIn,
+          checkInCompletedThisRequest: txResult.transitionedToCheckedIn,
+          dormAutoAssigned: txResult.dormAutoAssigned,
+        });
       }
     }
-    return results;
+
+    for (const workerId of uniqueWorkerIds) {
+      const existing = await tx.worker.findFirst({
+        where: { id: workerId, campYearId, archivedAt: null },
+        select: { checkInStatus: true },
+      });
+      if (!existing) {
+        continue;
+      }
+      const transitioned = existing.checkInStatus !== CheckInStatus.checked_in;
+      if (transitioned) {
+        await tx.worker.update({
+          where: { id: workerId },
+          data: { checkInStatus: CheckInStatus.checked_in, checkedInAt: now },
+        });
+      }
+      const worker = await tx.worker.findFirstOrThrow({
+        where: { id: workerId, campYearId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          checkInStatus: true,
+          dorm: { select: { name: true } },
+        },
+      });
+      people.push({
+        person: {
+          id: worker.id,
+          personKind: "worker",
+          firstName: worker.firstName,
+          lastName: worker.lastName,
+          middleInitial: null,
+          checkInStatus: worker.checkInStatus,
+          dormAssignment: worker.dorm?.name ?? null,
+        },
+        alreadyCheckedIn: !transitioned,
+        checkInCompletedThisRequest: transitioned,
+        dormAutoAssigned: false,
+      });
+    }
+
+    for (const dormLeaderId of uniqueDormLeaderIds) {
+      const existing = await tx.dormLeader.findFirst({
+        where: { id: dormLeaderId, campYearId, archivedAt: null },
+        select: { checkInStatus: true },
+      });
+      if (!existing) {
+        continue;
+      }
+      const transitioned = existing.checkInStatus !== CheckInStatus.checked_in;
+      if (transitioned) {
+        await tx.dormLeader.update({
+          where: { id: dormLeaderId },
+          data: { checkInStatus: CheckInStatus.checked_in, checkedInAt: now },
+        });
+      }
+      const leader = await tx.dormLeader.findFirstOrThrow({
+        where: { id: dormLeaderId, campYearId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          checkInStatus: true,
+          assignedCamperDorm: { select: { name: true } },
+        },
+      });
+      people.push({
+        person: {
+          id: leader.id,
+          personKind: "dorm_leader",
+          firstName: leader.firstName,
+          lastName: leader.lastName,
+          middleInitial: null,
+          checkInStatus: leader.checkInStatus,
+          dormAssignment: leader.assignedCamperDorm?.name ?? null,
+        },
+        alreadyCheckedIn: !transitioned,
+        checkInCompletedThisRequest: transitioned,
+        dormAutoAssigned: false,
+      });
+    }
+
+    return people;
   });
 
-  for (const txResult of checkInResults) {
-    const { camper: finalCamper, transitionedToCheckedIn, dormAutoAssigned } = txResult;
-    if (!transitionedToCheckedIn) {
+  for (const checkInResult of checkInResults) {
+    if (!checkInResult.checkInCompletedThisRequest) {
       continue;
     }
-    writeOpsLog("camper_check_in_self_service", {
+    if (checkInResult.person.personKind === "camper") {
+      writeOpsLog("camper_check_in_self_service", {
+        campYearId,
+        camperId: checkInResult.person.id,
+        dormAutoAssigned: checkInResult.dormAutoAssigned,
+      });
+      continue;
+    }
+    if (checkInResult.person.personKind === "worker") {
+      writeOpsLog("worker_check_in_self_service", {
+        campYearId,
+        workerId: checkInResult.person.id,
+      });
+      continue;
+    }
+    writeOpsLog("dorm_leader_check_in_self_service", {
       campYearId,
-      camperId: finalCamper.id,
-      dormAutoAssigned,
+      dormLeaderId: checkInResult.person.id,
     });
-    if (result.year.checkInConfirmationEmailsEnabled) {
-      const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
+  }
+
+  if (result.year.checkInConfirmationEmailsEnabled) {
+    for (const camperId of uniqueCamperIds) {
+      const camperResult = checkInResults.find(
+        (entry) => entry.person.personKind === "camper" && entry.person.id === camperId,
+      );
+      if (!camperResult?.checkInCompletedThisRequest) {
+        continue;
+      }
+      const camper = await prisma.camper.findUnique({
+        where: { id: camperId },
+        select: {
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          guardianEmail: true,
+          dorm: { select: { name: true } },
+        },
+      });
+      if (!camper) {
+        continue;
+      }
+      const fullName = [camper.firstName, camper.middleName, camper.lastName]
         .filter(Boolean)
         .join(" ");
       const emailResult = await sendCheckInConfirmationMail({
-        to: finalCamper.guardianEmail,
+        to: camper.guardianEmail,
         camperFullName: fullName,
-        dormLabel: finalCamper.dorm?.name ?? "unassigned",
+        dormLabel: camper.dorm?.name ?? "unassigned",
         checkedInAt: now,
       });
       writeOpsLog("check_in_confirmation_email", {
         campYearId,
-        camperId: finalCamper.id,
+        camperId,
         channel: "self_service",
         result: emailResult.status,
       });
@@ -360,18 +612,21 @@ router.post("/:token/check-in", async (req, res) => {
   }
 
   res.json({
-    campers: checkInResults.map((txResult) => ({
-      camper: {
-        firstName: txResult.camper.firstName,
-        lastName: txResult.camper.lastName,
-        middleInitial: middleInitialFromName(txResult.camper.middleName),
-        checkInStatus: txResult.camper.checkInStatus,
-        dormAssignment: txResult.camper.dorm?.name ?? null,
-      },
-      alreadyCheckedIn: !txResult.transitionedToCheckedIn,
-      checkInCompletedThisRequest: txResult.transitionedToCheckedIn,
-      dormAutoAssigned: txResult.dormAutoAssigned,
-    })),
+    people: checkInResults,
+    campers: checkInResults
+      .filter((checkInResult) => checkInResult.person.personKind === "camper")
+      .map((checkInResult) => ({
+        camper: {
+          firstName: checkInResult.person.firstName,
+          lastName: checkInResult.person.lastName,
+          middleInitial: checkInResult.person.middleInitial,
+          checkInStatus: checkInResult.person.checkInStatus,
+          dormAssignment: checkInResult.person.dormAssignment,
+        },
+        alreadyCheckedIn: checkInResult.alreadyCheckedIn,
+        checkInCompletedThisRequest: checkInResult.checkInCompletedThisRequest,
+        dormAutoAssigned: checkInResult.dormAutoAssigned,
+      })),
   });
 });
 
