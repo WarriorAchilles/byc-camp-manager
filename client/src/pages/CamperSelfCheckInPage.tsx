@@ -18,6 +18,7 @@ type SelfSearchRow = {
   lastName: string;
   middleInitial: string | null;
   checkInStatus: string;
+  dormAssignment: string | null;
 };
 
 type SelfCheckedInPerson = {
@@ -384,6 +385,24 @@ export function CamperSelfCheckInPage(): ReactElement {
   const onlinePaymentAvailable = selectedPayments.some((camper) => camper.onlinePaymentAvailable);
   const hasSelectedPeople = selectedPeople.length > 0;
   const hasVisiblePeople = hasSelectedPeople || unselectedResults.length > 0;
+  const showCheckedInDorm = (person: SelfSearchRow): void => {
+    setActionError(null);
+    setSearchError(null);
+    setSelectedPeople([]);
+    setSelectedPayments([]);
+    setManualPaymentAccepted(false);
+    setSuccess({
+      message: `${displayName(person)} is already checked in.`,
+      people: [
+        {
+          name: displayName(person),
+          role: personKindLabel(person.personKind),
+          dormLabel: person.dormAssignment ?? "Unassigned",
+        },
+      ],
+      dormAutoAssigned: false,
+    });
+  };
 
   if (metaError) {
     return (
@@ -418,8 +437,8 @@ export function CamperSelfCheckInPage(): ReactElement {
         </header>
 
         <p className="self-check-in-lead">
-          Search for your name, then tap <strong>Check in</strong>. Your dorm assignment appears after you
-          check in.
+          Search for your name, then tap <strong>Continue</strong> to check in. If you are already checked
+          in, tap your name to show your dorm assignment again.
         </p>
 
         {success ? (
@@ -515,23 +534,36 @@ export function CamperSelfCheckInPage(): ReactElement {
                     const checkedIn = row.checkInStatus === "checked_in";
                     return (
                       <li key={row.id}>
-                        <label className="self-check-in-row self-check-in-select-row">
-                          <input
-                            type="checkbox"
-                            checked={false}
-                            disabled={checkedIn || busyPersonId !== null}
-                            onChange={() => toggleSelectedPerson(row)}
-                          />
-                          <div>
-                            <div className="self-check-in-name">{displayName(row)}</div>
-                            <span className="self-check-in-badge">{personKindLabel(row.personKind)}</span>
-                            {checkedIn ? (
-                              <span className="self-check-in-badge self-check-in-badge-done">Checked in</span>
-                            ) : (
+                        {checkedIn ? (
+                          <button
+                            type="button"
+                            className="self-check-in-row self-check-in-select-row self-check-in-reveal-row"
+                            disabled={busyPersonId !== null}
+                            onClick={() => showCheckedInDorm(row)}
+                          >
+                            <div>
+                              <div className="self-check-in-name">{displayName(row)}</div>
+                              <span className="self-check-in-badge">{personKindLabel(row.personKind)}</span>
+                              <span className="self-check-in-badge self-check-in-badge-done">
+                                Checked in - tap to show dorm
+                              </span>
+                            </div>
+                          </button>
+                        ) : (
+                          <label className="self-check-in-row self-check-in-select-row">
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              disabled={busyPersonId !== null}
+                              onChange={() => toggleSelectedPerson(row)}
+                            />
+                            <div>
+                              <div className="self-check-in-name">{displayName(row)}</div>
+                              <span className="self-check-in-badge">{personKindLabel(row.personKind)}</span>
                               <span className="self-check-in-badge">Not checked in yet</span>
-                            )}
-                          </div>
-                        </label>
+                            </div>
+                          </label>
+                        )}
                       </li>
                     );
                   })}

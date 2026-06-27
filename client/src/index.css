@@ -1265,6 +1265,18 @@ tbody tr:hover td {
   flex: 0 0 auto;
 }
 
+.self-check-in-reveal-row {
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.self-check-in-reveal-row:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
 .self-check-in-pinned-row {
   border-color: color-mix(in srgb, var(--success) 38%, var(--border));
   background: color-mix(in srgb, var(--success) 7%, var(--surface));
