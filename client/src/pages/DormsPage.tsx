@@ -1165,7 +1165,9 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActiveDialog(); }}>
           <div ref={settingsDialogRef} tabIndex={-1} className="modal-card stack dorm-roster-panel dorm-print-root" role="dialog" aria-modal="true" aria-labelledby="dorm-roster-title">
           <button type="button" className="dorm-dialog-close" aria-label="Close roster" onClick={closeActiveDialog}>X</button>
-          <h2 id="dorm-roster-title" style={{ margin: 0 }}>Dorm roster</h2>
+          <h2 id="dorm-roster-title" style={{ margin: 0 }}>
+            Dorm roster{roster ? ` - ${roster.dorm.name}` : ""}
+          </h2>
           <label className="stack">
             Dorm
             <select
@@ -1222,6 +1224,9 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                   <h3 style={{ marginBottom: "0.35rem" }}>Campers</h3>
                   <table>
                     <thead>
+                      <tr className="dorm-print-page-title-row">
+                        <th colSpan={5}>Dorm roster{roster ? ` - ${roster.dorm.name}` : ""}</th>
+                      </tr>
                       <tr>
                         <th>Name</th>
                         <th>Age</th>
@@ -1260,6 +1265,9 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                   <h3 style={{ marginBottom: "0.35rem" }}>Workers</h3>
                   <table>
                     <thead>
+                      <tr className="dorm-print-page-title-row">
+                        <th colSpan={5}>Dorm roster{roster ? ` - ${roster.dorm.name}` : ""}</th>
+                      </tr>
                       <tr>
                         <th>Name</th>
                         <th>Age</th>

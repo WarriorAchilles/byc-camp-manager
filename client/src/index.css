@@ -1502,6 +1502,14 @@ tbody tr:hover td {
   font-size: 0.9rem;
 }
 
+.report-page-title-row {
+  display: none;
+}
+
+.dorm-print-page-title-row {
+  display: none;
+}
+
 .report-table th,
 .report-table td {
   border: 1px solid var(--border-strong);
@@ -1569,6 +1577,23 @@ tbody tr:hover td {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
+  }
+
+  .report-table thead {
+    display: table-header-group;
+  }
+
+  .report-page-title-row {
+    display: table-row;
+  }
+
+  .report-page-title-row th {
+    background: white !important;
+    border: 0 !important;
+    padding: 0 0 0.35rem !important;
+    color: #111 !important;
+    font-size: 1.15rem;
+    text-align: left;
   }
 
   .report-table th {
@@ -1776,6 +1801,22 @@ tbody tr:hover td {
     box-shadow: none;
   }
 
+  .dorm-print-root table thead {
+    display: table-header-group;
+  }
+
+  .dorm-print-page-title-row {
+    display: table-row;
+  }
+
+  .dorm-print-page-title-row th {
+    background: white !important;
+    border: 0 !important;
+    padding: 0 0 0.35rem !important;
+    color: #111 !important;
+    font-size: 1.15rem;
+    text-align: left;
+  }
   .dorm-print-root .dorm-dialog-close,
   .dorm-print-root > label,
   .dorm-print-root > button {

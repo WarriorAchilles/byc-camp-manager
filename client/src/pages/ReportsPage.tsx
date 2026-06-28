@@ -515,6 +515,9 @@ export function ReportsPage(): React.ReactElement {
               <div className="report-table-wrap">
                 <table className="report-table">
                   <thead>
+                    <tr className="report-page-title-row">
+                      <th colSpan={8}>Dorm roster - {roster.dorm.name}</th>
+                    </tr>
                     <tr>
                       <th>Camper</th>
                       <th>Age</th>
