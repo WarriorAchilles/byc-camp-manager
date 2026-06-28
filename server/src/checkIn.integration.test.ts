@@ -174,6 +174,18 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
         dormId: camperDormId,
       });
     expect(create.status).toBe(201);
+    await prisma.dormLeader.create({
+      data: {
+        campYearId,
+        firstName: "Dale",
+        lastName: "Leader",
+        gender: Gender.male,
+        email: "dale-leader@example.com",
+        phone: "5550002222",
+        assignedCamperDormId: camperDormId,
+        importSource: ImportSource.admin_entry,
+      },
+    });
     const token = create.body.qrToken as string;
 
     const lookup = await request(app)
@@ -183,6 +195,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(lookup.status).toBe(200);
     expect(lookup.body.camper.firstName).toBe("Qr");
     expect(lookup.body.camper.dormAssignment).toBe("Camper Hall A");
+    expect(lookup.body.camper.dormLeader).toBe("Dale Leader");
   });
 
   it("manual camper search finds by partial name", async () => {
@@ -675,7 +688,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       expect(checkIn.body.people).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            person: expect.objectContaining({ id: worker.id, personKind: "worker", dormAssignment: "Worker Lodge" }),
+            person: expect.objectContaining({ id: worker.id, personKind: "worker", dormAssignment: "Staff Bunk" }),
             checkInCompletedThisRequest: true,
           }),
           expect.objectContaining({
@@ -984,4 +997,3 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     });
   });
 });
-

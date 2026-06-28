@@ -37,6 +37,7 @@ type CamperCheckIn = {
   checkInStatus: string;
   checkedInAt: string | null;
   dormAssignment: string | null;
+  dormLeader: string | null;
   flags: { hasMedicalNotes: boolean; hasDietaryRestrictions: boolean };
 };
 
@@ -79,6 +80,7 @@ type CamperCheckInDoneModal = {
   lastName: string;
   middleName: string | null;
   dormLabel: string;
+  dormLeader: string | null;
   dormAutoAssigned: boolean;
 };
 
@@ -369,6 +371,7 @@ export function CheckInPage(): React.ReactElement {
           lastName: data.camper.lastName,
           middleName: data.camper.middleName,
           dormLabel: data.camper.dormAssignment ?? "Unassigned",
+          dormLeader: data.camper.dormLeader,
           dormAutoAssigned: data.dormAutoAssigned ?? false,
         });
       }
@@ -783,6 +786,10 @@ export function CheckInPage(): React.ReactElement {
               <dd>{selectedCamper.dormAssignment ?? "Unassigned"}</dd>
             </div>
             <div>
+              <dt>Dorm leader</dt>
+              <dd>{selectedCamper.dormLeader ?? "Unassigned"}</dd>
+            </div>
+            <div>
               <dt>Payment</dt>
               <dd>{selectedCamper.paymentStatus.replace(/_/g, " ")}</dd>
             </div>
@@ -977,6 +984,9 @@ export function CheckInPage(): React.ReactElement {
               {camperCheckInModal.dormAutoAssigned ? (
                 <span className="muted"> (placed automatically)</span>
               ) : null}
+            </p>
+            <p className="check-in-modal-dorm">
+              <strong>Dorm leader:</strong> {camperCheckInModal.dormLeader ?? "Unassigned"}
             </p>
             <p className="muted check-in-modal-hint">
               You can still move this camper on the Dorms page if the assignment needs to change.

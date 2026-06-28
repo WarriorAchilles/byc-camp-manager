@@ -22,13 +22,28 @@ export const camperCheckInSelect = {
   checkInStatus: true,
   checkedInAt: true,
   qrToken: true,
-  dorm: { select: { id: true, name: true } },
+  dorm: {
+    select: {
+      id: true,
+      name: true,
+      dormLeaderAssignments: {
+        where: { archivedAt: null },
+        select: { firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      },
+    },
+  },
 } satisfies Prisma.CamperSelect;
 
 export type CamperCheckInRow = Prisma.CamperGetPayload<{ select: typeof camperCheckInSelect }>;
 
 export function serializeCamperCheckIn(camper: CamperCheckInRow) {
   const dormAssignment = camper.dorm?.name ?? null;
+  const dormLeader = camper.dorm?.dormLeaderAssignments.length
+    ? camper.dorm.dormLeaderAssignments
+        .map((leader) => `${leader.firstName} ${leader.lastName}`)
+        .join(", ")
+    : null;
   return {
     id: camper.id,
     firstName: camper.firstName,
@@ -46,6 +61,7 @@ export function serializeCamperCheckIn(camper: CamperCheckInRow) {
     checkedInAt: camper.checkedInAt?.toISOString() ?? null,
     qrToken: camper.qrToken,
     dormAssignment,
+    dormLeader,
     flags: {
       hasMedicalNotes: !!(camper.medicalNotes && camper.medicalNotes.trim()),
       hasDietaryRestrictions: !!(camper.dietaryRestrictions && camper.dietaryRestrictions.trim()),
