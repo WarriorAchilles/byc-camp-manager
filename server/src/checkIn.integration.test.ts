@@ -223,6 +223,84 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(search.body.campers[0].lastName).toBe("McFind");
   });
 
+  it("returns only checked-in campers for the random selector pool", async () => {
+    const header = await authHeaderForRole(AdminRole.camp_admin);
+    await prisma.camper.createMany({
+      data: [
+        {
+          campYearId,
+          firstName: "Milo",
+          lastName: "Winner",
+          dateOfBirth: new Date("2085-06-15T12:00:00.000Z"),
+          gender: Gender.male,
+          guardianName: "Guard",
+          guardianEmail: "milo-pool@example.com",
+          guardianPhone: "555",
+          paymentStatus: CamperPaymentStatus.paid_cash,
+          checkInStatus: CheckInStatus.checked_in,
+          checkedInAt: new Date("2098-07-01T18:00:00.000Z"),
+          qrToken: randomUUID(),
+          dormId: camperDormId,
+          importSource: ImportSource.admin_entry,
+        },
+        {
+          campYearId,
+          firstName: "Faye",
+          lastName: "Winner",
+          dateOfBirth: new Date("2085-06-15T12:00:00.000Z"),
+          gender: Gender.female,
+          guardianName: "Guard",
+          guardianEmail: "faye-pool@example.com",
+          guardianPhone: "555",
+          paymentStatus: CamperPaymentStatus.paid_cash,
+          checkInStatus: CheckInStatus.checked_in,
+          checkedInAt: new Date("2098-07-01T18:05:00.000Z"),
+          qrToken: randomUUID(),
+          dormId: camperDormId,
+          importSource: ImportSource.admin_entry,
+        },
+        {
+          campYearId,
+          firstName: "Nora",
+          lastName: "Waiting",
+          dateOfBirth: new Date("2085-06-15T12:00:00.000Z"),
+          gender: Gender.female,
+          guardianName: "Guard",
+          guardianEmail: "nora-pool@example.com",
+          guardianPhone: "555",
+          paymentStatus: CamperPaymentStatus.paid_cash,
+          checkInStatus: CheckInStatus.not_checked_in,
+          qrToken: randomUUID(),
+          dormId: camperDormId,
+          importSource: ImportSource.admin_entry,
+        },
+      ],
+    });
+
+    const pool = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/check-in/checked-in-campers`)
+      .set("Authorization", header);
+
+    expect(pool.status).toBe(200);
+    expect(pool.body.campers).toEqual([
+      expect.objectContaining({
+        firstName: "Faye",
+        lastName: "Winner",
+        gender: Gender.female,
+        dormAssignment: "Camper Hall A",
+      }),
+      expect.objectContaining({
+        firstName: "Milo",
+        lastName: "Winner",
+        gender: Gender.male,
+        dormAssignment: "Camper Hall A",
+      }),
+    ]);
+    expect(pool.body.campers).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ firstName: "Nora" })]),
+    );
+  });
+
   it("camper check-in sends log email once; duplicate is idempotent", async () => {
     const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const header = await authHeader();

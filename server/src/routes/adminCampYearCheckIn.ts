@@ -69,6 +69,45 @@ router.get("/summary", async (req: AuthedRequest, res) => {
   });
 });
 
+/** Minimal checked-in camper pool for random selections and other arrival tools. */
+router.get("/checked-in-campers", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const year = await prisma.campYear.findUnique({ where: { id: campYearId }, select: { id: true } });
+  if (!year) {
+    res.status(404).json({ error: "Camp year not found" });
+    return;
+  }
+
+  const campers = await prisma.camper.findMany({
+    where: { campYearId, archivedAt: null, checkInStatus: CheckInStatus.checked_in },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      middleName: true,
+      gender: true,
+      checkedInAt: true,
+      dorm: { select: { name: true } },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+
+  res.json({
+    campers: campers.map((camper) => ({
+      id: camper.id,
+      firstName: camper.firstName,
+      lastName: camper.lastName,
+      middleName: camper.middleName,
+      gender: camper.gender,
+      checkedInAt: camper.checkedInAt?.toISOString() ?? null,
+      dormAssignment: camper.dorm?.name ?? null,
+    })),
+  });
+});
+
 /** Resolve a camper by QR token (hex) for this camp year. */
 router.get("/lookup/qr", async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);

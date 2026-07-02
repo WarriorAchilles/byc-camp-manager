@@ -8,6 +8,7 @@ import { ImportsPage } from "./pages/ImportsPage";
 import { CamperSelfCheckInPage } from "./pages/CamperSelfCheckInPage";
 import { CheckInPage } from "./pages/CheckInPage";
 import { PeoplePage } from "./pages/PeoplePage";
+import { RandomCamperSelectorPage } from "./pages/RandomCamperSelectorPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SelfCheckInQrPage } from "./pages/SelfCheckInQrPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
@@ -61,6 +62,7 @@ export function App(): React.ReactElement {
           <Route index element={<CheckInPage />} />
           <Route path="check-in" element={<Navigate to="/admin" replace />} />
           <Route path="self-check-in-qr" element={<SelfCheckInQrPage />} />
+          <Route path="random-campers" element={<RandomCamperSelectorPage />} />
           <Route
             path="camp"
             element={
