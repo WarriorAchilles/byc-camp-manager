@@ -112,6 +112,13 @@ function dormGenderLabel(designation: string): string {
   return designation;
 }
 
+function ageRangeLabel(bracket: AgeBracket | undefined): string {
+  if (!bracket) {
+    return "No age range";
+  }
+  return `${bracket.label} (${bracket.minAge}-${bracket.maxAge})`;
+}
+
 export function ReportsPage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
@@ -258,7 +265,8 @@ export function ReportsPage(): React.ReactElement {
   }, [loadDormRoster, reportKind]);
 
   const loadCheckInData = useCallback(async () => {
-    if (!campYearId || reportKind !== "checkin") {
+    if (!campYearId) {
+      setCampers([]);
       return;
     }
     setCheckInLoading(true);
@@ -273,11 +281,36 @@ export function ReportsPage(): React.ReactElement {
     } finally {
       setCheckInLoading(false);
     }
-  }, [campYearId, reportKind]);
+  }, [campYearId]);
 
   useEffect(() => {
     void loadCheckInData();
   }, [loadCheckInData]);
+
+  const camperDormCheckInSummaries = useMemo(() => {
+    const bracketById = new Map(brackets.map((bracket) => [bracket.id, bracket]));
+    const campersByDormId = new Map<string, { checkedIn: number; assigned: number }>();
+    for (const camper of campers) {
+      if (!camper.dormId) {
+        continue;
+      }
+      const previous = campersByDormId.get(camper.dormId) ?? { checkedIn: 0, assigned: 0 };
+      previous.assigned += 1;
+      if (camper.checkInStatus === "checked_in") {
+        previous.checkedIn += 1;
+      }
+      campersByDormId.set(camper.dormId, previous);
+    }
+    return camperDorms.map((dorm) => {
+      const counts = campersByDormId.get(dorm.id) ?? { checkedIn: 0, assigned: 0 };
+      return {
+        dorm,
+        checkedIn: counts.checkedIn,
+        assigned: counts.assigned,
+        ageRange: ageRangeLabel(dorm.ageGroupBracketId ? bracketById.get(dorm.ageGroupBracketId) : undefined),
+      };
+    });
+  }, [brackets, camperDorms, campers]);
 
   const checkInRows = useMemo(() => {
     if (!campYearStartIso) {
@@ -401,6 +434,44 @@ export function ReportsPage(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      <section className="card print-hidden dorm-check-in-summary-card" aria-label="Camper dorm check-in summary">
+        <h2 className="reports-card-title">Camper dorm check-in summary</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Checked-in camper counts by dorm, with each dorm&apos;s configured age range and gender.
+        </p>
+        {checkInError ? <p className="error">{checkInError}</p> : null}
+        {checkInLoading ? <p className="muted">Loading camper counts...</p> : null}
+        {!checkInLoading && camperDormCheckInSummaries.length === 0 ? (
+          <p className="muted">No camper dorms configured for this camp year.</p>
+        ) : null}
+        {camperDormCheckInSummaries.length > 0 ? (
+          <div className="report-table-wrap dorm-check-in-summary-table-wrap">
+            <table className="report-table dorm-check-in-summary-table">
+              <thead>
+                <tr>
+                  <th>Dorm</th>
+                  <th>Gender</th>
+                  <th>Age range</th>
+                  <th>Assigned campers</th>
+                  <th>Checked in</th>
+                </tr>
+              </thead>
+              <tbody>
+                {camperDormCheckInSummaries.map((summary) => (
+                  <tr key={summary.dorm.id}>
+                    <td>{summary.dorm.name}</td>
+                    <td>{dormGenderLabel(summary.dorm.genderDesignation)}</td>
+                    <td>{summary.ageRange}</td>
+                    <td>{summary.assigned}</td>
+                    <td>{summary.checkedIn}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       {reportKind === "dorm" ? (
         <>

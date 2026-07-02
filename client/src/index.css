@@ -1523,6 +1523,26 @@ tbody tr:hover td {
   font-weight: 600;
 }
 
+.dorm-check-in-summary-table {
+  border: 1px solid var(--border-strong);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dorm-check-in-summary-table th,
+.dorm-check-in-summary-table td {
+  border-width: 0 1px 1px 0;
+}
+
+.dorm-check-in-summary-table th:last-child,
+.dorm-check-in-summary-table td:last-child {
+  border-right-width: 0;
+}
+
+.dorm-check-in-summary-table tbody tr:last-child td {
+  border-bottom-width: 0;
+}
+
 .report-cell-text {
   max-width: 14rem;
   white-space: pre-wrap;
