@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
@@ -10,6 +10,7 @@ type CampYearOption = {
   id: string;
   name: string;
   yearLabel: string;
+  startDate: string;
   activeCamperCount?: number;
   camperCapacity: number | null;
   earlyCamperFeeCents: number | null;
@@ -21,8 +22,11 @@ type CamperRow = {
   id: string;
   firstName: string;
   lastName: string;
+  dateOfBirth: string;
+  gender: string;
   guardianEmail: string;
   paymentStatus: "unpaid" | "paid_cash" | "paid_stripe";
+  checkInStatus: CheckInStatus;
   importSource: string;
   feeDueCents: number | null;
   feePaidCents: number | null;
@@ -33,7 +37,9 @@ type WorkerRow = {
   firstName: string;
   lastName: string;
   email: string;
+  dateOfBirth: string | null;
   gender: string;
+  checkInStatus: CheckInStatus;
   importSource: string;
 };
 
@@ -44,6 +50,7 @@ type DormLeaderRow = {
   email: string;
   phone: string;
   gender: string;
+  checkInStatus: CheckInStatus;
   importSource: string;
   assignedCamperDormId: string | null;
   assignedCamperDorm: { id: string; name: string } | null;
@@ -62,6 +69,23 @@ type CapacityBody = {
   capacity: number;
   additionalCampers: number;
 };
+
+type AgeGroupBracket = {
+  id: string;
+  label: string;
+  minAge: number;
+  maxAge: number;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+type CheckInStatus = "checked_in" | "not_checked_in";
+
+type PeopleGenderFilter = "" | "male" | "female";
+
+type PeopleCheckInFilter = "" | CheckInStatus;
+
+type PeoplePaymentFilter = "" | "paid" | "unpaid";
 
 function formatUsdFromCents(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) {
@@ -86,6 +110,51 @@ function paymentStatusLabel(paymentStatus: CamperRow["paymentStatus"]): string {
     return "Paid (Stripe)";
   }
   return "Unpaid";
+}
+
+/** Matches server `ageOnCampStartUtc` (camp start vs date of birth, UTC calendar). */
+function ageOnCampStartUtc(dateOfBirth: string, campStartIso: string): number {
+  const dob = new Date(dateOfBirth);
+  const campStart = new Date(campStartIso);
+  let age = campStart.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDiff = campStart.getUTCMonth() - dob.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && campStart.getUTCDate() < dob.getUTCDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+function checkInLabel(status: CheckInStatus): string {
+  return status === "checked_in" ? "Checked in" : "Not checked in";
+}
+
+function genderLabel(value: string): string {
+  if (value === "male") {
+    return "Male";
+  }
+  if (value === "female") {
+    return "Female";
+  }
+  return value;
+}
+
+function personMatchesNameSearch(
+  person: { firstName: string; lastName: string },
+  query: string,
+): boolean {
+  if (!query) {
+    return true;
+  }
+  const firstName = person.firstName.toLowerCase();
+  const lastName = person.lastName.toLowerCase();
+  const fullName = `${firstName} ${lastName}`;
+  const reverseFullName = `${lastName} ${firstName}`;
+  return (
+    firstName.includes(query) ||
+    lastName.includes(query) ||
+    fullName.includes(query) ||
+    reverseFullName.includes(query)
+  );
 }
 
 type PeoplePageProps = {
@@ -125,6 +194,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [dormLeaders, setDormLeaders] = useState<DormLeaderRow[]>([]);
   const [allDorms, setAllDorms] = useState<DormOption[]>([]);
+  const [ageGroupBrackets, setAgeGroupBrackets] = useState<AgeGroupBracket[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [camperFormError, setCamperFormError] = useState<string | null>(null);
@@ -137,6 +207,11 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
   const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
   const [personToEdit, setPersonToEdit] = useState<PersonToEdit | null>(null);
+  const [ageGroupFilter, setAgeGroupFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState<PeopleGenderFilter>("");
+  const [checkInFilter, setCheckInFilter] = useState<PeopleCheckInFilter>("");
+  const [paymentFilter, setPaymentFilter] = useState<PeoplePaymentFilter>("");
+  const [nameSearch, setNameSearch] = useState("");
   const deletePersonConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const camperDorms = allDorms.filter((dorm) => dorm.purpose === "camper");
@@ -192,9 +267,10 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
       setWorkers([]);
       setDormLeaders([]);
       setAllDorms([]);
+      setAgeGroupBrackets([]);
       return;
     }
-    const [campersRes, workersRes, leadersRes, dormsRes] = await Promise.all([
+    const [campersRes, workersRes, leadersRes, dormsRes, ageGroupRes] = await Promise.all([
       apiJson<{ campers: CamperRow[] }>(`/api/admin/camp-years/${yearId}/campers`),
       apiJson<{ workers: WorkerRow[] }>(`/api/admin/camp-years/${yearId}/workers`).catch(() => ({
         workers: [],
@@ -205,11 +281,15 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
       apiJson<{ dorms: DormOption[] }>(`/api/admin/camp-years/${yearId}/dorms`).catch(() => ({
         dorms: [],
       })),
+      apiJson<{ ageGroupBrackets: AgeGroupBracket[] }>(
+        `/api/admin/camp-years/${yearId}/age-group-brackets`,
+      ).catch(() => ({ ageGroupBrackets: [] })),
     ]);
     setCampers(campersRes.campers);
     setWorkers(workersRes.workers);
     setDormLeaders(leadersRes.dormLeaders);
     setAllDorms(dormsRes.dorms);
+    setAgeGroupBrackets(ageGroupRes.ageGroupBrackets);
   };
 
   useEffect(() => {
@@ -240,6 +320,94 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   }, [campYearId]);
 
   const selectedYear = campYears.find((year) => year.id === campYearId);
+  const normalizedNameSearch = nameSearch.trim().toLowerCase();
+
+  const selectedAgeGroup = ageGroupBrackets.find((bracket) => bracket.id === ageGroupFilter);
+  const filterByAgeGroup = useCallback(
+    (dateOfBirth: string | null): boolean => {
+      if (!selectedAgeGroup) {
+        return true;
+      }
+      if (!dateOfBirth || !selectedYear?.startDate) {
+        return false;
+      }
+      const age = ageOnCampStartUtc(dateOfBirth, selectedYear.startDate);
+      return age >= selectedAgeGroup.minAge && age <= selectedAgeGroup.maxAge;
+    },
+    [selectedAgeGroup, selectedYear?.startDate],
+  );
+
+  const filteredCampers = useMemo(
+    () =>
+      campers.filter((camper) => {
+        if (!personMatchesNameSearch(camper, normalizedNameSearch)) {
+          return false;
+        }
+        if (genderFilter && camper.gender !== genderFilter) {
+          return false;
+        }
+        if (checkInFilter && camper.checkInStatus !== checkInFilter) {
+          return false;
+        }
+        if (paymentFilter === "paid" && camper.paymentStatus === "unpaid") {
+          return false;
+        }
+        if (paymentFilter === "unpaid" && camper.paymentStatus !== "unpaid") {
+          return false;
+        }
+        return filterByAgeGroup(camper.dateOfBirth);
+      }),
+    [campers, checkInFilter, filterByAgeGroup, genderFilter, normalizedNameSearch, paymentFilter],
+  );
+
+  const filteredWorkers = useMemo(
+    () =>
+      workers.filter((worker) => {
+        if (!personMatchesNameSearch(worker, normalizedNameSearch)) {
+          return false;
+        }
+        if (genderFilter && worker.gender !== genderFilter) {
+          return false;
+        }
+        if (checkInFilter && worker.checkInStatus !== checkInFilter) {
+          return false;
+        }
+        return filterByAgeGroup(worker.dateOfBirth);
+      }),
+    [checkInFilter, filterByAgeGroup, genderFilter, normalizedNameSearch, workers],
+  );
+
+  const filteredDormLeaders = useMemo(
+    () =>
+      dormLeaders.filter((leader) => {
+        if (!personMatchesNameSearch(leader, normalizedNameSearch)) {
+          return false;
+        }
+        if (genderFilter && leader.gender !== genderFilter) {
+          return false;
+        }
+        if (checkInFilter && leader.checkInStatus !== checkInFilter) {
+          return false;
+        }
+        return !selectedAgeGroup;
+      }),
+    [checkInFilter, dormLeaders, genderFilter, normalizedNameSearch, selectedAgeGroup],
+  );
+
+  const filtersActive =
+    normalizedNameSearch !== "" ||
+    ageGroupFilter !== "" ||
+    genderFilter !== "" ||
+    checkInFilter !== "" ||
+    paymentFilter !== "";
+
+  const resetPeopleFilters = (): void => {
+    setNameSearch("");
+    setAgeGroupFilter("");
+    setGenderFilter("");
+    setCheckInFilter("");
+    setPaymentFilter("");
+  };
 
   const resetCapacityUi = (): void => {
     setCapacityWarning(null);
@@ -851,7 +1019,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               className={`btn secondary${peopleListKind === "camper" ? " active" : ""}`}
               onClick={() => setPeopleListKind("camper")}
             >
-              Campers ({campers.length})
+              Campers ({filtersActive ? `${filteredCampers.length}/` : ""}{campers.length})
             </button>
             <button
               id="workers-tab"
@@ -862,7 +1030,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               className={`btn secondary${peopleListKind === "worker" ? " active" : ""}`}
               onClick={() => setPeopleListKind("worker")}
             >
-              Workers ({workers.length})
+              Workers ({filtersActive ? `${filteredWorkers.length}/` : ""}{workers.length})
             </button>
             <button
               id="dorm-leaders-tab"
@@ -873,8 +1041,92 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               className={`btn secondary${peopleListKind === "dorm_leader" ? " active" : ""}`}
               onClick={() => setPeopleListKind("dorm_leader")}
             >
-              Dorm leaders ({dormLeaders.length})
+              Dorm leaders ({filtersActive ? `${filteredDormLeaders.length}/` : ""}{dormLeaders.length})
             </button>
+          </div>
+
+          <div className="card people-filter-card">
+            <div className="people-list-filters">
+              <label className="people-name-search">
+                Search name
+                <input
+                  type="text"
+                  value={nameSearch}
+                  onChange={(event) => setNameSearch(event.target.value)}
+                  placeholder="First or last name"
+                />
+              </label>
+              <label>
+                Age group
+                <select
+                  value={ageGroupFilter}
+                  onChange={(event) => setAgeGroupFilter(event.target.value)}
+                >
+                  <option value="">All age groups</option>
+                  {ageGroupBrackets.map((bracket) => (
+                    <option key={bracket.id} value={bracket.id}>
+                      {bracket.label} ({bracket.minAge}-{bracket.maxAge})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Gender
+                <select
+                  value={genderFilter}
+                  onChange={(event) => setGenderFilter(event.target.value as PeopleGenderFilter)}
+                >
+                  <option value="">All genders</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </label>
+              <label>
+                Check-in status
+                <select
+                  value={checkInFilter}
+                  onChange={(event) =>
+                    setCheckInFilter(event.target.value as PeopleCheckInFilter)
+                  }
+                >
+                  <option value="">All statuses</option>
+                  <option value="checked_in">Checked in</option>
+                  <option value="not_checked_in">Not checked in</option>
+                </select>
+              </label>
+              <label>
+                Payment
+                <select
+                  value={paymentFilter}
+                  onChange={(event) =>
+                    setPaymentFilter(event.target.value as PeoplePaymentFilter)
+                  }
+                >
+                  <option value="">All payment statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn secondary people-filter-reset"
+                disabled={!filtersActive}
+                onClick={resetPeopleFilters}
+              >
+                Reset
+              </button>
+            </div>
+            {ageGroupFilter && peopleListKind === "dorm_leader" ? (
+              <p className="muted people-filter-note">
+                Dorm leaders do not have dates of birth, so age group filters apply to campers and
+                workers only.
+              </p>
+            ) : null}
+            {paymentFilter && peopleListKind !== "camper" ? (
+              <p className="muted people-filter-note">
+                Payment filters apply to campers only.
+              </p>
+            ) : null}
           </div>
 
           {deletePersonError ? <p className="error">{deletePersonError}</p> : null}
@@ -885,12 +1137,16 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         {paymentStatusError ? <p className="error">{paymentStatusError}</p> : null}
         {campers.length === 0 ? (
           <p className="muted">No campers yet for this year.</p>
+        ) : filteredCampers.length === 0 ? (
+          <p className="muted">No campers match the selected filters.</p>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Gender</th>
+                  <th>Check-in</th>
                   <th>Guardian email</th>
                   <th>Fee due</th>
                   <th>Fee paid</th>
@@ -900,11 +1156,13 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                 </tr>
               </thead>
               <tbody>
-                {campers.map((camper) => (
+                {filteredCampers.map((camper) => (
                   <tr key={camper.id}>
                     <td>
                       {camper.firstName} {camper.lastName}
                     </td>
+                    <td>{genderLabel(camper.gender)}</td>
+                    <td>{checkInLabel(camper.checkInStatus)}</td>
                     <td>{camper.guardianEmail}</td>
                     <td>{formatUsdFromCents(camper.feeDueCents)}</td>
                     <td>{formatUsdFromCents(camper.feePaidCents)}</td>
@@ -963,6 +1221,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         <h2 style={{ marginTop: 0 }}>Workers</h2>
         {workers.length === 0 ? (
           <p className="muted">No workers yet for this year.</p>
+        ) : filteredWorkers.length === 0 ? (
+          <p className="muted">No workers match the selected filters.</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -971,18 +1231,20 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Name</th>
                   <th>Email</th>
                   <th>Gender</th>
+                  <th>Check-in</th>
                   <th>Source</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {workers.map((worker) => (
+                {filteredWorkers.map((worker) => (
                   <tr key={worker.id}>
                     <td>
                       {worker.firstName} {worker.lastName}
                     </td>
                     <td>{worker.email}</td>
-                    <td>{worker.gender}</td>
+                    <td>{genderLabel(worker.gender)}</td>
+                    <td>{checkInLabel(worker.checkInStatus)}</td>
                     <td>{worker.importSource}</td>
                     <td>
                         <button
@@ -1028,6 +1290,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         ) : null}
         {dormLeaders.length === 0 ? (
           <p className="muted">No dorm leaders yet for this year.</p>
+        ) : filteredDormLeaders.length === 0 ? (
+          <p className="muted">No dorm leaders match the selected filters.</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -1036,19 +1300,23 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
+                  <th>Gender</th>
+                  <th>Check-in</th>
                   <th>Camper dorm</th>
                   <th>Source</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {dormLeaders.map((leader) => (
+                {filteredDormLeaders.map((leader) => (
                   <tr key={leader.id}>
                     <td>
                       {leader.firstName} {leader.lastName}
                     </td>
                     <td>{leader.email}</td>
                     <td>{leader.phone}</td>
+                    <td>{genderLabel(leader.gender)}</td>
+                    <td>{checkInLabel(leader.checkInStatus)}</td>
                     <td>{leader.assignedCamperDorm?.name ?? "—"}</td>
                     <td>{leader.importSource}</td>
                     <td>
