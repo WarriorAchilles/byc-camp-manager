@@ -73,6 +73,32 @@ type CamperListRow = {
   dormId: string | null;
 };
 
+type DormLeaderListRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  checkInStatus: string;
+  assignedCamperDormId: string | null;
+};
+
+type CamperDormCheckInSummary = {
+  dorm: DormRow;
+  checkedIn: number;
+  assigned: number;
+  checkedInDormLeaders: number;
+  totalCheckedInForPizza: number;
+  ageRange: string;
+  ageGroupBracket: AgeBracket | null;
+};
+
+type PizzaReportRow = CamperDormCheckInSummary & {
+  pizzaFactor: number;
+  estimatedSlicesPerPerson: number;
+  recommendedPizzas: number;
+  cheesePizzas: number;
+  pepperoniPizzas: number;
+};
+
 /** Matches server `ageOnCampStartUtc` (camp start vs date of birth, UTC calendar). */
 function ageOnCampStartUtc(dateOfBirth: string, campStartIso: string): number {
   const dob = new Date(dateOfBirth);
@@ -119,6 +145,50 @@ function ageRangeLabel(bracket: AgeBracket | undefined): string {
   return `${bracket.label} (${bracket.minAge}-${bracket.maxAge})`;
 }
 
+function defaultPizzaFactor(dorm: DormRow, bracket: AgeBracket | null): number {
+  const isGirls = dorm.genderDesignation === "girls";
+  if (!bracket) {
+    return isGirls ? 0.2 : 0.25;
+  }
+  if (isGirls) {
+    if (bracket.minAge >= 20) {
+      return 0.2;
+    }
+    if (bracket.minAge >= 17) {
+      return 0.22;
+    }
+    if (bracket.minAge >= 15) {
+      return 0.2;
+    }
+    if (bracket.minAge >= 14) {
+      return 0.19;
+    }
+    if (bracket.minAge >= 12) {
+      return 0.17;
+    }
+    return 0.15;
+  }
+  if (bracket.minAge >= 16) {
+    return 0.25;
+  }
+  if (bracket.minAge >= 14) {
+    return 0.23;
+  }
+  if (bracket.minAge >= 12) {
+    return 0.21;
+  }
+  return 0.18;
+}
+
+function pizzaSplit(genderDesignation: string, recommendedPizzas: number): { cheese: number; pepperoni: number } {
+  if (genderDesignation === "girls") {
+    const cheese = Math.ceil(recommendedPizzas / 2);
+    return { cheese, pepperoni: recommendedPizzas - cheese };
+  }
+  const cheese = Math.floor(recommendedPizzas / 2);
+  return { cheese, pepperoni: recommendedPizzas - cheese };
+}
+
 export function ReportsPage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
@@ -141,12 +211,15 @@ export function ReportsPage(): React.ReactElement {
   const [rosterError, setRosterError] = useState<string | null>(null);
 
   const [campers, setCampers] = useState<CamperListRow[]>([]);
+  const [dormLeaders, setDormLeaders] = useState<DormLeaderListRow[]>([]);
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const [checkInDormFilter, setCheckInDormFilter] = useState("");
   const [checkInStatusFilter, setCheckInStatusFilter] = useState<"" | "checked_in" | "not_checked_in">("");
   const [checkInGenderFilter, setCheckInGenderFilter] = useState<"" | "male" | "female">("");
   const [checkInBracketFilter, setCheckInBracketFilter] = useState("");
+  const [pizzaReportOpen, setPizzaReportOpen] = useState(false);
+  const [pizzaFactorsByDormId, setPizzaFactorsByDormId] = useState<Record<string, number>>({});
 
   const loadCampYears = useCallback(async () => {
     const data = await apiJson<{
@@ -267,17 +340,23 @@ export function ReportsPage(): React.ReactElement {
   const loadCheckInData = useCallback(async () => {
     if (!campYearId) {
       setCampers([]);
+      setDormLeaders([]);
       return;
     }
     setCheckInLoading(true);
     setCheckInError(null);
     try {
-      const data = await apiJson<{ campers: CamperListRow[] }>(`/api/admin/camp-years/${campYearId}/campers`);
-      setCampers(data.campers);
+      const [camperData, leaderData] = await Promise.all([
+        apiJson<{ campers: CamperListRow[] }>(`/api/admin/camp-years/${campYearId}/campers`),
+        apiJson<{ dormLeaders: DormLeaderListRow[] }>(`/api/admin/camp-years/${campYearId}/dorm-leaders`),
+      ]);
+      setCampers(camperData.campers);
+      setDormLeaders(leaderData.dormLeaders);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Could not load campers.";
+      const message = caught instanceof Error ? caught.message : "Could not load check-in counts.";
       setCheckInError(message);
       setCampers([]);
+      setDormLeaders([]);
     } finally {
       setCheckInLoading(false);
     }
@@ -290,6 +369,7 @@ export function ReportsPage(): React.ReactElement {
   const camperDormCheckInSummaries = useMemo(() => {
     const bracketById = new Map(brackets.map((bracket) => [bracket.id, bracket]));
     const campersByDormId = new Map<string, { checkedIn: number; assigned: number }>();
+    const checkedInLeadersByDormId = new Map<string, number>();
     for (const camper of campers) {
       if (!camper.dormId) {
         continue;
@@ -301,16 +381,77 @@ export function ReportsPage(): React.ReactElement {
       }
       campersByDormId.set(camper.dormId, previous);
     }
+    for (const leader of dormLeaders) {
+      if (!leader.assignedCamperDormId || leader.checkInStatus !== "checked_in") {
+        continue;
+      }
+      checkedInLeadersByDormId.set(
+        leader.assignedCamperDormId,
+        (checkedInLeadersByDormId.get(leader.assignedCamperDormId) ?? 0) + 1,
+      );
+    }
     return camperDorms.map((dorm) => {
       const counts = campersByDormId.get(dorm.id) ?? { checkedIn: 0, assigned: 0 };
+      const checkedInDormLeaders = checkedInLeadersByDormId.get(dorm.id) ?? 0;
+      const bracket = dorm.ageGroupBracketId ? (bracketById.get(dorm.ageGroupBracketId) ?? null) : null;
       return {
         dorm,
         checkedIn: counts.checkedIn,
         assigned: counts.assigned,
-        ageRange: ageRangeLabel(dorm.ageGroupBracketId ? bracketById.get(dorm.ageGroupBracketId) : undefined),
+        checkedInDormLeaders,
+        totalCheckedInForPizza: counts.checkedIn + checkedInDormLeaders,
+        ageRange: ageRangeLabel(bracket ?? undefined),
+        ageGroupBracket: bracket,
       };
     });
-  }, [brackets, camperDorms, campers]);
+  }, [brackets, camperDorms, campers, dormLeaders]);
+
+  useEffect(() => {
+    setPizzaFactorsByDormId((previous) => {
+      const next: Record<string, number> = {};
+      for (const summary of camperDormCheckInSummaries) {
+        next[summary.dorm.id] =
+          previous[summary.dorm.id] ?? defaultPizzaFactor(summary.dorm, summary.ageGroupBracket);
+      }
+      return next;
+    });
+  }, [camperDormCheckInSummaries]);
+
+  const pizzaReportRows = useMemo<PizzaReportRow[]>(() => {
+    return camperDormCheckInSummaries.map((summary) => {
+      const pizzaFactor =
+        pizzaFactorsByDormId[summary.dorm.id] ?? defaultPizzaFactor(summary.dorm, summary.ageGroupBracket);
+      const recommendedPizzas = Math.ceil(summary.totalCheckedInForPizza * pizzaFactor);
+      const split = pizzaSplit(summary.dorm.genderDesignation, recommendedPizzas);
+      return {
+        ...summary,
+        pizzaFactor,
+        estimatedSlicesPerPerson: pizzaFactor * 8,
+        recommendedPizzas,
+        cheesePizzas: split.cheese,
+        pepperoniPizzas: split.pepperoni,
+      };
+    });
+  }, [camperDormCheckInSummaries, pizzaFactorsByDormId]);
+
+  const pizzaReportTotals = useMemo(() => {
+    return pizzaReportRows.reduce(
+      (totals, row) => ({
+        checkedInCampers: totals.checkedInCampers + row.checkedIn,
+        checkedInDormLeaders: totals.checkedInDormLeaders + row.checkedInDormLeaders,
+        recommendedPizzas: totals.recommendedPizzas + row.recommendedPizzas,
+        cheesePizzas: totals.cheesePizzas + row.cheesePizzas,
+        pepperoniPizzas: totals.pepperoniPizzas + row.pepperoniPizzas,
+      }),
+      {
+        checkedInCampers: 0,
+        checkedInDormLeaders: 0,
+        recommendedPizzas: 0,
+        cheesePizzas: 0,
+        pepperoniPizzas: 0,
+      },
+    );
+  }, [pizzaReportRows]);
 
   const checkInRows = useMemo(() => {
     if (!campYearStartIso) {
@@ -455,6 +596,7 @@ export function ReportsPage(): React.ReactElement {
                   <th>Age range</th>
                   <th>Assigned campers</th>
                   <th>Checked in</th>
+                  <th>Checked-in leaders</th>
                 </tr>
               </thead>
               <tbody>
@@ -465,13 +607,136 @@ export function ReportsPage(): React.ReactElement {
                     <td>{summary.ageRange}</td>
                     <td>{summary.assigned}</td>
                     <td>{summary.checkedIn}</td>
+                    <td>{summary.checkedInDormLeaders}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : null}
+        {camperDormCheckInSummaries.length > 0 ? (
+          <button
+            type="button"
+            className="btn secondary dorm-pizza-report-button"
+            onClick={() => setPizzaReportOpen(true)}
+          >
+            Pizza report
+          </button>
+        ) : null}
       </section>
+
+      {pizzaReportOpen ? (
+        <div
+          className="modal-backdrop pizza-report-backdrop print-hidden"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPizzaReportOpen(false);
+            }
+          }}
+        >
+          <section className="modal-card pizza-report-modal" role="dialog" aria-modal="true" aria-labelledby="pizza-report-title">
+            <button
+              type="button"
+              className="dorm-dialog-close"
+              aria-label="Close pizza report"
+              onClick={() => setPizzaReportOpen(false)}
+            >
+              ×
+            </button>
+            <h2 id="pizza-report-title" className="reports-card-title">
+              Dorm pizza report
+            </h2>
+            <p className="muted pizza-report-intro">
+              Pizza counts use checked-in campers plus checked-in dorm leaders. The factor is pizzas per person; large
+              pizzas assume 8 slices.
+            </p>
+
+            <div className="pizza-report-totals" aria-label="Pizza order totals">
+              <div>
+                <span className="check-in-stat-value">{pizzaReportTotals.recommendedPizzas}</span>
+                <span className="check-in-stat-label">Total pizzas</span>
+              </div>
+              <div>
+                <span className="check-in-stat-value">{pizzaReportTotals.cheesePizzas}</span>
+                <span className="check-in-stat-label">Cheese</span>
+              </div>
+              <div>
+                <span className="check-in-stat-value">{pizzaReportTotals.pepperoniPizzas}</span>
+                <span className="check-in-stat-label">Pepperoni</span>
+              </div>
+            </div>
+
+            <div className="report-table-wrap pizza-report-table-wrap">
+              <table className="report-table pizza-report-table">
+                <thead>
+                  <tr>
+                    <th>Dorm</th>
+                    <th>Checked-in campers</th>
+                    <th>Checked-in leaders</th>
+                    <th>Total people</th>
+                    <th>Factor</th>
+                    <th>Slices / person</th>
+                    <th>Pizzas</th>
+                    <th>Cheese</th>
+                    <th>Pepperoni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pizzaReportRows.map((row) => (
+                    <tr key={row.dorm.id}>
+                      <td>
+                        <strong>{row.dorm.name}</strong>
+                        <span className="pizza-report-dorm-meta">
+                          {dormGenderLabel(row.dorm.genderDesignation)} · {row.ageRange}
+                        </span>
+                      </td>
+                      <td>{row.checkedIn}</td>
+                      <td>{row.checkedInDormLeaders}</td>
+                      <td>{row.totalCheckedInForPizza}</td>
+                      <td>
+                        <label className="pizza-factor-field">
+                          <span className="sr-only">Pizza factor for {row.dorm.name}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={row.pizzaFactor}
+                            onChange={(event) => {
+                              const nextFactor = Number(event.target.value);
+                              setPizzaFactorsByDormId((previous) => ({
+                                ...previous,
+                                [row.dorm.id]: Number.isFinite(nextFactor) && nextFactor >= 0 ? nextFactor : 0,
+                              }));
+                            }}
+                          />
+                        </label>
+                      </td>
+                      <td>{row.estimatedSlicesPerPerson.toFixed(2)}</td>
+                      <td>{row.recommendedPizzas}</td>
+                      <td>{row.cheesePizzas}</td>
+                      <td>{row.pepperoniPizzas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th>Total</th>
+                    <td>{pizzaReportTotals.checkedInCampers}</td>
+                    <td>{pizzaReportTotals.checkedInDormLeaders}</td>
+                    <td>{pizzaReportTotals.checkedInCampers + pizzaReportTotals.checkedInDormLeaders}</td>
+                    <td />
+                    <td />
+                    <td>{pizzaReportTotals.recommendedPizzas}</td>
+                    <td>{pizzaReportTotals.cheesePizzas}</td>
+                    <td>{pizzaReportTotals.pepperoniPizzas}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {reportKind === "dorm" ? (
         <>
