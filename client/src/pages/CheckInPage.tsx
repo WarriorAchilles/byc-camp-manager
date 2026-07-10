@@ -1,6 +1,5 @@
-import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
-import { apiJson, type ApiHttpError } from "../api";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { apiJson } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { resolveCampYearSelection } from "../campYearSelection";
@@ -9,7 +8,6 @@ type CampYearOption = {
   id: string;
   name: string;
   yearLabel: string;
-  checkInCamperQrScanEnabled?: boolean;
   checkInFamilyPaymentOptionEnabled?: boolean;
 };
 
@@ -60,7 +58,6 @@ type DormLeaderCheckIn = {
 };
 
 type PersonTab = "camper" | "worker" | "dorm_leader";
-type CamperMode = "scan" | "search";
 
 type CamperCheckInPostResponse = {
   camper: CamperCheckIn;
@@ -88,16 +85,12 @@ export function CheckInPage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
 
-  const readerId = useId().replace(/:/g, "");
-  const readerElementId = `check-in-qr-${readerId}`;
-
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState("");
   const [summary, setSummary] = useState<CheckInSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const [personTab, setPersonTab] = useState<PersonTab>("camper");
-  const [camperMode, setCamperMode] = useState<CamperMode>("scan");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CamperCheckIn[]>([]);
@@ -114,13 +107,9 @@ export function CheckInPage(): React.ReactElement {
   const [markPaidFamily, setMarkPaidFamily] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [scannerRunning, setScannerRunning] = useState(false);
-  const html5QrRef = useRef<Html5Qrcode | null>(null);
-
   const [camperCheckInModal, setCamperCheckInModal] = useState<CamperCheckInDoneModal | null>(null);
 
   const selectedCampYear = campYears.find((year) => year.id === campYearId);
-  const camperQrScanEnabled = selectedCampYear?.checkInCamperQrScanEnabled === true;
   const familyPaymentOptionEnabled =
     selectedCampYear?.checkInFamilyPaymentOptionEnabled === true;
   const selectedCamperHasGuardianEmail = !!selectedCamper?.guardianEmail.trim();
@@ -164,17 +153,6 @@ export function CheckInPage(): React.ReactElement {
   }, [loadSummary]);
 
   useEffect(() => {
-    return () => {
-      const instance = html5QrRef.current;
-      if (instance) {
-        void instance.stop().catch(() => {});
-        instance.clear();
-        html5QrRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!camperCheckInModal) {
       return;
     }
@@ -187,80 +165,11 @@ export function CheckInPage(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [camperCheckInModal]);
 
-  const stopScanner = useCallback(async (): Promise<void> => {
-    const instance = html5QrRef.current;
-    if (!instance) {
-      setScannerRunning(false);
-      return;
-    }
-    try {
-      await instance.stop();
-    } catch {
-      /* already stopped */
-    }
-    instance.clear();
-    html5QrRef.current = null;
-    setScannerRunning(false);
-  }, []);
-
-  useEffect(() => {
-    if (!camperQrScanEnabled && camperMode === "scan") {
-      void stopScanner();
-      setCamperMode("search");
-    }
-  }, [camperQrScanEnabled, camperMode, stopScanner]);
-
   useEffect(() => {
     if (!familyPaymentOptionEnabled) {
       setMarkPaidFamily(false);
     }
   }, [familyPaymentOptionEnabled]);
-
-  const startScanner = useCallback(async (): Promise<void> => {
-    setActionError(null);
-    if (!campYearId) {
-      setActionError("Select a camp year first.");
-      return;
-    }
-    await stopScanner();
-    const instance = new Html5Qrcode(readerElementId);
-    html5QrRef.current = instance;
-    try {
-      await instance.start(
-        { facingMode: "environment" },
-        { fps: 8, qrbox: { width: 260, height: 260 } },
-        async (decodedText) => {
-          try {
-            const data = await apiJson<{ camper: CamperCheckIn }>(
-              `/api/admin/camp-years/${campYearId}/check-in/lookup/qr?token=${encodeURIComponent(decodedText)}`,
-            );
-            setSelectedCamper(data.camper);
-            setPersonTab("camper");
-            setMarkPaidCamper(false);
-            setMarkPaidFamily(false);
-            await stopScanner();
-          } catch (err) {
-            const status = (err as ApiHttpError).status;
-            setActionError(
-              status === 404
-                ? "No camper matches that QR code for this camp year."
-                : err instanceof Error
-                  ? err.message
-                  : "Lookup failed",
-            );
-          }
-        },
-        () => {},
-      );
-      setScannerRunning(true);
-    } catch (err) {
-      html5QrRef.current = null;
-      const message = err instanceof Error ? err.message : "Could not start camera";
-      setActionError(
-        `${message} If you are on desktop, allow the webcam, or use phone search instead.`,
-      );
-    }
-  }, [campYearId, readerElementId, stopScanner]);
 
   const runCamperSearch = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -471,9 +380,7 @@ export function CheckInPage(): React.ReactElement {
         <p className="page-header-eyebrow">Arrival</p>
         <h1>Check-in</h1>
         <p className="page-header-lead">
-          {camperQrScanEnabled
-            ? "Scan camper QR codes or search by name."
-            : "Search campers by name."}{" "}
+          Search campers by name. {" "}
           Unassigned campers are placed in a matching camper dorm automatically when they check in (same
           rules as dorm auto-assign). Mark cash payments when collecting fees. Workers and dorm leaders use
           name search.
@@ -561,7 +468,6 @@ export function CheckInPage(): React.ReactElement {
             setPersonTab("worker");
             setSelectedCamper(null);
             setSelectedLeader(null);
-            void stopScanner();
             setActionError(null);
           }}
         >
@@ -576,7 +482,6 @@ export function CheckInPage(): React.ReactElement {
             setPersonTab("dorm_leader");
             setSelectedCamper(null);
             setSelectedWorker(null);
-            void stopScanner();
             setActionError(null);
           }}
         >
@@ -592,49 +497,7 @@ export function CheckInPage(): React.ReactElement {
 
       {personTab === "camper" ? (
         <div className="card">
-          {camperQrScanEnabled ? (
-            <div className="check-in-subtabs">
-              <button
-                type="button"
-                className={`btn secondary${camperMode === "scan" ? " active" : ""}`}
-                onClick={() => setCamperMode("scan")}
-              >
-                Scan QR
-              </button>
-              <button
-                type="button"
-                className={`btn secondary${camperMode === "search" ? " active" : ""}`}
-                onClick={() => {
-                  void stopScanner();
-                  setCamperMode("search");
-                }}
-              >
-                Search name
-              </button>
-            </div>
-          ) : null}
-
-          {camperQrScanEnabled && camperMode === "scan" ? (
-            <div className="check-in-scan-block">
-              <p className="muted" style={{ marginTop: 0 }}>
-                Use a phone or laptop camera. Grant permission when prompted. Point at the camper QR
-                code.
-              </p>
-              <div id={readerElementId} className="check-in-qr-reader" />
-              <div className="check-in-scan-actions">
-                {!scannerRunning ? (
-                  <button type="button" className="btn primary" disabled={busy} onClick={() => void startScanner()}>
-                    Start camera
-                  </button>
-                ) : (
-                  <button type="button" className="btn secondary" disabled={busy} onClick={() => void stopScanner()}>
-                    Stop camera
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <form className="stack" onSubmit={(event) => void runCamperSearch(event)}>
+          <form className="stack" onSubmit={(event) => void runCamperSearch(event)}>
               <label className="field-label" htmlFor="camper-search">
                 Camper name
               </label>
@@ -678,8 +541,7 @@ export function CheckInPage(): React.ReactElement {
                   </li>
                 ))}
               </ul>
-            </form>
-          )}
+          </form>
         </div>
       ) : null}
 

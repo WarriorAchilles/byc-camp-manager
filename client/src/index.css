@@ -1085,34 +1085,6 @@ tbody tr:hover td {
   box-shadow: var(--shadow-sm);
 }
 
-.check-in-subtabs {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.check-in-subtabs .btn.secondary.active {
-  border-color: var(--brand-slate-600);
-  background: color-mix(in srgb, var(--brand-slate-600) 10%, var(--surface));
-}
-
-.check-in-qr-reader {
-  width: 100%;
-  max-width: 320px;
-  min-height: 240px;
-  margin: 0 auto 0.75rem;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background: #111;
-}
-
-.check-in-scan-actions {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
 .check-in-search-row {
   display: flex;
   flex-wrap: wrap;

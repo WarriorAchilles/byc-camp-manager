@@ -16,8 +16,6 @@ type CampYearRow = {
   earlyCamperFeeCents: number | null;
   lateCamperFeeCents: number | null;
   thirdPlusCamperFeeCents: number | null;
-  /** When false, staff Check-in hides camera scan for camper QR codes. */
-  checkInCamperQrScanEnabled?: boolean;
   /** When false, staff Check-in hides the guardian-family cash payment option. */
   checkInFamilyPaymentOptionEnabled?: boolean;
   /** When false, the app does not send guardian confirmation emails after camper check-in. */
@@ -394,7 +392,6 @@ export function CampConfigurationPage(): React.ReactElement {
           earlyCamperFeeCents,
           lateCamperFeeCents,
           thirdPlusCamperFeeCents,
-          checkInCamperQrScanEnabled: formData.get("checkInCamperQrScanEnabled") === "on",
           checkInFamilyPaymentOptionEnabled:
             formData.get("checkInFamilyPaymentOptionEnabled") === "on",
           checkInConfirmationEmailsEnabled:
@@ -912,17 +909,6 @@ export function CampConfigurationPage(): React.ReactElement {
               type="datetime-local"
               defaultValue={datetimeLocalInputFromIso(selected.feeCutoverAt)}
             />
-          </label>
-          <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
-            <input
-              type="checkbox"
-              name="checkInCamperQrScanEnabled"
-              defaultChecked={selected.checkInCamperQrScanEnabled === true}
-            />
-            <span>
-              Show <strong>Scan QR</strong> for campers on the staff Check-in page (camera scan of
-              camper wristband / card codes). Self check-in kiosk QR below is not affected.
-            </span>
           </label>
           <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
             <input
