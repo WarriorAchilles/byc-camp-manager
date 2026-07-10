@@ -6,7 +6,6 @@ import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { hashPassword } from "./lib/password.js";
 import { signAuthToken } from "./lib/authToken.js";
-import { allocateUniqueCamperQrToken } from "./lib/qrToken.js";
 
 async function canQueryDatabase(): Promise<boolean> {
   try {
@@ -100,7 +99,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
   });
 
   it("commits fee update for a uniquely matched unpaid camper", async () => {
-    const qr = await allocateUniqueCamperQrToken(prisma);
     await prisma.camper.create({
       data: {
         campYearId,
@@ -112,7 +110,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
         guardianEmail: "p@example.com",
         guardianPhone: "5551234567",
         paymentStatus: CamperPaymentStatus.unpaid,
-        qrToken: qr,
         importSource: "admin_entry",
         dormId: null,
       },
@@ -159,8 +156,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
   });
 
   it("returns a row error when multiple campers share the same name", async () => {
-    const qr1 = await allocateUniqueCamperQrToken(prisma);
-    const qr2 = await allocateUniqueCamperQrToken(prisma);
     const base = {
       campYearId,
       firstName: "Sam",
@@ -174,8 +169,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
       importSource: "admin_entry" as const,
       dormId: null,
     };
-    await prisma.camper.create({ data: { ...base, qrToken: qr1, guardianEmail: "g1@example.com" } });
-    await prisma.camper.create({ data: { ...base, qrToken: qr2, guardianEmail: "g2@example.com" } });
+    await prisma.camper.create({ data: { ...base, guardianEmail: "g1@example.com" } });
+    await prisma.camper.create({ data: { ...base, guardianEmail: "g2@example.com" } });
 
     const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });
@@ -191,7 +186,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
   });
 
   it("does not downgrade paid_stripe when the CSV shows an underpayment", async () => {
-    const qr = await allocateUniqueCamperQrToken(prisma);
     const camper = await prisma.camper.create({
       data: {
         campYearId,
@@ -203,7 +197,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
         guardianEmail: "stripe-parent@example.com",
         guardianPhone: "5559876543",
         paymentStatus: CamperPaymentStatus.paid_stripe,
-        qrToken: qr,
         importSource: "online_registration",
         dormId: null,
       },
@@ -227,7 +220,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
   });
 
   it("commits only valid fee rows when skipInvalidRows is true", async () => {
-    const qr = await allocateUniqueCamperQrToken(prisma);
     await prisma.camper.create({
       data: {
         campYearId,
@@ -239,7 +231,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("Camper fee CSV import 
         guardianEmail: "morgan-fee@example.com",
         guardianPhone: "5552223333",
         paymentStatus: CamperPaymentStatus.unpaid,
-        qrToken: qr,
         importSource: "admin_entry",
         dormId: null,
       },

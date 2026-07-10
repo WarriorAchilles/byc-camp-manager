@@ -147,57 +147,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     return `Bearer ${signAuthToken({ sub: admin.id, role: admin.role })}`;
   }
 
-  it("QR lookup rejects invalid token", async () => {
-    const header = await authHeader();
-    const res = await request(app)
-      .get(`/api/admin/camp-years/${campYearId}/check-in/lookup/qr`)
-      .set("Authorization", header)
-      .query({ token: "not-valid" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid_qr_token");
-  });
-
-  it("QR lookup returns camper for valid token", async () => {
-    const header = await authHeader();
-    const create = await request(app)
-      .post(`/api/admin/camp-years/${campYearId}/campers`)
-      .set("Authorization", header)
-      .send({
-        firstName: "Qr",
-        lastName: "Camper",
-        dateOfBirth: "2011-06-01",
-        gender: Gender.male,
-        guardianName: "Pat",
-        guardianEmail: "pat@example.com",
-        guardianPhone: "5550001111",
-        paymentStatus: CamperPaymentStatus.unpaid,
-        dormId: camperDormId,
-      });
-    expect(create.status).toBe(201);
-    await prisma.dormLeader.create({
-      data: {
-        campYearId,
-        firstName: "Dale",
-        lastName: "Leader",
-        gender: Gender.male,
-        email: "dale-leader@example.com",
-        phone: "5550002222",
-        assignedCamperDormId: camperDormId,
-        importSource: ImportSource.admin_entry,
-      },
-    });
-    const token = create.body.qrToken as string;
-
-    const lookup = await request(app)
-      .get(`/api/admin/camp-years/${campYearId}/check-in/lookup/qr`)
-      .set("Authorization", header)
-      .query({ token });
-    expect(lookup.status).toBe(200);
-    expect(lookup.body.camper.firstName).toBe("Qr");
-    expect(lookup.body.camper.dormAssignment).toBe("Camper Hall A");
-    expect(lookup.body.camper.dormLeader).toBe("Dale Leader");
-  });
-
   it("manual camper search finds by partial name", async () => {
     const header = await authHeader();
     await request(app)
@@ -239,7 +188,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
           paymentStatus: CamperPaymentStatus.paid_cash,
           checkInStatus: CheckInStatus.checked_in,
           checkedInAt: new Date("2098-07-01T18:00:00.000Z"),
-          qrToken: randomUUID(),
           dormId: camperDormId,
           importSource: ImportSource.admin_entry,
         },
@@ -255,7 +203,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
           paymentStatus: CamperPaymentStatus.paid_cash,
           checkInStatus: CheckInStatus.checked_in,
           checkedInAt: new Date("2098-07-01T18:05:00.000Z"),
-          qrToken: randomUUID(),
           dormId: camperDormId,
           importSource: ImportSource.admin_entry,
         },
@@ -270,7 +217,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
           guardianPhone: "555",
           paymentStatus: CamperPaymentStatus.paid_cash,
           checkInStatus: CheckInStatus.not_checked_in,
-          qrToken: randomUUID(),
           dormId: camperDormId,
           importSource: ImportSource.admin_entry,
         },
@@ -995,7 +941,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
           paymentStatus: CamperPaymentStatus.unpaid,
           feeDueCents: 16500,
           feePaidCents: 0,
-          qrToken: randomUUID(),
           importSource: ImportSource.csv_import,
         },
       });

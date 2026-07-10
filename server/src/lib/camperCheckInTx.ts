@@ -21,7 +21,6 @@ export const camperCheckInSelect = {
   paymentStatus: true,
   checkInStatus: true,
   checkedInAt: true,
-  qrToken: true,
   dorm: {
     select: {
       id: true,
@@ -59,7 +58,6 @@ export function serializeCamperCheckIn(camper: CamperCheckInRow) {
     paymentStatus: camper.paymentStatus,
     checkInStatus: camper.checkInStatus,
     checkedInAt: camper.checkedInAt?.toISOString() ?? null,
-    qrToken: camper.qrToken,
     dormAssignment,
     dormLeader,
     flags: {

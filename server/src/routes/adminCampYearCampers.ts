@@ -5,7 +5,6 @@ import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { evaluateCamperCapacity } from "../lib/camperCapacity.js";
 import { writeOpsLog } from "../lib/opsLog.js";
-import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -142,8 +141,6 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
   }
 
   const dob = new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`);
-  const qrToken = await allocateUniqueCamperQrToken(prisma);
-
   const created = await prisma.camper.create({
     data: {
       campYearId,
@@ -168,7 +165,6 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       paymentStatus: parsed.data.paymentStatus,
       feeDueCents: parsed.data.feeDueCents,
       feePaidCents: parsed.data.feePaidCents,
-      qrToken,
       dormId: parsed.data.dormId ?? null,
       medicalReleaseSigned: parsed.data.medicalReleaseSigned ?? false,
       importSource: ImportSource.admin_entry,
@@ -220,9 +216,8 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
   }
 
   const created = await prisma.$transaction(async (tx) => {
-    const out: { id: string; qrToken: string; firstName: string; lastName: string }[] = [];
+    const out: { id: string; firstName: string; lastName: string }[] = [];
     for (const row of rows) {
-      const qrToken = await allocateUniqueCamperQrToken(tx);
       const dob = new Date(`${row.dateOfBirth}T12:00:00.000Z`);
       const camper = await tx.camper.create({
         data: {
@@ -248,12 +243,11 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
           paymentStatus: row.paymentStatus,
           feeDueCents: row.feeDueCents,
           feePaidCents: row.feePaidCents,
-          qrToken,
           dormId: row.dormId ?? null,
           medicalReleaseSigned: row.medicalReleaseSigned ?? false,
           importSource: ImportSource.csv_import,
         },
-        select: { id: true, qrToken: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true },
       });
       out.push(camper);
     }

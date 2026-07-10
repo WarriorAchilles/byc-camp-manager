@@ -13,7 +13,6 @@ import {
   type CsvImportKind,
 } from "../lib/csvImportCore.js";
 import { writeOpsLog } from "../lib/opsLog.js";
-import { allocateUniqueCamperQrToken } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -188,9 +187,8 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         const dormIdByName = new Map(
           camperDorms.map((dorm) => [dorm.name.trim().toLowerCase(), dorm.id]),
         );
-        const out: { id: string; qrToken: string; firstName: string; lastName: string }[] = [];
+        const out: { id: string; firstName: string; lastName: string }[] = [];
         for (const row of payloads) {
-          const qrToken = await allocateUniqueCamperQrToken(tx);
           const dob = new Date(`${row.dateOfBirth}T12:00:00.000Z`);
           const checkedInAt = row.checkedInAt
             ? new Date(`${row.checkedInAt}T12:00:00.000Z`)
@@ -228,14 +226,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
               feeDueCents: row.feeDueCents,
               feePaidCents: row.feePaidCents,
               paymentStatus: payment,
-              qrToken,
               dormId,
               checkInStatus: checkedInAt ? CheckInStatus.checked_in : CheckInStatus.not_checked_in,
               checkedInAt,
               medicalReleaseSigned: false,
               importSource: ImportSource.csv_import,
             },
-            select: { id: true, qrToken: true, firstName: true, lastName: true },
+            select: { id: true, firstName: true, lastName: true },
           });
           out.push(camper);
         }

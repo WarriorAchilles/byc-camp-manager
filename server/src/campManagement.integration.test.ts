@@ -436,7 +436,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       });
 
     expect(created.status).toBe(201);
-    expect(created.body.checkInCamperQrScanEnabled).toBe(false);
+    expect(created.body).not.toHaveProperty("checkInCamperQrScanEnabled");
     expect(created.body.checkInFamilyPaymentOptionEnabled).toBe(false);
     expect(created.body.checkInConfirmationEmailsEnabled).toBe(false);
   });

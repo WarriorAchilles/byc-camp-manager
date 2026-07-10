@@ -33,7 +33,6 @@ const campYearCreateBody = z.object({
   earlyCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   lateCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   thirdPlusCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
-  checkInCamperQrScanEnabled: z.boolean().optional(),
   checkInFamilyPaymentOptionEnabled: z.boolean().optional(),
   checkInConfirmationEmailsEnabled: z.boolean().optional(),
 });
@@ -127,7 +126,6 @@ adminCampYearsRouter.post(
         earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
         lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
         thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents ?? null,
-        checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled ?? false,
         checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled ?? false,
         checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
       },
@@ -779,9 +777,6 @@ adminCampYearsRouter.patch(
           : {}),
         ...(parsed.data.thirdPlusCamperFeeCents !== undefined
           ? { thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents }
-          : {}),
-        ...(parsed.data.checkInCamperQrScanEnabled !== undefined
-          ? { checkInCamperQrScanEnabled: parsed.data.checkInCamperQrScanEnabled }
           : {}),
         ...(parsed.data.checkInFamilyPaymentOptionEnabled !== undefined
           ? { checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled }

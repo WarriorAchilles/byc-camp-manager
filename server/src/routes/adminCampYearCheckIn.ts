@@ -11,7 +11,6 @@ import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { writeOpsLog } from "../lib/opsLog.js";
-import { parseCamperQrTokenFromScan } from "../lib/qrToken.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -106,34 +105,6 @@ router.get("/checked-in-campers", async (req: AuthedRequest, res) => {
       dormAssignment: camper.dorm?.name ?? null,
     })),
   });
-});
-
-/** Resolve a camper by QR token (hex) for this camp year. */
-router.get("/lookup/qr", async (req: AuthedRequest, res) => {
-  const campYearId = campYearIdFromParams(req.params.campYearId, res);
-  if (!campYearId) {
-    return;
-  }
-  const raw = typeof req.query.token === "string" ? req.query.token : "";
-  const token = parseCamperQrTokenFromScan(raw);
-  if (!token) {
-    res.status(400).json({ error: "invalid_qr_token" });
-    return;
-  }
-  const year = await prisma.campYear.findUnique({ where: { id: campYearId }, select: { id: true } });
-  if (!year) {
-    res.status(404).json({ error: "Camp year not found" });
-    return;
-  }
-  const camper = await prisma.camper.findFirst({
-    where: { campYearId, archivedAt: null, qrToken: token },
-    select: camperCheckInSelect,
-  });
-  if (!camper) {
-    res.status(404).json({ error: "camper_not_found_for_token" });
-    return;
-  }
-  res.json({ camper: serializeCamperCheckIn(camper) });
 });
 
 router.get("/search/campers", async (req: AuthedRequest, res) => {

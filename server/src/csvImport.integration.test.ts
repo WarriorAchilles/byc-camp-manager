@@ -175,10 +175,10 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     expect(response.body.imported).toBeGreaterThan(0);
     const campers = await prisma.camper.findMany({
       where: { campYearId },
-      select: { importSource: true, qrToken: true },
+      select: { importSource: true },
     });
     expect(campers.every((camper) => camper.importSource === "csv_import")).toBe(true);
-    expect(campers.every((camper) => camper.qrToken.length > 0)).toBe(true);
+    expect(campers.every((camper) => camper.importSource === "csv_import")).toBe(true);
   });
 
   it("blocks worker commit when a row has errors unless skipInvalidRows is true", async () => {

@@ -40,6 +40,40 @@ enum StripeCheckoutStatus {
   expired
 }
 
+enum RegistrationState {
+  pending_payment
+  confirmed
+  expired
+  cancelled
+}
+
+enum RegistrationPaymentMethod {
+  stripe
+  cash
+}
+
+enum LegalSignatureMethod {
+  typed
+  drawn
+}
+
+enum ReceiptLineType {
+  registration
+  merchandise
+  discount
+}
+
+enum MerchandiseOwnership {
+  family
+  camper
+}
+
+enum EmailDeliveryStatus {
+  pending
+  sent
+  failed
+}
+
 enum DormPurpose {
   camper
   worker
@@ -67,10 +101,14 @@ model AdminUser {
   @@map("admin_users")
 }
 
-/** Singleton row (`id` = `default`) for organization-wide UI defaults. */
+/**
+ * Singleton row (`id` = `default`) for organization-wide UI defaults.
+ */
 model AppSettings {
   id               String   @id @default("default")
-  /** Camp year pre-selected for staff on People, Dorms, Check-in, Imports, and Reports. */
+  /**
+   * Camp year pre-selected for staff on People, Dorms, Check-in, Imports, and Reports.
+   */
   activeCampYearId String?  @unique @map("active_camp_year_id")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -80,47 +118,53 @@ model AppSettings {
 }
 
 model CampYear {
-  id                          String    @id @default(uuid())
-  name                        String
-  yearLabel                   String    @map("year_label")
-  startDate                   DateTime  @map("start_date") @db.Date
-  endDate                     DateTime  @map("end_date") @db.Date
-  camperCapacity              Int?      @map("camper_capacity")
-  familyRegistrationOpensAt   DateTime? @map("family_registration_opens_at")
-  workerRegistrationOpensAt   DateTime? @map("worker_registration_opens_at")
-  feeCutoverAt                DateTime? @map("fee_cutover_at")
-  earlyCamperFeeCents         Int?      @map("early_camper_fee_cents")
-  lateCamperFeeCents          Int?      @map("late_camper_fee_cents")
-  thirdPlusCamperFeeCents     Int?      @map("third_plus_camper_fee_cents")
-  /** Opaque hex token for camper self-service check-in kiosk URL / QR (nullable until issued). */
-  selfCheckInToken            String?   @unique @map("self_check_in_token")
-  /** When false, staff Check-in page hides the camera-based camper QR scan (name search and kiosk QR unchanged). */
-  checkInCamperQrScanEnabled  Boolean   @default(false) @map("check_in_camper_qr_scan_enabled")
-  /** When false, staff Check-in page hides the option to mark all campers sharing a guardian email paid. */
-  checkInFamilyPaymentOptionEnabled Boolean @default(false) @map("check_in_family_payment_option_enabled")
-  /** When false, app-managed guardian confirmation emails are not sent after camper check-in. */
-  checkInConfirmationEmailsEnabled Boolean @default(false) @map("check_in_confirmation_emails_enabled")
-  createdAt                   DateTime  @default(now()) @map("created_at")
-  updatedAt                   DateTime  @updatedAt @map("updated_at")
+  id                                String    @id @default(uuid())
+  name                              String
+  yearLabel                         String    @map("year_label")
+  startDate                         DateTime  @map("start_date") @db.Date
+  endDate                           DateTime  @map("end_date") @db.Date
+  camperCapacity                    Int?      @map("camper_capacity")
+  familyRegistrationOpensAt         DateTime? @map("family_registration_opens_at")
+  workerRegistrationOpensAt         DateTime? @map("worker_registration_opens_at")
+  feeCutoverAt                      DateTime? @map("fee_cutover_at")
+  earlyCamperFeeCents               Int?      @map("early_camper_fee_cents")
+  lateCamperFeeCents                Int?      @map("late_camper_fee_cents")
+  thirdPlusCamperFeeCents           Int?      @map("third_plus_camper_fee_cents")
+  /**
+   * Opaque hex token for camper self-service check-in kiosk URL / QR (nullable until issued).
+   */
+  selfCheckInToken                  String?   @unique @map("self_check_in_token")
+  /**
+   * When false, staff Check-in page hides the option to mark all campers sharing a guardian email paid.
+   */
+  checkInFamilyPaymentOptionEnabled Boolean   @default(false) @map("check_in_family_payment_option_enabled")
+  /**
+   * When false, app-managed guardian confirmation emails are not sent after camper check-in.
+   */
+  checkInConfirmationEmailsEnabled  Boolean   @default(false) @map("check_in_confirmation_emails_enabled")
+  createdAt                         DateTime  @default(now()) @map("created_at")
+  updatedAt                         DateTime  @updatedAt @map("updated_at")
 
-  ageGroupBrackets AgeGroupBracket[]
-  dorms            Dorm[]
-  campers          Camper[]
-  workers          Worker[]
-  dormLeaders      DormLeader[]
+  ageGroupBrackets            AgeGroupBracket[]
+  dorms                       Dorm[]
+  campers                     Camper[]
+  familyRegistrations         FamilyRegistration[]
+  merchandiseItems            MerchandiseItem[]
+  workers                     Worker[]
+  dormLeaders                 DormLeader[]
   appSettingsAsActiveCampYear AppSettings?
 
   @@map("camp_years")
 }
 
 model AgeGroupBracket {
-  id         String   @id @default(uuid())
-  campYearId String   @map("camp_year_id")
+  id         String  @id @default(uuid())
+  campYearId String  @map("camp_year_id")
   label      String
-  minAge     Int      @map("min_age")
-  maxAge     Int      @map("max_age")
-  sortOrder  Int      @map("sort_order")
-  isActive   Boolean  @default(true) @map("is_active")
+  minAge     Int     @map("min_age")
+  maxAge     Int     @map("max_age")
+  sortOrder  Int     @map("sort_order")
+  isActive   Boolean @default(true) @map("is_active")
 
   campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
   dorms    Dorm[]
@@ -130,18 +174,18 @@ model AgeGroupBracket {
 }
 
 model Dorm {
-  id                  String                @id @default(uuid())
-  campYearId          String                @map("camp_year_id")
-  name                String
-  purpose             DormPurpose
-  genderDesignation   DormGenderDesignation @map("gender_designation")
-  bedCapacity         Int                   @map("bed_capacity")
-  ageGroupBracketId   String?               @map("age_group_bracket_id")
+  id                String                @id @default(uuid())
+  campYearId        String                @map("camp_year_id")
+  name              String
+  purpose           DormPurpose
+  genderDesignation DormGenderDesignation @map("gender_designation")
+  bedCapacity       Int                   @map("bed_capacity")
+  ageGroupBracketId String?               @map("age_group_bracket_id")
 
-  campYear          CampYear         @relation(fields: [campYearId], references: [id], onDelete: Cascade)
-  ageGroupBracket   AgeGroupBracket? @relation(fields: [ageGroupBracketId], references: [id], onDelete: SetNull)
-  campers           Camper[]
-  workers           Worker[]
+  campYear              CampYear         @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  ageGroupBracket       AgeGroupBracket? @relation(fields: [ageGroupBracketId], references: [id], onDelete: SetNull)
+  campers               Camper[]
+  workers               Worker[]
   dormLeaderAssignments DormLeader[]
 
   @@index([campYearId])
@@ -170,12 +214,23 @@ model Camper {
   emergencyContactPhone String?             @map("emergency_contact_phone")
   medicalNotes          String?             @map("medical_notes") @db.Text
   dietaryRestrictions   String?             @map("dietary_restrictions") @db.Text
-  /** Camper fee import / accounting: amount due in cents (nullable until set). */
+  identifiesAsChristian Boolean?            @map("identifies_as_christian")
+  receivedHolyGhost     Boolean?            @map("received_holy_ghost")
+  churchName            String?             @map("church_name")
+  pastorName            String?             @map("pastor_name")
+  tShirtIntent          String?             @map("t_shirt_intent")
+  allergies             String?             @db.Text
+  medications           String?             @db.Text
+  specialNeeds          String?             @map("special_needs") @db.Text
+  /**
+   * Camper fee import / accounting: amount due in cents (nullable until set).
+   */
   feeDueCents           Int?                @map("fee_due_cents")
-  /** Camper fee import / accounting: amount paid in cents (nullable until set). */
+  /**
+   * Camper fee import / accounting: amount paid in cents (nullable until set).
+   */
   feePaidCents          Int?                @map("fee_paid_cents")
   paymentStatus         CamperPaymentStatus @map("payment_status")
-  qrToken               String              @unique @map("qr_token")
   dormId                String?             @map("dorm_id")
   checkInStatus         CheckInStatus       @default(not_checked_in) @map("check_in_status")
   checkedInAt           DateTime?           @map("checked_in_at")
@@ -185,31 +240,168 @@ model Camper {
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
-  campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
-  dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
+  campYear               CampYear                @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  familyRegistration     FamilyRegistration?     @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+  dorm                   Dorm?                   @relation(fields: [dormId], references: [id], onDelete: SetNull)
   stripeCheckoutSessions StripeCheckoutSession[]
+  merchandiseOrderLines  MerchandiseOrderLine[]
 
   @@index([campYearId])
   @@map("campers")
 }
 
-model StripeCheckoutSession {
-  id              String               @id @default(uuid())
-  stripeSessionId String               @map("stripe_session_id")
-  campYearId      String               @map("camp_year_id")
-  camperId        String               @map("camper_id")
-  amountCents     Int                  @map("amount_cents")
-  status          StripeCheckoutStatus @default(pending)
-  paymentIntentId String?              @map("payment_intent_id")
-  completedAt     DateTime?            @map("completed_at")
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
+model FamilyRegistration {
+  id                        String                     @id @default(uuid())
+  campYearId                String                     @map("camp_year_id")
+  state                     RegistrationState          @default(confirmed)
+  guardianName              String                     @map("guardian_name")
+  guardianEmail             String                     @map("guardian_email")
+  guardianPhone             String                     @map("guardian_phone")
+  guardianRelationship      String?                    @map("guardian_relationship")
+  streetAddress             String?                    @map("street_address")
+  city                      String?
+  stateOrProvince           String?                    @map("state_or_province")
+  postalCode                String?                    @map("postal_code")
+  country                   String?
+  paymentMethod             RegistrationPaymentMethod? @map("payment_method")
+  paymentStatus             CamperPaymentStatus        @default(unpaid) @map("payment_status")
+  registrationSubtotalCents Int                        @default(0) @map("registration_subtotal_cents")
+  merchandiseSubtotalCents  Int                        @default(0) @map("merchandise_subtotal_cents")
+  discountCents             Int                        @default(0) @map("discount_cents")
+  totalDueCents             Int                        @default(0) @map("total_due_cents")
+  amountPaidCents           Int                        @default(0) @map("amount_paid_cents")
+  pricingSnapshot           Json?                      @map("pricing_snapshot")
+  agreementVersion          String?                    @map("agreement_version")
+  agreementTextSnapshot     String?                    @map("agreement_text_snapshot") @db.Text
+  signatureMethod           LegalSignatureMethod?      @map("signature_method")
+  signatureData             String?                    @map("signature_data") @db.Text
+  legalAcknowledged         Boolean                    @default(false) @map("legal_acknowledged")
+  signedAt                  DateTime?                  @map("signed_at")
+  requestIp                 String?                    @map("request_ip")
+  submittedAt               DateTime                   @default(now()) @map("submitted_at")
+  confirmedAt               DateTime?                  @map("confirmed_at")
+  expiresAt                 DateTime?                  @map("expires_at")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  updatedAt                 DateTime                   @updatedAt @map("updated_at")
 
-  camper Camper @relation(fields: [camperId], references: [id], onDelete: Cascade)
+  campYear               CampYear                      @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  campers                Camper[]
+  receiptLineItems       RegistrationReceiptLineItem[]
+  merchandiseOrderLines  MerchandiseOrderLine[]
+  stripeCheckoutSessions StripeCheckoutSession[]
+  emailDeliveryAttempts  EmailDeliveryAttempt[]
+
+  @@index([campYearId, state])
+  @@index([campYearId, guardianEmail])
+  @@index([paymentStatus])
+  @@map("family_registrations")
+}
+
+model RegistrationReceiptLineItem {
+  id                     String          @id @default(uuid())
+  familyRegistrationId   String          @map("family_registration_id")
+  lineType               ReceiptLineType @map("line_type")
+  description            String
+  quantity               Int             @default(1)
+  unitPriceCents         Int             @map("unit_price_cents")
+  originalUnitPriceCents Int?            @map("original_unit_price_cents")
+  discountCents          Int             @default(0) @map("discount_cents")
+  lineTotalCents         Int             @map("line_total_cents")
+  pricingSnapshot        Json?           @map("pricing_snapshot")
+  sortOrder              Int             @default(0) @map("sort_order")
+  createdAt              DateTime        @default(now()) @map("created_at")
+
+  familyRegistration FamilyRegistration @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+
+  @@index([familyRegistrationId, sortOrder])
+  @@map("registration_receipt_line_items")
+}
+
+model MerchandiseItem {
+  id               String               @id @default(uuid())
+  campYearId       String               @map("camp_year_id")
+  name             String
+  description      String?              @db.Text
+  priceCents       Int                  @map("price_cents")
+  availableOptions Json                 @map("available_options")
+  ownership        MerchandiseOwnership
+  isActive         Boolean              @default(true) @map("is_active")
+  sortOrder        Int                  @default(0) @map("sort_order")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  campYear   CampYear               @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  orderLines MerchandiseOrderLine[]
+
+  @@index([campYearId, isActive, sortOrder])
+  @@map("merchandise_items")
+}
+
+model MerchandiseOrderLine {
+  id                      String               @id @default(uuid())
+  familyRegistrationId    String               @map("family_registration_id")
+  merchandiseItemId       String?              @map("merchandise_item_id")
+  camperId                String?              @map("camper_id")
+  ownership               MerchandiseOwnership
+  itemNameSnapshot        String               @map("item_name_snapshot")
+  selectedOptionsSnapshot Json?                @map("selected_options_snapshot")
+  quantity                Int
+  unitPriceCents          Int                  @map("unit_price_cents")
+  lineTotalCents          Int                  @map("line_total_cents")
+  createdAt               DateTime             @default(now()) @map("created_at")
+
+  familyRegistration FamilyRegistration @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+  merchandiseItem    MerchandiseItem?   @relation(fields: [merchandiseItemId], references: [id], onDelete: SetNull)
+  camper             Camper?            @relation(fields: [camperId], references: [id], onDelete: SetNull)
+
+  @@index([familyRegistrationId])
+  @@index([merchandiseItemId])
+  @@index([camperId])
+  @@map("merchandise_order_lines")
+}
+
+model EmailDeliveryAttempt {
+  id                   String              @id @default(uuid())
+  familyRegistrationId String?             @map("family_registration_id")
+  templateKey          String              @map("template_key")
+  recipientEmail       String              @map("recipient_email")
+  status               EmailDeliveryStatus @default(pending)
+  attemptNumber        Int                 @default(1) @map("attempt_number")
+  providerMessageId    String?             @map("provider_message_id")
+  errorCode            String?             @map("error_code")
+  errorMessage         String?             @map("error_message")
+  attemptedAt          DateTime            @default(now()) @map("attempted_at")
+  sentAt               DateTime?           @map("sent_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+
+  familyRegistration FamilyRegistration? @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+
+  @@index([familyRegistrationId, status])
+  @@index([recipientEmail, attemptedAt])
+  @@map("email_delivery_attempts")
+}
+
+model StripeCheckoutSession {
+  id                   String               @id @default(uuid())
+  stripeSessionId      String               @map("stripe_session_id")
+  campYearId           String               @map("camp_year_id")
+  camperId             String               @map("camper_id")
+  familyRegistrationId String?              @map("family_registration_id")
+  amountCents          Int                  @map("amount_cents")
+  status               StripeCheckoutStatus @default(pending)
+  paymentIntentId      String?              @map("payment_intent_id")
+  completedAt          DateTime?            @map("completed_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  camper             Camper              @relation(fields: [camperId], references: [id], onDelete: Cascade)
+  familyRegistration FamilyRegistration? @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
 
   @@index([stripeSessionId])
   @@index([campYearId])
   @@index([camperId])
+  @@index([familyRegistrationId])
+  @@index([paymentIntentId])
   @@map("stripe_checkout_sessions")
 }
 
@@ -232,6 +424,12 @@ model Worker {
   taskPreferenceSecond String?       @map("task_preference_second")
   taskPreferenceThird  String?       @map("task_preference_third")
   tShirtSize           String?       @map("t_shirt_size")
+  faithServingResponse String?       @map("faith_serving_response") @db.Text
+  churchName           String?       @map("church_name")
+  pastorName           String?       @map("pastor_name")
+  pastorPhone          String?       @map("pastor_phone")
+  publicSubmittedAt    DateTime?     @map("public_submitted_at")
+  publicSubmissionIp   String?       @map("public_submission_ip")
   dormId               String?       @map("dorm_id")
   checkInStatus        CheckInStatus @default(not_checked_in) @map("check_in_status")
   checkedInAt          DateTime?     @map("checked_in_at")

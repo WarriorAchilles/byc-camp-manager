@@ -13,7 +13,6 @@ import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { hashPassword } from "./lib/password.js";
 import { signAuthToken } from "./lib/authToken.js";
-import { allocateUniqueCamperQrToken } from "./lib/qrToken.js";
 
 async function canQueryDatabase(): Promise<boolean> {
   try {
@@ -114,7 +113,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     });
     workerDormId = workerDorm.id;
 
-    const qr = await allocateUniqueCamperQrToken(prisma);
     const camper = await prisma.camper.create({
       data: {
         campYearId,
@@ -126,7 +124,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
         guardianEmail: "g@example.com",
         guardianPhone: "5550000000",
         paymentStatus: CamperPaymentStatus.unpaid,
-        qrToken: qr,
         importSource: "admin_entry",
         dormId: null,
       },
@@ -255,7 +252,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
       where: { id: camperDormId },
       data: { bedCapacity: 1 },
     });
-    const qr2 = await allocateUniqueCamperQrToken(prisma);
     const secondCamper = await prisma.camper.create({
       data: {
         campYearId,
@@ -267,7 +263,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
         guardianEmail: "g2@example.com",
         guardianPhone: "5550000001",
         paymentStatus: CamperPaymentStatus.unpaid,
-        qrToken: qr2,
         importSource: "admin_entry",
         dormId: camperDormId,
       },
