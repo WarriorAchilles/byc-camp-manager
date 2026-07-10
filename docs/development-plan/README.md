@@ -18,18 +18,20 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 
 ### Phase 2: Camper Registration
 
-1. `phase-2-camper-registration/01-registration-availability-and-public-shell.md`
-2. `phase-2-camper-registration/02-family-camper-registration-flow.md`
-3. `phase-2-camper-registration/03-pricing-merchandise-and-stripe-payments.md`
-4. `phase-2-camper-registration/04-worker-registration-flow.md`
-5. `phase-2-camper-registration/05-registration-confirmation-emails.md`
-6. `phase-2-camper-registration/06-phase-2-release-verification.md`
+1. `phase-2-camper-registration/00-registration-domain-model-and-lifecycle.md`
+2. `phase-2-camper-registration/01-registration-availability-and-public-shell.md`
+3. `phase-2-camper-registration/02-family-camper-registration-flow.md`
+4. `phase-2-camper-registration/03-pricing-merchandise-and-stripe-payments.md`
+5. `phase-2-camper-registration/04-worker-registration-flow.md`
+6. `phase-2-camper-registration/05-registration-confirmation-emails.md`
+7. `phase-2-camper-registration/06-phase-2-release-verification.md`
 
 ## Global Assumptions
 
 - The first production milestone prioritizes camp operations over public registration, matching the spec note that registration may not be used in the first year.
 - Phase 1 still includes worker and dorm leader records because check-in, dorm assignment, imports, and reports need them operationally. Public worker registration itself is deferred to Phase 2.
-- Phase 1 may create payment status fields and cash collection UI for imported/admin-entered campers, but Stripe and full online pricing are Phase 2 work.
+- Phase 1 already provides payment status fields, cash collection UI, SMTP/log mail delivery, Stripe Checkout for self check-in, and a camp-year self-check-in token. Phase 2 removes the obsolete individual-camper QR tokens and staff camera-scanning path while preserving the posted camp-level self-check-in QR, and extends the other shared capabilities without triggering check-in as a registration-payment side effect.
+- Public family and worker registration are deployed on a registration subdomain that is separate from the admin/check-in origin. Both portions share the same API and database, but browser routes, generated URLs, CORS/host rules, cookies, Stripe redirects, and the posted self-check-in QR destination must respect the correct origin.
 - The exact Node.js, React, database, and deployment scaffolding should follow the repository's conventions if an application exists by the time each step is executed.
 - Future wish-list items are explicitly deferred unless a later product decision moves them into scope.
 
@@ -41,6 +43,9 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - Check-in confirmation email: confirm final content beyond camper name and dorm assignment.
 - Worker matching strategy: confirm whether email + name + camp year is sufficient for duplicate detection.
 - Admin/CSV capacity enforcement: confirm whether over-cap admin actions should block or warn only.
+- Public registration lifecycle: confirm whether pending Stripe registrations reserve capacity and how long abandoned reservations remain active.
+- Registration availability: confirm close-time or manual enable/disable behavior and the meaning of an unset opening time.
+- Public origins: provide the exact production and staging hostnames for registration and for admin/check-in.
 
 ## Coverage Checklist
 
@@ -54,7 +59,7 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - [ ] `3. User Roles & Authentication` - Covered in Phase 1 step 1.
 - [ ] `Roles` - Covered in Phase 1 step 1.
 - [ ] `Authentication` - Covered in Phase 1 step 1.
-- [ ] `4. Registration System` - Covered in all Phase 2 steps.
+- [ ] `4. Registration System` - Covered in all Phase 2 steps, beginning with Phase 2 step 0.
 - [ ] `Registration Form Availability` - Covered in Phase 2 step 1.
 - [ ] `Family Registration Flow` - Covered in Phase 2 step 2.
 - [ ] `Step 1 - Parent / Guardian Information` - Covered in Phase 2 step 2.
@@ -77,8 +82,8 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - [ ] `Camp Configuration (Super Admin)` - Covered in Phase 1 step 2 and Phase 2 step 1.
 - [ ] `People in the System` - Covered in Phase 1 step 2.
 - [ ] `7. Check-In` - Covered in Phase 1 step 5.
-- [ ] `QR Code Check-In` - Covered in Phase 1 step 5.
-- [ ] `Manual Check-In (No QR Code)` - Covered in Phase 1 step 5.
+- [ ] `Posted QR Self Check-In` - Covered by the completed Phase 1 self-check-in implementation and verified in Phase 2 step 6.
+- [ ] `Staff-Assisted Check-In` - Covered in Phase 1 step 5.
 - [ ] `Worker & Dorm Leader Check-In` - Covered in Phase 1 step 5.
 - [ ] `Check-In Dashboard` - Covered in Phase 1 step 5.
 - [ ] `8. Dorm Management` - Covered in Phase 1 step 4.
@@ -98,12 +103,12 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - [ ] `Import Behavior` - Covered in Phase 1 step 3.
 - [ ] `Expected CSV Fields` - Covered in Phase 1 step 3.
 - [ ] `Worker CSV (optional)` - Covered in Phase 1 step 3.
-- [ ] `12. Data Model Overview` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 4, Phase 1 step 5, Phase 2 step 2, Phase 2 step 3, and Phase 2 step 4.
-- [ ] `Family Registration` - Covered in Phase 2 step 2 and Phase 2 step 3.
-- [ ] `Merchandise Order` - Covered in Phase 2 step 3.
-- [ ] `Merchandise Item (Admin-Configured)` - Covered in Phase 2 step 3.
-- [ ] `Camper` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, and Phase 2 step 2.
-- [ ] `Worker (volunteer / staff)` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, and Phase 2 step 4.
+- [ ] `12. Data Model Overview` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 4, Phase 1 step 5, and Phase 2 step 0, with workflow use in Phase 2 steps 2-5.
+- [ ] `Family Registration` - Covered in Phase 2 step 0, Phase 2 step 2, and Phase 2 step 3.
+- [ ] `Merchandise Order` - Covered in Phase 2 step 0 and Phase 2 step 3.
+- [ ] `Merchandise Item (Admin-Configured)` - Covered in Phase 2 step 0 and Phase 2 step 3.
+- [ ] `Camper` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, Phase 2 step 0, and Phase 2 step 2.
+- [ ] `Worker (volunteer / staff)` - Covered in Phase 1 step 2, Phase 1 step 3, Phase 1 step 5, Phase 2 step 0, and Phase 2 step 4.
 - [ ] `Dorm Leader` - Covered in Phase 1 step 2, Phase 1 step 4, and Phase 1 step 5.
 - [ ] `Dorm` - Covered in Phase 1 step 4.
 - [ ] `Camp Configuration` - Covered in Phase 1 step 2, Phase 2 step 1, and Phase 2 step 3.

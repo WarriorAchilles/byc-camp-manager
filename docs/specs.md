@@ -40,7 +40,7 @@ Node.js + React Web Application | PostgreSQL Database | AWS Deployment
 BYC Camp Manager is a web application for managing summer camp registration and on-site camp operations. The system has two major functional areas:
 
 1. **Public Registration** - Two separate unauthenticated flows, each gated by its own open date/time: **family (camper) registration** for parents/guardians, and **worker registration** for adult volunteers/staff. Campers use medical release and camper fees; workers use the field set described in [Worker Registration Flow](#worker-registration-flow) (parity with the legacy Google Form). Both support Stripe where payment applies.
-2. **Admin Management** - A protected admin interface for managing camper and worker records, dorm assignments, check-in (including QR code scanning), payment tracking, and generating printable reports.
+2. **Admin Management** - A protected admin interface for managing camper and worker records, dorm assignments, assisted check-in, payment tracking, and generating printable reports. At the physical check-in location, attendees can scan a posted camp self-check-in QR code and complete the public self-check-in flow.
 
 The registration system may not be used in the first year of operation. The admin/management side must be fully functional independently, supporting bulk CSV import of camper (and optionally worker) data so that camp operations can proceed even if registration was handled externally.
 
@@ -57,12 +57,12 @@ The registration system may not be used in the first year of operation. The admi
 | Database | PostgreSQL                                            |
 | Payments | Stripe                                                |
 | Hosting  | AWS (specific services TBD)                           |
-| QR Codes | Generated server-side, sent via email                 |
+| QR Codes | Camp self-check-in QR generated server-side and posted at the physical check-in location; not emailed to registrants |
 | Email    | Transactional email service (e.g., AWS SES, SendGrid) |
 
 ### Key Technical Considerations
 
-- The admin interface must be **mobile-friendly / responsive** so that camp staff can perform check-in from their phones using the device camera for QR scanning, or from a laptop with a webcam.
+- The public self-check-in experience and the admin-assisted check-in interface must be **mobile-friendly / responsive**. Attendees scan the camp's posted QR code with their own device; staff can assist by searching for a person by name.
 - The public **camper (family)** and **worker** registration experiences should each be a clean, accessible form (multi-step or single page) optimized for both mobile and desktop.
 - The API should be RESTful with proper authentication middleware protecting admin routes.
 - Public registration routes are accessible without login but each is gated by its own configurable **open date/time** until the scheduled opening (see [Registration Form Availability](#registration-form-availability)).
@@ -161,12 +161,12 @@ The parent adds one or more campers. For each camper, collect at least the field
 
 #### Post-Registration
 
-- Each registered camper receives a **unique QR code**.
 - A confirmation email is sent to the parent/guardian email address containing:
   - Registration confirmation details
-  - One QR code per registered camper (for use at check-in)
   - Merchandise pre-order summary (if any items were ordered)
+  - Instructions that attendees will scan the posted self-check-in QR code after arriving at the physical check-in location
   - Any relevant camp information (dates, what to bring, etc.)
+- Do not email individual camper QR codes or the camp self-check-in QR code/URL. The posted camp QR is intended to be available at the physical check-in location.
 
 #### Camper fields (legacy parity)
 
@@ -256,6 +256,7 @@ Replicate the legacy form’s static guidance on the confirmation step and/or co
 
 - A **confirmation email** is sent to the worker’s email with a copy of their submitted answers (equivalent to Google Forms “get a copy of your responses”).
 - Workers do **not** pay a camp registration fee through this flow. Optional paid worker merchandise (e.g., t-shirt) is covered in [Payment](#payment) and **TBD** in Outstanding Items.
+- The worker confirmation explains that workers scan the posted self-check-in QR code after arriving at the physical check-in location; it does not contain the QR code or its URL.
 - Each submitted worker registration creates or updates a **Worker** record for the camp year (see [Data Model](#12-data-model-overview)). Admins may still add workers manually or via CSV; import rules should avoid duplicate persons where possible (**TBD** matching strategy: email + name + year).
 
 ---
@@ -338,25 +339,28 @@ Workers and dorm leaders share a similar data profile (name, gender, contact inf
 
 ## 7. Check-In
 
-Check-in is performed by camp admins on the day(s) campers arrive.
+Check-in is performed on the day(s) campers arrive through the posted public self-check-in flow, with camp admins available to assist.
 
-### QR Code Check-In
+### Posted QR Self Check-In
 
-1. Camp admin opens the check-in screen on their phone or laptop.
-2. Admin activates the device camera (phone camera or laptop webcam).
-3. Admin scans the camper's QR code.
-4. The system looks up the camper and displays:
+1. Camp staff display the camp-specific self-check-in QR code at the physical check-in location.
+2. The attendee or parent scans the posted QR code with their own phone and opens the public self-check-in page.
+3. The attendee searches for and selects the appropriate camper, worker, or dorm leader record.
+4. For campers, the system displays the relevant check-in context, including:
    - Camper name
    - Dorm assignment (building/room name)
-   - Payment status (paid or unpaid - if unpaid, prompt admin to collect cash and mark as paid)
-   - Any medical notes or special needs flagged for attention
-5. Admin confirms check-in. The camper is marked as **Checked In**.
-6. Admin verbally directs the camper to their assigned dorm.
+   - Payment status and remaining balance, if any
+   - Available online or staff-assisted payment path
+5. The attendee confirms check-in after resolving any required payment step. The person is marked as **Checked In**.
+6. The page displays the dorm assignment or next arrival instructions.
 
-### Manual Check-In (No QR Code)
+The posted QR identifies the camp-year self-check-in entry point, not an individual camper. Do not require registrants to retain or present a personal QR code.
 
-- If a camper does not have their QR code, the admin can search by **camper name**.
-- Search results display matching campers. Admin selects the correct camper and proceeds with the same check-in flow as above.
+### Staff-Assisted Check-In
+
+- If an attendee does not have a suitable device or needs help, an admin can search by **camper name** in the protected check-in interface.
+- Search results display matching campers. Admin selects the correct camper and proceeds with the assisted payment and check-in flow.
+- Remove the obsolete individual camper QR tokens and staff camera-scanning path. The posted camp-level self-check-in QR and staff-assisted name search are the supported arrival workflows.
 
 ### Worker & Dorm Leader Check-In
 
@@ -459,10 +463,12 @@ Sent immediately after a family completes **camper** registration. Contains:
 - Confirmation that registration was received
 - List of registered campers
 - **Full itemized pricing breakdown** (same receipt-style format shown during registration)
-- **One QR code per camper** (embedded image or attached)
 - Merchandise pre-order summary (if any items were ordered)
 - Payment status: if paid via Stripe, a confirmation of payment received; if paying cash, a **prominent reminder of the exact total amount due at check-in**
+- Arrival instructions explaining that attendees scan the posted self-check-in QR code at the physical check-in location
 - Camp dates and relevant information
+
+The email must not contain an individual camper QR code or the camp self-check-in QR code/URL.
 
 ### 2. Worker registration confirmation
 
@@ -471,6 +477,7 @@ Sent immediately after a worker submits **worker registration**. Contains:
 - Confirmation that the registration was received
 - A **copy of submitted responses** (all fields), equivalent to Google Forms’ emailed response copy
 - Reminders from the informational block (testimony, pastor recommendation, rules expectations) as appropriate
+- Arrival instructions explaining that the worker scans the posted self-check-in QR code at the physical check-in location; do not include the QR code or its URL
 
 ### 3. Check-In Confirmation Email
 
@@ -573,7 +580,6 @@ This section outlines the core data entities. Exact schema will be defined durin
 - T-shirt size (legacy option set: not interested, adult/youth sizes, other — see [Camper fields (legacy parity)](#camper-fields-legacy-parity))
 - Emergency contact name and phone
 - Special needs / accommodations
-- QR code token (unique identifier encoded in QR)
 - Dorm assignment (FK)
 - Check-in status (not checked in / checked in)
 - Check-in timestamp
