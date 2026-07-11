@@ -81,6 +81,10 @@ export function createApp(): express.Express {
   }
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (typeof error === "object" && error !== null && "status" in error && error.status === 413) {
+      res.status(413).json({ error: "Request too large" });
+      return;
+    }
     if (error instanceof SyntaxError) {
       res.status(400).json({ error: "Invalid request" });
       return;
