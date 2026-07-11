@@ -19,6 +19,10 @@ Running `npm install` from the repository root installs dependencies for all npm
 
 The Vite dev server proxies `/api` to the API on port 4000. Configure `server/.env` with at least `DATABASE_URL` and `JWT_SECRET` (see `docs/deployment.md`).
 
+Automated checks use `npm run lint`, `npm run typecheck`, and `npm test`. Phase 2 browser scenarios use
+`npm run test:e2e` against already-running services. Set `E2E_ADMIN_URL` and `E2E_REGISTRATION_URL` as
+needed; install the Chromium runtime once with `npm run test:e2e:install`.
+
 ## Production build, migrations, and operations
 
 - Environment variables, backups, health checks, logging, and AWS-oriented deployment: `docs/deployment.md`

@@ -20,9 +20,10 @@ Further product context: `docs/specs.md`.
 | `PORT` | `4000` | per host | `4000` or platform default | API listen port |
 | `DATABASE_URL` | local Postgres URL | RDS / managed Postgres URL | same | Required; Prisma connection string |
 | `JWT_SECRET` | long random string (≥32 chars) | from secrets manager | same | Signs admin session cookies |
-| `CORS_ORIGIN` | optional; e.g. `http://127.0.0.1:5173` | `https://admin-staging.example.org` | `https://admin.example.org` | When unset, CORS reflects any origin (dev-friendly only) |
+| `ADMIN_PUBLIC_ORIGIN` | `http://localhost:5173` | admin/check-in staging origin | admin/check-in production origin | Trusted admin/check-in origin and self-check-in Stripe redirect origin |
+| `REGISTRATION_PUBLIC_ORIGIN` | `http://registration.localhost:5173` | registration staging origin | registration production origin | Trusted registration origin; must differ from the admin origin |
+| `TRUST_PROXY_HOPS` | `0` | deployment-specific | deployment-specific | Exact trusted proxy hop count used for client IP resolution; CDK uses `1` |
 | `CLIENT_DIST_PATH` | usually unset (Vite proxies `/api`) | optional path to `client/dist` | e.g. `/app/client/dist` | When set to an existing directory, the API also serves the SPA and `index.html` fallback for client routes |
-| `APP_PUBLIC_URL` | e.g. `http://127.0.0.1:5173` | public staging origin | public production origin | Required for Stripe Checkout success/cancel redirects |
 | `STRIPE_SECRET_KEY` | test restricted key (`rk_test_...`) preferred | test/staging restricted key | live restricted key (`rk_live_...`) preferred | Server-only Stripe API key; never expose to client code or logs |
 | `STRIPE_WEBHOOK_SECRET` | from `stripe listen` | staging webhook signing secret | production webhook signing secret | Required to verify `checkout.session.completed` webhook events |
 | `EMAIL_TRANSPORT` | `log` (default) | `smtp` or `log` | `smtp` for real mail | `log` writes message content to stdout — **do not use for parent-facing mail in prod** |
@@ -39,7 +40,7 @@ Local development setup:
 
 1. Create or use a Stripe test-mode account.
 2. Prefer a restricted API key with only the permissions needed to create/retrieve Checkout Sessions and read payment results.
-3. Set `STRIPE_SECRET_KEY`, `APP_PUBLIC_URL`, and `STRIPE_WEBHOOK_SECRET` in `server/.env`.
+3. Set `STRIPE_SECRET_KEY`, both public origins, and `STRIPE_WEBHOOK_SECRET` in `server/.env`.
 4. Forward webhooks locally:
 
 ```bash
@@ -50,7 +51,7 @@ Use the `whsec_...` value printed by the Stripe CLI as `STRIPE_WEBHOOK_SECRET`. 
 
 ### Client dev proxy
 
-`client/vite.config.ts` proxies `/api` to `http://127.0.0.1:4000`. Production builds expect the browser to call the same origin as the API (single-host deployment) or a configured API base; align `CORS_ORIGIN` if UI and API are on different origins.
+`client/vite.config.ts` proxies `/api` to `http://127.0.0.1:4000`. Set `VITE_REGISTRATION_PUBLIC_ORIGIN` when building the client; Docker/CDK supplies it from `registrationPublicOrigin`. The API trusts only the two configured origins.
 
 ## Production build and database migrations
 
@@ -134,7 +135,7 @@ The CDK app under [`infra/cdk/`](../infra/cdk/) provisions VPC, RDS PostgreSQL, 
 
 1. Bootstrap and deploy: see [`infra/cdk/README.md`](../infra/cdk/README.md).
 2. **Migrations and first-admin bootstrap** are not run automatically by the web service: run [`scripts/run-post-deploy.ps1`](../scripts/run-post-deploy.ps1) after each deploy.
-3. Set `CORS_ORIGIN` with `-c corsOrigin=https://admin.example.org` when serving the UI from a custom domain; otherwise the stack defaults to the ALB DNS origin.
+3. Set the required `adminPublicOrigin` and `registrationPublicOrigin` CDK contexts to distinct HTTPS origins.
 4. **Synth without Docker** (CI or quick validation): `cd infra/cdk && npx cdk synth -c usePlaceholderImage=true`.
 
 ## Phase 1 smoke test

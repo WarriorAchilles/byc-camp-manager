@@ -65,8 +65,8 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 | ------- | ------ |
 | `usePlaceholderImage=true` | Skips `DockerImageAsset` build; synth/validate only. |
 | `account` / `region` | Passed to the stack `env` (optional if `CDK_DEFAULT_*` / `AWS_*` are set). |
-| `corsOrigin` | Sets the API `CORS_ORIGIN`; defaults to `http://<alb-dns-name>`. |
-| `appPublicUrl` | Sets `APP_PUBLIC_URL` for Stripe Checkout redirects; defaults to `http://<alb-dns-name>`. |
+| `adminPublicOrigin` | Required admin/check-in HTTPS origin; sets `ADMIN_PUBLIC_ORIGIN`. |
+| `registrationPublicOrigin` | Required, distinct registration HTTPS origin; sets `REGISTRATION_PUBLIC_ORIGIN` and the client build-time registration origin. |
 | `certificateArn` | Optional ACM certificate ARN for the admin hostname. When set, the ALB serves HTTPS on port 443 and redirects HTTP to HTTPS. |
 | `stripeSecretKeySecretArn` | Optional full Secrets Manager ARN containing the Stripe restricted/secret API key. Include the generated suffix. |
 | `stripeWebhookSecretArn` | Optional full Secrets Manager ARN containing the Stripe webhook signing secret. Include the generated suffix. |
@@ -74,25 +74,19 @@ Stack outputs include **LoadBalancerDns** (open `http://…` for the admin UI), 
 
 ## HTTPS and CORS
 
-The task sets `CORS_ORIGIN` to `http://<alb-dns-name>` by default. After you add HTTPS and a stable hostname, redeploy with an explicit origin:
+Configure both stable browser origins before deployment:
 
 ```bash
-npx cdk deploy -c corsOrigin=https://admin.example.org
+npx cdk deploy -c adminPublicOrigin=https://admin.example.org -c registrationPublicOrigin=https://registration.example.org
 ```
 
-Set the same public HTTPS origin for Stripe redirects after DNS is in place:
-
-```bash
-npx cdk deploy -c corsOrigin=https://admin.example.org -c appPublicUrl=https://admin.example.org
-```
-
-To serve the app at `https://admin.believersyouthcamp.com`, first request and validate an ACM certificate for `admin.believersyouthcamp.com` in the same region as this stack. Then deploy with the certificate ARN and matching public origins:
+To serve both BYC hostnames, first request and validate an ACM certificate covering the admin and registration names in the same region as this stack. Then deploy with the certificate ARN and matching public origins:
 
 ```bash
 npx cdk deploy \
   -c certificateArn=arn:aws:acm:REGION:ACCOUNT:certificate/CERTIFICATE_ID \
-  -c corsOrigin=https://admin.believersyouthcamp.com \
-  -c appPublicUrl=https://admin.believersyouthcamp.com
+  -c adminPublicOrigin=https://admin.believersyouthcamp.com \
+  -c registrationPublicOrigin=https://registration.believersyouthcamp.com
 ```
 
 When `certificateArn` is set, the load balancer allows HTTPS traffic on port 443, forwards HTTPS traffic to the app target group, and redirects HTTP traffic on port 80 to HTTPS.
@@ -101,7 +95,8 @@ To enable Stripe Checkout in ECS, store the Stripe API key and webhook signing s
 
 ```bash
 npx cdk deploy \
-  -c appPublicUrl=https://admin.example.org \
+  -c adminPublicOrigin=https://admin.example.org \
+  -c registrationPublicOrigin=https://registration.example.org \
   -c stripeSecretKeySecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:stripe-key \
   -c stripeWebhookSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:stripe-webhook
 ```

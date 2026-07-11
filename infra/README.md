@@ -26,7 +26,7 @@ Enable RDS automated backups in the AWS console (or add `backupRetention` on the
 
 ## Static front end (optional split)
 
-The default Docker image serves the SPA from the API (`CLIENT_DIST_PATH`). To host static files on S3 + CloudFront instead, split the image or omit `CLIENT_DIST_PATH` and point the SPA at the API; set `CORS_ORIGIN` accordingly.
+The default Docker image serves the SPA from the API (`CLIENT_DIST_PATH`). To host static files on S3 + CloudFront instead, split the image or omit `CLIENT_DIST_PATH`, point the SPA at the API, and configure both trusted public origins.
 
 ## Manual Docker image (without CDK)
 
