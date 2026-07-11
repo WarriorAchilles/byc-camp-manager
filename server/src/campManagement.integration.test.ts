@@ -337,11 +337,13 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows camp admins to update the amount a camper has paid", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
     const created = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
-      .set("Authorization", `Bearer ${campAdminToken}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
       .send(camperPayload({ feeDueCents: 16500 }));
     expect(created.status).toBe(201);
 
@@ -355,11 +357,13 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
   });
 
   it("allows camp admins to mark and unmark campers as paid", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
     const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
     const created = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
-      .set("Authorization", `Bearer ${campAdminToken}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
       .send(camperPayload({ feeDueCents: 16500, feePaidCents: 5000 }));
     expect(created.status).toBe(201);
 

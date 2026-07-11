@@ -352,7 +352,7 @@ model MerchandiseOrderLine {
 
   familyRegistration FamilyRegistration @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
   merchandiseItem    MerchandiseItem?   @relation(fields: [merchandiseItemId], references: [id], onDelete: SetNull)
-  camper             Camper?            @relation(fields: [camperId], references: [id], onDelete: SetNull)
+  camper             Camper?            @relation(fields: [camperId], references: [id], onDelete: Cascade)
 
   @@index([familyRegistrationId])
   @@index([merchandiseItemId])

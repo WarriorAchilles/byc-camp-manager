@@ -178,7 +178,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
       select: { importSource: true },
     });
     expect(campers.every((camper) => camper.importSource === "csv_import")).toBe(true);
-    expect(campers.every((camper) => camper.importSource === "csv_import")).toBe(true);
   });
 
   it("blocks worker commit when a row has errors unless skipInvalidRows is true", async () => {
@@ -187,7 +186,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     const csvText = [
       "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
       "good@example.com,A,B,Male,5551234567,1 Main,X,Y,12345,USA",
-      ",C,D,Male,5551234567,2 Oak,X,Y,12345,USA",
+      "bad@example.com,C,D,Unknown,5551234567,2 Oak,X,Y,12345,USA",
     ].join("\n");
 
     const blocked = await request(app)
@@ -213,7 +212,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("CSV import API (super 
     const token = signAuthToken({ sub: admin.id, role: admin.role });
     const csvText = [
       "Email Address,First Name,Last Name,Gender,Cell Number,Street Address,City,State or Province,Zip code,Country (USA, CAN, etc.)",
-      ",A,B,Male,5551234567,1 Main,X,Y,12345,USA",
+      "bad@example.com,A,B,Unknown,5551234567,1 Main,X,Y,12345,USA",
     ].join("\n");
 
     const response = await request(app)
