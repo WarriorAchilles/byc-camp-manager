@@ -11,7 +11,15 @@ type CampYearRow = {
   endDate: string;
   camperCapacity: number | null;
   familyRegistrationOpensAt: string | null;
+  familyRegistrationClosesAt: string | null;
+  familyRegistrationEnabled: boolean;
+  familyRegistrationHeaderContent: string;
+  familyRegistrationClosedMessage: string;
   workerRegistrationOpensAt: string | null;
+  workerRegistrationClosesAt: string | null;
+  workerRegistrationEnabled: boolean;
+  workerRegistrationHeaderContent: string;
+  workerRegistrationClosedMessage: string;
   feeCutoverAt: string | null;
   earlyCamperFeeCents: number | null;
   lateCamperFeeCents: number | null;
@@ -96,8 +104,8 @@ export function CampConfigurationPage(): React.ReactElement {
   const campYearDeleteContinueRef = useRef<HTMLButtonElement | null>(null);
   const campYearDeleteInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [staffDefaultCampYearId, setStaffDefaultCampYearId] = useState("");
-  const [staffDefaultSaving, setStaffDefaultSaving] = useState(false);
+  const [activeCampYearId, setActiveCampYearId] = useState("");
+  const [activeCampYearSaving, setActiveCampYearSaving] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -107,7 +115,7 @@ export function CampConfigurationPage(): React.ReactElement {
         activeCampYearId: string | null;
       }>("/api/admin/camp-years");
       setCampYears(data.campYears);
-      setStaffDefaultCampYearId(data.activeCampYearId ?? "");
+      setActiveCampYearId(data.activeCampYearId ?? "");
       setSelectedId((previous) =>
         resolveCampYearSelectionNullable(data.campYears, data.activeCampYearId, previous),
       );
@@ -379,6 +387,15 @@ export function CampConfigurationPage(): React.ReactElement {
       return;
     }
     const feeCutoverLocal = String(formData.get("feeCutoverAt") ?? "").trim();
+    const familyOpensLocal = String(formData.get("familyRegistrationOpensAt") ?? "").trim();
+    const familyClosesLocal = String(formData.get("familyRegistrationClosesAt") ?? "").trim();
+    const workerOpensLocal = String(formData.get("workerRegistrationOpensAt") ?? "").trim();
+    const workerClosesLocal = String(formData.get("workerRegistrationClosesAt") ?? "").trim();
+    if ((familyOpensLocal && familyClosesLocal && familyClosesLocal <= familyOpensLocal) ||
+        (workerOpensLocal && workerClosesLocal && workerClosesLocal <= workerOpensLocal)) {
+      setError("Each registration close time must be after its open time.");
+      return;
+    }
     try {
       await apiJson(`/api/admin/camp-years/${selected.id}`, {
         method: "PATCH",
@@ -388,6 +405,16 @@ export function CampConfigurationPage(): React.ReactElement {
           startDate: String(formData.get("startDate") ?? ""),
           endDate: String(formData.get("endDate") ?? ""),
           camperCapacity: capacityParsed,
+          familyRegistrationOpensAt: familyOpensLocal ? new Date(familyOpensLocal).toISOString() : null,
+          familyRegistrationClosesAt: familyClosesLocal ? new Date(familyClosesLocal).toISOString() : null,
+          familyRegistrationEnabled: formData.get("familyRegistrationEnabled") === "on",
+          familyRegistrationHeaderContent: String(formData.get("familyRegistrationHeaderContent") ?? "").trim(),
+          familyRegistrationClosedMessage: String(formData.get("familyRegistrationClosedMessage") ?? "").trim(),
+          workerRegistrationOpensAt: workerOpensLocal ? new Date(workerOpensLocal).toISOString() : null,
+          workerRegistrationClosesAt: workerClosesLocal ? new Date(workerClosesLocal).toISOString() : null,
+          workerRegistrationEnabled: formData.get("workerRegistrationEnabled") === "on",
+          workerRegistrationHeaderContent: String(formData.get("workerRegistrationHeaderContent") ?? "").trim(),
+          workerRegistrationClosedMessage: String(formData.get("workerRegistrationClosedMessage") ?? "").trim(),
           feeCutoverAt: feeCutoverLocal ? new Date(feeCutoverLocal).toISOString() : null,
           earlyCamperFeeCents,
           lateCamperFeeCents,
@@ -406,27 +433,27 @@ export function CampConfigurationPage(): React.ReactElement {
     }
   };
 
-  const handleSaveStaffDefault = async (event: FormEvent): Promise<void> => {
+  const handleSaveActiveCampYear = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!superAdmin) {
       return;
     }
     setError(null);
-    setStaffDefaultSaving(true);
+    setActiveCampYearSaving(true);
     try {
       await apiJson<{ activeCampYearId: string | null }>("/api/admin/settings", {
         method: "PATCH",
         body: JSON.stringify({
-          activeCampYearId: staffDefaultCampYearId === "" ? null : staffDefaultCampYearId,
+          activeCampYearId: activeCampYearId === "" ? null : activeCampYearId,
         }),
       });
       await load();
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "Could not save staff default camp year.";
+          caught instanceof Error ? caught.message : "Could not save active camp year.";
       setError(message);
     } finally {
-      setStaffDefaultSaving(false);
+      setActiveCampYearSaving(false);
     }
   };
 
@@ -512,28 +539,27 @@ export function CampConfigurationPage(): React.ReactElement {
       {error ? <p className="error">{error}</p> : null}
 
       {superAdmin ? (
-        <form className="card stack" onSubmit={(event) => void handleSaveStaffDefault(event)}>
-          <h2 style={{ marginTop: 0 }}>Staff default camp year</h2>
+        <form className="card stack" onSubmit={(event) => void handleSaveActiveCampYear(event)}>
+          <h2 style={{ marginTop: 0 }}>Active camp year</h2>
           <p className="muted" style={{ margin: 0 }}>
-            Camp admins and super admins see this year pre-selected on People, Dorms, Check-in, Imports, and
-            Reports (each screen can still switch). Choose automatic to use the newest start date in the
-            list.
+            This year powers public registration and is pre-selected on admin operational pages. Public
+            registration stays closed when no active year is selected.
           </p>
-          <label htmlFor="staffDefaultCampYear">Default for operational pages</label>
+          <label htmlFor="activeCampYear">Active for admin and registration</label>
           <select
-            id="staffDefaultCampYear"
-            value={staffDefaultCampYearId}
-            onChange={(event) => setStaffDefaultCampYearId(event.target.value)}
+            id="activeCampYear"
+            value={activeCampYearId}
+            onChange={(event) => setActiveCampYearId(event.target.value)}
           >
-            <option value="">Newest by start date (automatic)</option>
+            <option value="">No active camp year</option>
             {campYears.map((year) => (
               <option key={year.id} value={year.id}>
                 {year.name} ({year.yearLabel})
               </option>
             ))}
           </select>
-          <button type="submit" className="btn" disabled={staffDefaultSaving}>
-            {staffDefaultSaving ? "Saving…" : "Save default"}
+          <button type="submit" className="btn" disabled={activeCampYearSaving}>
+            {activeCampYearSaving ? "Saving…" : "Save active year"}
           </button>
         </form>
       ) : null}
@@ -862,6 +888,58 @@ export function CampConfigurationPage(): React.ReactElement {
               defaultValue={selected.camperCapacity ?? ""}
             />
           </label>
+          <fieldset className="configuration-fieldset stack">
+            <legend>Camper registration availability</legend>
+            <label className="row configuration-toggle">
+              <input type="checkbox" name="familyRegistrationEnabled" defaultChecked={selected.familyRegistrationEnabled} />
+              <span>Manually enable camper registration</span>
+            </label>
+            <div className="configuration-time-grid">
+              <label>
+                Opens at
+                <input name="familyRegistrationOpensAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.familyRegistrationOpensAt)} />
+              </label>
+              <label>
+                Closes at (optional)
+                <input name="familyRegistrationClosesAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.familyRegistrationClosesAt)} />
+              </label>
+            </div>
+            <label>
+              Public header content
+              <textarea name="familyRegistrationHeaderContent" rows={6} maxLength={10_000} defaultValue={selected.familyRegistrationHeaderContent} required />
+            </label>
+            <label>
+              Closed/countdown message
+              <textarea name="familyRegistrationClosedMessage" rows={3} maxLength={2_000} defaultValue={selected.familyRegistrationClosedMessage} required />
+            </label>
+          </fieldset>
+
+          <fieldset className="configuration-fieldset stack">
+            <legend>Worker registration availability</legend>
+            <label className="row configuration-toggle">
+              <input type="checkbox" name="workerRegistrationEnabled" defaultChecked={selected.workerRegistrationEnabled} />
+              <span>Manually enable worker registration</span>
+            </label>
+            <div className="configuration-time-grid">
+              <label>
+                Opens at
+                <input name="workerRegistrationOpensAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.workerRegistrationOpensAt)} />
+              </label>
+              <label>
+                Closes at (optional)
+                <input name="workerRegistrationClosesAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.workerRegistrationClosesAt)} />
+              </label>
+            </div>
+            <label>
+              Public header content
+              <textarea name="workerRegistrationHeaderContent" rows={6} maxLength={10_000} defaultValue={selected.workerRegistrationHeaderContent} required />
+            </label>
+            <label>
+              Closed/countdown message
+              <textarea name="workerRegistrationClosedMessage" rows={3} maxLength={2_000} defaultValue={selected.workerRegistrationClosedMessage} required />
+            </label>
+          </fieldset>
+
           <h3 style={{ marginBottom: 0 }}>Camper pricing</h3>
           <p className="muted" style={{ margin: 0 }}>
             These prices appear in the info popup beside Amount owed when adding a camper.
