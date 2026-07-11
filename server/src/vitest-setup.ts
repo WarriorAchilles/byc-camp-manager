@@ -13,3 +13,5 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 if (!process.env.EMAIL_TRANSPORT) {
   process.env.EMAIL_TRANSPORT = "log";
 }
+process.env.ADMIN_PUBLIC_ORIGIN ??= "http://admin.example.test";
+process.env.REGISTRATION_PUBLIC_ORIGIN ??= "http://register.example.test";

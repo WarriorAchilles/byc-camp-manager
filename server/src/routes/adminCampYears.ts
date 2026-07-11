@@ -28,7 +28,15 @@ const campYearCreateBody = z.object({
   endDate: isoDateString,
   camperCapacity: z.number().int().positive().nullable().optional(),
   familyRegistrationOpensAt: z.string().datetime().nullable().optional(),
+  familyRegistrationClosesAt: z.string().datetime().nullable().optional(),
+  familyRegistrationEnabled: z.boolean().optional(),
+  familyRegistrationHeaderContent: z.string().trim().min(1).max(10_000).optional(),
+  familyRegistrationClosedMessage: z.string().trim().min(1).max(2_000).optional(),
   workerRegistrationOpensAt: z.string().datetime().nullable().optional(),
+  workerRegistrationClosesAt: z.string().datetime().nullable().optional(),
+  workerRegistrationEnabled: z.boolean().optional(),
+  workerRegistrationHeaderContent: z.string().trim().min(1).max(10_000).optional(),
+  workerRegistrationClosedMessage: z.string().trim().min(1).max(2_000).optional(),
   feeCutoverAt: z.string().datetime().nullable().optional(),
   earlyCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   lateCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
@@ -109,6 +117,15 @@ adminCampYearsRouter.post(
       res.status(400).json({ error: "End date must be on or after start date" });
       return;
     }
+    const familyOpensAt = parsed.data.familyRegistrationOpensAt ? new Date(parsed.data.familyRegistrationOpensAt) : null;
+    const familyClosesAt = parsed.data.familyRegistrationClosesAt ? new Date(parsed.data.familyRegistrationClosesAt) : null;
+    const workerOpensAt = parsed.data.workerRegistrationOpensAt ? new Date(parsed.data.workerRegistrationOpensAt) : null;
+    const workerClosesAt = parsed.data.workerRegistrationClosesAt ? new Date(parsed.data.workerRegistrationClosesAt) : null;
+    if ((familyOpensAt && familyClosesAt && familyClosesAt <= familyOpensAt) ||
+        (workerOpensAt && workerClosesAt && workerClosesAt <= workerOpensAt)) {
+      res.status(400).json({ error: "Registration close time must be after open time" });
+      return;
+    }
     const created = await prisma.campYear.create({
       data: {
         name: parsed.data.name.trim(),
@@ -116,12 +133,16 @@ adminCampYearsRouter.post(
         startDate: start,
         endDate: end,
         camperCapacity: parsed.data.camperCapacity ?? null,
-        familyRegistrationOpensAt: parsed.data.familyRegistrationOpensAt
-          ? new Date(parsed.data.familyRegistrationOpensAt)
-          : null,
-        workerRegistrationOpensAt: parsed.data.workerRegistrationOpensAt
-          ? new Date(parsed.data.workerRegistrationOpensAt)
-          : null,
+        familyRegistrationOpensAt: familyOpensAt,
+        familyRegistrationClosesAt: familyClosesAt,
+        familyRegistrationEnabled: parsed.data.familyRegistrationEnabled ?? false,
+        ...(parsed.data.familyRegistrationHeaderContent ? { familyRegistrationHeaderContent: parsed.data.familyRegistrationHeaderContent } : {}),
+        ...(parsed.data.familyRegistrationClosedMessage ? { familyRegistrationClosedMessage: parsed.data.familyRegistrationClosedMessage } : {}),
+        workerRegistrationOpensAt: workerOpensAt,
+        workerRegistrationClosesAt: workerClosesAt,
+        workerRegistrationEnabled: parsed.data.workerRegistrationEnabled ?? false,
+        ...(parsed.data.workerRegistrationHeaderContent ? { workerRegistrationHeaderContent: parsed.data.workerRegistrationHeaderContent } : {}),
+        ...(parsed.data.workerRegistrationClosedMessage ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage } : {}),
         feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null,
         earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
         lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
@@ -743,6 +764,23 @@ adminCampYearsRouter.patch(
       res.status(400).json({ error: "End date must be on or after start date" });
       return;
     }
+    const nextFamilyOpensAt = parsed.data.familyRegistrationOpensAt !== undefined
+      ? (parsed.data.familyRegistrationOpensAt ? new Date(parsed.data.familyRegistrationOpensAt) : null)
+      : existing.familyRegistrationOpensAt;
+    const nextFamilyClosesAt = parsed.data.familyRegistrationClosesAt !== undefined
+      ? (parsed.data.familyRegistrationClosesAt ? new Date(parsed.data.familyRegistrationClosesAt) : null)
+      : existing.familyRegistrationClosesAt;
+    const nextWorkerOpensAt = parsed.data.workerRegistrationOpensAt !== undefined
+      ? (parsed.data.workerRegistrationOpensAt ? new Date(parsed.data.workerRegistrationOpensAt) : null)
+      : existing.workerRegistrationOpensAt;
+    const nextWorkerClosesAt = parsed.data.workerRegistrationClosesAt !== undefined
+      ? (parsed.data.workerRegistrationClosesAt ? new Date(parsed.data.workerRegistrationClosesAt) : null)
+      : existing.workerRegistrationClosesAt;
+    if ((nextFamilyOpensAt && nextFamilyClosesAt && nextFamilyClosesAt <= nextFamilyOpensAt) ||
+        (nextWorkerOpensAt && nextWorkerClosesAt && nextWorkerClosesAt <= nextWorkerOpensAt)) {
+      res.status(400).json({ error: "Registration close time must be after open time" });
+      return;
+    }
 
     const updated = await prisma.campYear.update({
       where: { id: campYearId },
@@ -759,12 +797,36 @@ adminCampYearsRouter.patch(
                 : null,
             }
           : {}),
+        ...(parsed.data.familyRegistrationClosesAt !== undefined
+          ? { familyRegistrationClosesAt: nextFamilyClosesAt }
+          : {}),
+        ...(parsed.data.familyRegistrationEnabled !== undefined
+          ? { familyRegistrationEnabled: parsed.data.familyRegistrationEnabled }
+          : {}),
+        ...(parsed.data.familyRegistrationHeaderContent !== undefined
+          ? { familyRegistrationHeaderContent: parsed.data.familyRegistrationHeaderContent }
+          : {}),
+        ...(parsed.data.familyRegistrationClosedMessage !== undefined
+          ? { familyRegistrationClosedMessage: parsed.data.familyRegistrationClosedMessage }
+          : {}),
         ...(parsed.data.workerRegistrationOpensAt !== undefined
           ? {
               workerRegistrationOpensAt: parsed.data.workerRegistrationOpensAt
                 ? new Date(parsed.data.workerRegistrationOpensAt)
                 : null,
             }
+          : {}),
+        ...(parsed.data.workerRegistrationClosesAt !== undefined
+          ? { workerRegistrationClosesAt: nextWorkerClosesAt }
+          : {}),
+        ...(parsed.data.workerRegistrationEnabled !== undefined
+          ? { workerRegistrationEnabled: parsed.data.workerRegistrationEnabled }
+          : {}),
+        ...(parsed.data.workerRegistrationHeaderContent !== undefined
+          ? { workerRegistrationHeaderContent: parsed.data.workerRegistrationHeaderContent }
+          : {}),
+        ...(parsed.data.workerRegistrationClosedMessage !== undefined
+          ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage }
           : {}),
         ...(parsed.data.feeCutoverAt !== undefined
           ? { feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null }

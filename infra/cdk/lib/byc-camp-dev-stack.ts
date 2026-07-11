@@ -152,16 +152,18 @@ export class BycCampDevStack extends cdk.Stack {
       },
     });
 
-    const configuredCorsOrigin = this.node.tryGetContext("corsOrigin");
-    const corsOrigin =
-      configuredCorsOrigin === undefined
-        ? `http://${loadBalancer.loadBalancerDnsName}`
-        : String(configuredCorsOrigin);
-    const configuredAppPublicUrl = this.node.tryGetContext("appPublicUrl");
-    const appPublicUrl =
-      configuredAppPublicUrl === undefined
-        ? `http://${loadBalancer.loadBalancerDnsName}`
-        : String(configuredAppPublicUrl);
+    const configuredAdminPublicOrigin = this.node.tryGetContext("adminPublicOrigin");
+    const adminPublicOrigin = configuredAdminPublicOrigin === undefined
+      ? `http://${loadBalancer.loadBalancerDnsName}`
+      : String(configuredAdminPublicOrigin);
+    const configuredRegistrationPublicOrigin = this.node.tryGetContext("registrationPublicOrigin");
+    if (configuredRegistrationPublicOrigin === undefined) {
+      throw new Error("registrationPublicOrigin CDK context is required");
+    }
+    const registrationPublicOrigin = String(configuredRegistrationPublicOrigin);
+    if (registrationPublicOrigin === adminPublicOrigin) {
+      throw new Error("adminPublicOrigin and registrationPublicOrigin must be different");
+    }
     const configuredCertificateArn = this.node.tryGetContext("certificateArn");
     const certificate =
       configuredCertificateArn === undefined
@@ -222,8 +224,9 @@ export class BycCampDevStack extends cdk.Stack {
       environment: {
         NODE_ENV: "production",
         PORT: "4000",
-        CORS_ORIGIN: corsOrigin,
-        APP_PUBLIC_URL: appPublicUrl,
+        ADMIN_PUBLIC_ORIGIN: adminPublicOrigin,
+        REGISTRATION_PUBLIC_ORIGIN: registrationPublicOrigin,
+        TRUST_PROXY_HOPS: "1",
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(prismaDatabaseUrlSecret),

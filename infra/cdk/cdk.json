@@ -10,8 +10,8 @@
     "@aws-cdk/aws-ecs:removeDefaultDesiredCount": true,
     "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,
     "certificateArn": "arn:aws:acm:us-east-2:644238516603:certificate/9770c231-befd-495d-9924-85fbc8c7fb8e",
-    "corsOrigin": "https://admin.believersyouthcamp.com",
-    "appPublicUrl": "https://admin.believersyouthcamp.com",
+    "adminPublicOrigin": "https://admin.believersyouthcamp.com",
+    "registrationPublicOrigin": "https://registration.believersyouthcamp.com",
     "stripeSecretKeySecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-secret-key-ND3Znw",
     "stripeWebhookSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-webhook-secret-YnJAuy"
   }

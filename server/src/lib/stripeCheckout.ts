@@ -20,12 +20,13 @@ export type StripeRuntime = {
 
 export function getStripeRuntime(): StripeRuntime | null {
   const env = loadEnv();
-  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET || !env.APP_PUBLIC_URL) {
+  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) {
     return null;
   }
   return {
     stripe: new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: stripeApiVersion }),
-    appPublicUrl: env.APP_PUBLIC_URL.replace(/\/+$/, ""),
+    // This checkout belongs to the posted self-check-in flow, which remains on the admin/check-in origin.
+    appPublicUrl: env.ADMIN_PUBLIC_ORIGIN.replace(/\/+$/, ""),
     webhookSecret: env.STRIPE_WEBHOOK_SECRET,
   };
 }

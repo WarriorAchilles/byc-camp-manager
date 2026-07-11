@@ -107,7 +107,7 @@ model AdminUser {
 model AppSettings {
   id               String   @id @default("default")
   /**
-   * Camp year pre-selected for staff on People, Dorms, Check-in, Imports, and Reports.
+   * Organization-wide active camp year used by admin operations and public registration.
    */
   activeCampYearId String?  @unique @map("active_camp_year_id")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -125,7 +125,15 @@ model CampYear {
   endDate                           DateTime  @map("end_date") @db.Date
   camperCapacity                    Int?      @map("camper_capacity")
   familyRegistrationOpensAt         DateTime? @map("family_registration_opens_at")
+  familyRegistrationClosesAt        DateTime? @map("family_registration_closes_at")
+  familyRegistrationEnabled         Boolean   @default(false) @map("family_registration_enabled")
+  familyRegistrationHeaderContent   String    @default("Camper registration details will be posted here. Please contact the camp office with questions.") @map("family_registration_header_content") @db.Text
+  familyRegistrationClosedMessage   String    @default("Camper registration is currently closed.") @map("family_registration_closed_message") @db.Text
   workerRegistrationOpensAt         DateTime? @map("worker_registration_opens_at")
+  workerRegistrationClosesAt        DateTime? @map("worker_registration_closes_at")
+  workerRegistrationEnabled         Boolean   @default(false) @map("worker_registration_enabled")
+  workerRegistrationHeaderContent   String    @default("Worker registration details will be posted here. Please contact the camp office with questions.") @map("worker_registration_header_content") @db.Text
+  workerRegistrationClosedMessage   String    @default("Worker registration is currently closed.") @map("worker_registration_closed_message") @db.Text
   feeCutoverAt                      DateTime? @map("fee_cutover_at")
   earlyCamperFeeCents               Int?      @map("early_camper_fee_cents")
   lateCamperFeeCents                Int?      @map("late_camper_fee_cents")
