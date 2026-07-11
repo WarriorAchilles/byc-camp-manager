@@ -12,6 +12,8 @@ import { RandomCamperSelectorPage } from "./pages/RandomCamperSelectorPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SelfCheckInQrPage } from "./pages/SelfCheckInQrPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
+import { PublicRegistrationPage } from "./pages/PublicRegistrationPage";
+import { resolveBrowserSurface } from "./publicSurface";
 
 function FullPageAuthLoading(): React.ReactElement {
   return (
@@ -46,6 +48,23 @@ function SuperAdminRoute({ children }: { children: React.ReactElement }): React.
 }
 
 export function App(): React.ReactElement {
+  const surface = resolveBrowserSurface({
+    currentOrigin: window.location.origin,
+    currentHostname: window.location.hostname,
+    registrationOrigin: import.meta.env.VITE_REGISTRATION_PUBLIC_ORIGIN,
+  });
+
+  if (surface === "registration") {
+    return (
+      <Routes>
+        <Route path="/register/family" element={<PublicRegistrationPage flow="family" />} />
+        <Route path="/register/worker" element={<PublicRegistrationPage flow="worker" />} />
+        <Route path="/" element={<Navigate to="/register/family" replace />} />
+        <Route path="*" element={<Navigate to="/register/family" replace />} />
+      </Routes>
+    );
+  }
+
   return (
     <AuthProvider>
       <Routes>

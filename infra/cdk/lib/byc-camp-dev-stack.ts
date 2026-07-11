@@ -120,12 +120,27 @@ export class BycCampDevStack extends cdk.Stack {
 
     const usePlaceholderImage = this.node.tryGetContext("usePlaceholderImage") === "true";
 
+    const configuredAdminPublicOrigin = this.node.tryGetContext("adminPublicOrigin");
+    if (configuredAdminPublicOrigin === undefined) {
+      throw new Error("adminPublicOrigin CDK context is required");
+    }
+    const adminPublicOrigin = String(configuredAdminPublicOrigin);
+    const configuredRegistrationPublicOrigin = this.node.tryGetContext("registrationPublicOrigin");
+    if (configuredRegistrationPublicOrigin === undefined) {
+      throw new Error("registrationPublicOrigin CDK context is required");
+    }
+    const registrationPublicOrigin = String(configuredRegistrationPublicOrigin);
+    if (registrationPublicOrigin === adminPublicOrigin) {
+      throw new Error("adminPublicOrigin and registrationPublicOrigin must be different");
+    }
+
     const imageAsset = usePlaceholderImage
       ? undefined
       : new ecr_assets.DockerImageAsset(this, "AppImage", {
           directory: path.join(__dirname, "..", "..", ".."),
           file: "deploy/Dockerfile",
           platform: ecr_assets.Platform.LINUX_ARM64,
+          buildArgs: { VITE_REGISTRATION_PUBLIC_ORIGIN: registrationPublicOrigin },
         });
 
     const cluster = new ecs.Cluster(this, "Cluster", {
@@ -152,18 +167,6 @@ export class BycCampDevStack extends cdk.Stack {
       },
     });
 
-    const configuredAdminPublicOrigin = this.node.tryGetContext("adminPublicOrigin");
-    const adminPublicOrigin = configuredAdminPublicOrigin === undefined
-      ? `http://${loadBalancer.loadBalancerDnsName}`
-      : String(configuredAdminPublicOrigin);
-    const configuredRegistrationPublicOrigin = this.node.tryGetContext("registrationPublicOrigin");
-    if (configuredRegistrationPublicOrigin === undefined) {
-      throw new Error("registrationPublicOrigin CDK context is required");
-    }
-    const registrationPublicOrigin = String(configuredRegistrationPublicOrigin);
-    if (registrationPublicOrigin === adminPublicOrigin) {
-      throw new Error("adminPublicOrigin and registrationPublicOrigin must be different");
-    }
     const configuredCertificateArn = this.node.tryGetContext("certificateArn");
     const certificate =
       configuredCertificateArn === undefined
