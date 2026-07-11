@@ -132,6 +132,115 @@ describe.skipIf(!schemaReady)("registration domain persistence", () => {
     expect(stored.merchandiseOrderLines[0]?.itemNameSnapshot).toBe("Camp shirt");
   });
 
+  it("persists representative lifecycle paths and rejects inconsistent balances", async () => {
+    await prisma.familyRegistration.createMany({
+      data: [
+        {
+          campYearId,
+          state: RegistrationState.pending_payment,
+          guardianName: "Pending Stripe",
+          guardianEmail: "pending-stripe@example.com",
+          guardianPhone: "5551000001",
+          paymentMethod: RegistrationPaymentMethod.stripe,
+          paymentStatus: CamperPaymentStatus.unpaid,
+          registrationSubtotalCents: 16500,
+          totalDueCents: 16500,
+          pricingSnapshot: { baseRateCents: 16500 },
+        },
+        {
+          campYearId,
+          state: RegistrationState.confirmed,
+          guardianName: "Confirmed Stripe",
+          guardianEmail: "confirmed-stripe@example.com",
+          guardianPhone: "5551000002",
+          paymentMethod: RegistrationPaymentMethod.stripe,
+          paymentStatus: CamperPaymentStatus.paid_stripe,
+          registrationSubtotalCents: 16500,
+          totalDueCents: 16500,
+          amountPaidCents: 16500,
+          confirmedAt: new Date(),
+        },
+        {
+          campYearId,
+          state: RegistrationState.confirmed,
+          guardianName: "Confirmed Cash",
+          guardianEmail: "confirmed-cash@example.com",
+          guardianPhone: "5551000003",
+          paymentMethod: RegistrationPaymentMethod.cash,
+          paymentStatus: CamperPaymentStatus.unpaid,
+          registrationSubtotalCents: 16500,
+          totalDueCents: 16500,
+          agreementVersion: "2026.1",
+          agreementTextSnapshot: "Test agreement snapshot",
+          signatureMethod: "typed",
+          signatureData: "Confirmed Cash",
+          legalAcknowledged: true,
+          signedAt: new Date(),
+          requestIp: "192.0.2.10",
+          confirmedAt: new Date(),
+        },
+        {
+          campYearId,
+          state: RegistrationState.expired,
+          guardianName: "Expired Stripe",
+          guardianEmail: "expired-stripe@example.com",
+          guardianPhone: "5551000004",
+          paymentMethod: RegistrationPaymentMethod.stripe,
+          paymentStatus: CamperPaymentStatus.unpaid,
+          expiresAt: new Date(),
+        },
+        {
+          campYearId,
+          state: RegistrationState.cancelled,
+          guardianName: "Cancelled Registration",
+          guardianEmail: "cancelled-registration@example.com",
+          guardianPhone: "5551000005",
+          paymentMethod: RegistrationPaymentMethod.cash,
+          paymentStatus: CamperPaymentStatus.unpaid,
+        },
+      ],
+    });
+
+    const registrations = await prisma.familyRegistration.findMany({
+      where: {
+        campYearId,
+        guardianEmail: {
+          in: [
+            "pending-stripe@example.com",
+            "confirmed-stripe@example.com",
+            "confirmed-cash@example.com",
+            "expired-stripe@example.com",
+            "cancelled-registration@example.com",
+          ],
+        },
+      },
+    });
+    expect(registrations).toHaveLength(5);
+    expect(registrations.map((registration) => registration.state).sort()).toEqual(
+      [
+        RegistrationState.pending_payment,
+        RegistrationState.confirmed,
+        RegistrationState.confirmed,
+        RegistrationState.expired,
+        RegistrationState.cancelled,
+      ].sort(),
+    );
+
+    await expect(
+      prisma.familyRegistration.create({
+        data: {
+          campYearId,
+          guardianName: "Invalid Balance",
+          guardianEmail: "invalid-balance@example.com",
+          guardianPhone: "5551000006",
+          paymentStatus: CamperPaymentStatus.unpaid,
+          registrationSubtotalCents: 1000,
+          totalDueCents: 999,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   it("deletes terminal registrations and their incomplete owned records", async () => {
     const registration = await prisma.familyRegistration.create({
       data: {
