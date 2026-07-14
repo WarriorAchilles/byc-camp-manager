@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiJson } from "../api";
+import { FamilyRegistrationForm } from "../components/FamilyRegistrationForm";
 
 type Flow = "family" | "worker";
 type AvailabilityState =
@@ -128,7 +129,11 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
           {!loading && !error && availability?.state === "open" ? (
             <div>
               <h2>{title} is open</h2>
-              <p>The registration form will appear here. This availability shell is ready for the next registration-flow step.</p>
+              {flow === "family" ? (
+                <FamilyRegistrationForm />
+              ) : (
+                <p>The worker registration form will appear here in its registration-flow step.</p>
+              )}
             </div>
           ) : null}
           {!loading && !error && availability?.state === "capacity_reached" ? (

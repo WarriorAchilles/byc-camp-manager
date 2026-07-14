@@ -260,6 +260,8 @@ model Camper {
 
 model FamilyRegistration {
   id                        String                     @id @default(uuid())
+  submissionKey             String?                    @unique @map("submission_key")
+  submissionDigest          String?                    @map("submission_digest")
   campYearId                String                     @map("camp_year_id")
   state                     RegistrationState          @default(confirmed)
   guardianName              String                     @map("guardian_name")

@@ -3,7 +3,9 @@ import type { PrismaClient } from "@prisma/client";
 const SETTINGS_ROW_ID = "default" as const;
 
 /** Resolves the organization-wide active camp year id, or null if unset or invalid. */
-export async function getActiveCampYearId(prisma: PrismaClient): Promise<string | null> {
+type ActiveYearClient = Pick<PrismaClient, "appSettings" | "campYear">;
+
+export async function getActiveCampYearId(prisma: ActiveYearClient): Promise<string | null> {
   const row = await prisma.appSettings.findUnique({
     where: { id: SETTINGS_ROW_ID },
     select: { activeCampYearId: true },
