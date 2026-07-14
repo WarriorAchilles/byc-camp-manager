@@ -498,4 +498,47 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(await prisma.campYear.findUnique({ where: { id: campYearId } })).toBeNull();
     expect(await prisma.camper.findUnique({ where: { id: createdCamper.body.id } })).toBeNull();
   });
+
+  it("lets super admins manage the registration merchandise catalog while camp admins can read it", async () => {
+    const [superAdmin, campAdmin] = await Promise.all([
+      prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } }),
+      prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } }),
+    ]);
+    const superToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const campAdminToken = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/merchandise`)
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        name: "Camp Shirt",
+        description: "Pre-order shirt",
+        priceCents: 2000,
+        availableOptions: ["Small", "Large"],
+        ownership: "camper",
+        isActive: true,
+        sortOrder: 10,
+      });
+    expect(created.status).toBe(201);
+
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/merchandise`)
+      .set("Authorization", `Bearer ${campAdminToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.merchandiseItems).toEqual([
+      expect.objectContaining({ name: "Camp Shirt", priceCents: 2000, availableOptions: ["Small", "Large"] }),
+    ]);
+
+    const denied = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/merchandise/${created.body.id}`)
+      .set("Authorization", `Bearer ${campAdminToken}`)
+      .send({ isActive: false });
+    expect(denied.status).toBe(403);
+
+    const updated = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/merchandise/${created.body.id}`)
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({ priceCents: 2250, isActive: false });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({ priceCents: 2250, isActive: false });
+  });
 });

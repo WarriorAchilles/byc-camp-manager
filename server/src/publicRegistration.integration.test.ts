@@ -235,6 +235,62 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(await prisma.familyRegistration.count({ where: { submissionKey: input.submissionKey } })).toBe(1);
   });
 
+  it("persists trusted merchandise totals and immutable receipt snapshots", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: { camperCapacity: 10, earlyCamperFeeCents: 16500, thirdPlusCamperFeeCents: 9000 },
+    });
+    const shirt = await prisma.merchandiseItem.create({
+      data: {
+        campYearId,
+        name: "Original Shirt",
+        priceCents: 2000,
+        availableOptions: ["Small", "Large"],
+        ownership: "camper",
+      },
+    });
+    const input = validFamilySubmission();
+    input.merchandiseSelections = [{
+      merchandiseItemId: shirt.id,
+      selectedOption: "Large",
+      quantity: 2,
+      camperIndex: 0,
+    }];
+    const spoofed = await request(app)
+      .post("/api/public/registration/family")
+      .send({ ...input, totalDueCents: 1, merchandiseSubtotalCents: 1 });
+    expect(spoofed.status).toBe(400);
+    expect(spoofed.body).toMatchObject({ error: "validation_failed" });
+    const response = await request(app).post("/api/public/registration/family").send(input);
+    expect(response.status).toBe(201);
+    expect(response.body.receipt).toMatchObject({
+      registrationSubtotalCents: 16500,
+      merchandiseSubtotalCents: 4000,
+      discountCents: 0,
+      totalDueCents: 20500,
+    });
+    await prisma.merchandiseItem.update({
+      where: { id: shirt.id },
+      data: { name: "Renamed Shirt", priceCents: 9999, availableOptions: ["Other"] },
+    });
+    const stored = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: response.body.registrationId },
+      include: { merchandiseOrderLines: true, receiptLineItems: true },
+    });
+    expect(stored.totalDueCents).toBe(20500);
+    expect(stored.merchandiseOrderLines[0]).toMatchObject({
+      itemNameSnapshot: "Original Shirt",
+      selectedOptionsSnapshot: { option: "Large" },
+      quantity: 2,
+      unitPriceCents: 2000,
+      lineTotalCents: 4000,
+    });
+    expect(stored.receiptLineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ description: "Original Shirt - Large - Taylor Camper", lineTotalCents: 4000 }),
+    ]));
+  });
+
   it("rolls back the whole family when work fails after nested camper creation", async () => {
     await selectActiveYear();
     await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });

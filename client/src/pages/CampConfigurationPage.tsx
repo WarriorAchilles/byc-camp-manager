@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiJson } from "../api";
+import { MerchandiseCatalogEditor } from "../components/MerchandiseCatalogEditor";
 import { useAuth } from "../auth";
 import { resolveCampYearSelectionNullable } from "../campYearSelection";
 
@@ -1025,6 +1026,8 @@ export function CampConfigurationPage(): React.ReactElement {
           </div>
         </form>
       ) : null}
+
+      {selected ? <MerchandiseCatalogEditor campYearId={selected.id} canEdit={superAdmin} /> : null}
 
       {!superAdmin && selected ? (
         <div className="card">

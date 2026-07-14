@@ -91,6 +91,7 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
   const alternatePath = flow === "family" ? "/register/worker" : "/register/family";
   const alternateLabel = flow === "family" ? "Register as a worker" : "Register campers";
   const remaining = targetTime === null ? 0 : targetTime - (now + serverOffset);
+  const returningFromPayment = flow === "family" && new URLSearchParams(window.location.search).has("registration_id");
 
   return (
     <main className="registration-page">
@@ -117,7 +118,7 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
               <button className="btn" type="button" onClick={() => void load()}>Try again</button>
             </div>
           ) : null}
-          {!loading && !error && availability?.state === "scheduled" ? (
+          {!loading && !error && !returningFromPayment && availability?.state === "scheduled" ? (
             <div>
               <h2>Registration opens soon</h2>
               <p>{availability.closedMessage}</p>
@@ -126,7 +127,12 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
               </p>
             </div>
           ) : null}
-          {!loading && !error && availability?.state === "open" ? (
+          {!loading && !error && returningFromPayment ? (
+            <div>
+              <FamilyRegistrationForm />
+            </div>
+          ) : null}
+          {!loading && !error && !returningFromPayment && availability?.state === "open" ? (
             <div>
               <h2>{title} is open</h2>
               {flow === "family" ? (
@@ -136,13 +142,13 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
               )}
             </div>
           ) : null}
-          {!loading && !error && availability?.state === "capacity_reached" ? (
+          {!loading && !error && !returningFromPayment && availability?.state === "capacity_reached" ? (
             <div role="status">
               <h2>Camper capacity has been reached</h2>
               <p>We cannot accept additional camper registrations at this time.</p>
             </div>
           ) : null}
-          {!loading && !error && availability && ["not_configured", "disabled", "closed"].includes(availability.state) ? (
+          {!loading && !error && !returningFromPayment && availability && ["not_configured", "disabled", "closed"].includes(availability.state) ? (
             <div role="status">
               <h2>Registration is closed</h2>
               <p>{availability.closedMessage ?? "Registration is currently closed."}</p>

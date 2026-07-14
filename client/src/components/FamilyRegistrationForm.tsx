@@ -50,6 +50,42 @@ type FormOptions = {
     acknowledgmentText: string;
     signatureMethod: "typed";
   };
+  merchandiseItems: MerchandiseItem[];
+};
+
+type MerchandiseItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  availableOptions: string[];
+  ownership: "family" | "camper";
+};
+
+type MerchandiseSelectionDraft = { quantity: number; selectedOption: string };
+
+type ReceiptLine = {
+  id?: string;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  discountCents: number;
+  lineTotalCents: number;
+  lineType: "registration" | "merchandise" | "discount";
+};
+
+type RegistrationReceipt = {
+  id?: string;
+  state?: "pending_payment" | "confirmed" | "expired" | "cancelled";
+  paymentMethod?: "stripe" | "cash" | null;
+  paymentStatus?: "unpaid" | "paid_stripe" | "paid_cash";
+  registrationSubtotalCents: number;
+  merchandiseSubtotalCents: number;
+  discountCents: number;
+  totalDueCents: number;
+  amountPaidCents?: number;
+  lineItems?: ReceiptLine[];
+  receiptLineItems?: ReceiptLine[];
 };
 
 type RegistrationType = "self" | "family";
@@ -104,6 +140,14 @@ function camperLegalName(camper: CamperDraft): string {
   return `${camper.firstName} ${camper.lastName}`.trim();
 }
 
+function formatMoney(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
+
+function merchandiseSelectionKey(itemId: string, camperIndex: number | null): string {
+  return `${itemId}:${camperIndex ?? "family"}`;
+}
+
 export function FamilyRegistrationForm(): React.ReactElement {
   const [step, setStep] = useState(1);
   const [registrationType, setRegistrationType] = useState<RegistrationType | null>(null);
@@ -123,11 +167,31 @@ export function FamilyRegistrationForm(): React.ReactElement {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [registrationId, setRegistrationId] = useState("");
+  const [merchandiseSelections, setMerchandiseSelections] = useState<Record<string, MerchandiseSelectionDraft>>({});
+  const [receipt, setReceipt] = useState<RegistrationReceipt | null>(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [redirectState, setRedirectState] = useState<"success" | "cancel" | null>(null);
 
   useEffect(() => {
     void apiJson<FormOptions>("/api/public/registration/family/form-options")
       .then((value) => { setOptions(value); setOptionsError(false); })
       .catch(() => setOptionsError(true));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const returnedRegistrationId = params.get("registration_id");
+    const stripeState = params.get("stripe");
+    if (!returnedRegistrationId || (stripeState !== "success" && stripeState !== "cancel")) return;
+    setRegistrationId(returnedRegistrationId);
+    setRedirectState(stripeState);
+    const sessionId = params.get("session_id");
+    const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+    void apiJson<{ registration: RegistrationReceipt }>(
+      `/api/public/registration/family/${returnedRegistrationId}${query}`,
+    ).then((value) => setReceipt(value.registration)).catch(() => {
+      setError("We could not refresh payment status. Keep your registration reference and try again shortly.");
+    });
   }, []);
 
   const updateCamper = <K extends keyof CamperDraft>(index: number, key: K, value: CamperDraft[K]): void => {
@@ -164,7 +228,20 @@ export function FamilyRegistrationForm(): React.ReactElement {
     setSubmitting(true);
     setError("");
     try {
-      const result = await apiJson<{ registrationId: string }>("/api/public/registration/family", {
+      const selectedMerchandise = options.merchandiseItems.flatMap((item) => {
+        const ownerIndexes = item.ownership === "family" ? [null] : campers.map((_, index) => index);
+        return ownerIndexes.flatMap((camperIndex) => {
+          const selection = merchandiseSelections[merchandiseSelectionKey(item.id, camperIndex)];
+          if (!selection || selection.quantity <= 0) return [];
+          return [{
+            merchandiseItemId: item.id,
+            selectedOption: selection.selectedOption || null,
+            quantity: selection.quantity,
+            camperIndex,
+          }];
+        });
+      });
+      const result = await apiJson<{ registrationId: string; receipt: RegistrationReceipt }>("/api/public/registration/family", {
         method: "POST",
         body: JSON.stringify({
           submissionKey,
@@ -178,6 +255,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
             guardianName: registrationType === "self" ? selfName : camper.guardianName,
             guardianPhone: registrationType === "self" ? guardian.phone : camper.guardianPhone,
           })),
+          merchandiseSelections: selectedMerchandise,
           legal: {
             typedName,
             acknowledged,
@@ -186,6 +264,8 @@ export function FamilyRegistrationForm(): React.ReactElement {
         }),
       });
       setRegistrationId(result.registrationId);
+      setReceipt(result.receipt);
+      setStep(5);
     } catch (caught) {
       const apiError = caught as ApiHttpError;
       const body = apiError.body as { error?: string; fields?: Array<{ message: string }> } | null;
@@ -198,18 +278,78 @@ export function FamilyRegistrationForm(): React.ReactElement {
     }
   };
 
-  if (registrationId) {
+  const refreshReceipt = async (): Promise<void> => {
+    if (!registrationId) return;
+    const result = await apiJson<{ registration: RegistrationReceipt }>(
+      `/api/public/registration/family/${registrationId}`,
+    );
+    setReceipt(result.registration);
+  };
+
+  const selectCash = async (): Promise<void> => {
+    if (!registrationId) return;
+    setPaymentBusy(true);
+    setError("");
+    try {
+      const result = await apiJson<{ registration: RegistrationReceipt }>(
+        `/api/public/registration/family/${registrationId}/pay-cash`,
+        { method: "POST", body: "{}" },
+      );
+      setReceipt(result.registration);
+    } catch {
+      setError("We could not confirm cash payment selection. Please refresh payment status before trying again.");
+      await refreshReceipt().catch(() => undefined);
+    } finally {
+      setPaymentBusy(false);
+    }
+  };
+
+  const selectStripe = async (): Promise<void> => {
+    if (!registrationId) return;
+    setPaymentBusy(true);
+    setError("");
+    try {
+      const result = await apiJson<{ url: string }>(
+        `/api/public/registration/family/${registrationId}/stripe-checkout`,
+        { method: "POST", body: "{}" },
+      );
+      window.location.assign(result.url);
+    } catch {
+      setError("Online checkout could not be started. No new payment was recorded.");
+      setPaymentBusy(false);
+    }
+  };
+
+  if (registrationId && receipt) {
+    const confirmed = receipt.state === "confirmed";
     return (
-      <div className="registration-success" role="status">
-        <h2>{registrationType === "self" ? "Registration information saved" : "Family information saved"}</h2>
-        <p>{registrationType === "self"
-          ? "Your camper information and signed medical authorization were saved together."
-          : "Your campers and signed medical authorization were saved together."}</p>
+      <div className="family-registration-form registration-payment" role="status">
+        <h2>{confirmed ? "Registration confirmed" : "Review and choose payment"}</h2>
+        {redirectState === "success" && receipt.paymentStatus !== "paid_stripe" ? <p className="registration-notice">Stripe returned you to registration. Payment confirmation is still processing; this page shows the latest server-confirmed status.</p> : null}
+        {redirectState === "cancel" ? <p className="registration-notice">Online checkout was canceled. Your registration is saved, and no payment was recorded.</p> : null}
         <p><strong>Registration reference:</strong> {registrationId}</p>
-        <p>This registration is awaiting the pricing, merchandise, and payment step.</p>
+        <ReceiptBreakdown receipt={receipt} />
+        <aside className="registration-total-due" aria-label="Total amount due">
+          <span>Total amount due</span><strong>{formatMoney(receipt.totalDueCents)}</strong>
+        </aside>
+        {receipt.paymentStatus === "paid_stripe" ? (
+          <div className="registration-confirmation-message"><h3>Paid online</h3><p>Your Stripe payment was confirmed by the server. No payment is due at camp.</p></div>
+        ) : receipt.paymentMethod === "cash" && confirmed ? (
+          <div className="registration-confirmation-message cash-due"><h3>Pay at camp with cash</h3><p>Registration is confirmed and remains unpaid.</p><p><strong>Bring exactly {formatMoney(receipt.totalDueCents)} to camp.</strong></p></div>
+        ) : (
+          <fieldset className="registration-fieldset payment-choice">
+            <legend>Choose a payment method</legend>
+            <button className="btn" type="button" disabled={paymentBusy} onClick={() => void selectStripe()}>Pay now securely with Stripe</button>
+            <button className="btn secondary" type="button" disabled={paymentBusy} onClick={() => void selectCash()}>Confirm registration and pay cash at camp</button>
+            <p className="registration-fine-print">Online payment is confirmed only after Stripe reports payment to the server. Choosing cash confirms registration while preserving the exact unpaid balance above.</p>
+          </fieldset>
+        )}
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
       </div>
     );
   }
+
+  if (registrationId && !receipt) return <p aria-busy="true">Refreshing registration payment status…</p>;
 
   if (optionsError) return <p role="alert">The registration form options could not be loaded. Please try again shortly.</p>;
   if (!options) return <p aria-busy="true">Loading registration form…</p>;
@@ -238,8 +378,8 @@ export function FamilyRegistrationForm(): React.ReactElement {
   const selfRegistration = registrationType === "self";
   const agreement = selfRegistration ? options.adultMedicalAgreement : options.medicalAgreement;
   const progressLabels = selfRegistration
-    ? ["Your contact information", "Camper information", "Medical authorization"]
-    : ["Parent or guardian", "Campers", "Medical authorization"];
+    ? ["Your contact information", "Camper information", "Medical authorization", "Merchandise", "Payment"]
+    : ["Parent or guardian", "Campers", "Medical authorization", "Merchandise", "Payment"];
 
   return (
     <div className="family-registration-form">
@@ -311,7 +451,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
       ) : null}
 
       {step === 3 ? (
-        <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <form onSubmit={(event) => { event.preventDefault(); setStep(4); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
           <fieldset className="registration-fieldset">
             <legend>Emergency medical authorization</legend>
             <div className="agreement-copy"><p>{agreement.text}</p><p><strong>Covered camper(s):</strong> {campers.map((camper) => `${camper.firstName} ${camper.lastName}`).join(", ")}</p></div>
@@ -320,7 +460,34 @@ export function FamilyRegistrationForm(): React.ReactElement {
             <p className="registration-fine-print">The accepted agreement text, typed name, date and time, and request IP address will be stored with this registration.</p>
           </fieldset>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(2)}>Back</button><button className="btn" type="submit" disabled={submitting}>{submitting ? "Saving…" : selfRegistration ? "Sign and save registration" : "Sign and save family"}</button></div>
+          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(2)}>Back</button><button className="btn" type="submit">Continue to merchandise</button></div>
+        </form>
+      ) : null}
+
+      {step === 4 ? (
+        <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          <fieldset className="registration-fieldset">
+            <legend>Optional merchandise pre-order</legend>
+            {options.merchandiseItems.length === 0 ? <p>No merchandise is currently available for pre-order. You can continue to payment.</p> : null}
+            <div className="merchandise-grid">
+              {options.merchandiseItems.flatMap((item) => {
+                const ownerIndexes = item.ownership === "family" ? [null] : campers.map((_, index) => index);
+                return ownerIndexes.map((camperIndex) => {
+                  const key = merchandiseSelectionKey(item.id, camperIndex);
+                  const selected = merchandiseSelections[key] ?? { quantity: 0, selectedOption: "" };
+                  const ownerLabel = camperIndex === null ? "Family order" : camperLegalName(campers[camperIndex]!) || `Camper ${camperIndex + 1}`;
+                  return <div className="merchandise-card" key={key}>
+                    <h3>{item.name}</h3><p className="muted">{ownerLabel} · {formatMoney(item.priceCents)} each</p>
+                    {item.description ? <p>{item.description}</p> : null}
+                    {item.availableOptions.length > 0 ? <label>Option<select required={selected.quantity > 0} value={selected.selectedOption} onChange={(event) => setMerchandiseSelections((current) => ({ ...current, [key]: { ...selected, selectedOption: event.target.value } }))}><option value="">Select one</option>{item.availableOptions.map((option) => <option key={option}>{option}</option>)}</select></label> : null}
+                    <label>Quantity<input type="number" min="0" max="20" value={selected.quantity} onChange={(event) => setMerchandiseSelections((current) => ({ ...current, [key]: { ...selected, quantity: Number(event.target.value) } }))} /></label>
+                  </div>;
+                });
+              })}
+            </div>
+          </fieldset>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(3)}>Back</button><button className="btn" type="submit" disabled={submitting}>{submitting ? "Calculating and saving…" : "Review total and choose payment"}</button></div>
         </form>
       ) : null}
     </div>
@@ -343,4 +510,23 @@ function YesNoField({ label, value, onChange }: { label: string; value: boolean;
 
 function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }): React.ReactElement {
   return <label>{label}<textarea rows={3} maxLength={4000} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+}
+
+function ReceiptBreakdown({ receipt }: { receipt: RegistrationReceipt }): React.ReactElement {
+  const lines = receipt.receiptLineItems ?? receipt.lineItems ?? [];
+  return <section className="registration-receipt" aria-labelledby="registration-receipt-title">
+    <h3 id="registration-receipt-title">Itemized receipt</h3>
+    <div className="receipt-lines">
+      {lines.map((line, index) => <div className={`receipt-line receipt-line-${line.lineType}`} key={line.id ?? `${line.description}-${index}`}>
+        <span>{line.description}{line.quantity > 1 ? ` × ${line.quantity}` : ""}</span>
+        <strong>{formatMoney(line.lineTotalCents)}</strong>
+      </div>)}
+    </div>
+    <dl className="receipt-totals">
+      <div><dt>Registration subtotal</dt><dd>{formatMoney(receipt.registrationSubtotalCents)}</dd></div>
+      {receipt.discountCents > 0 ? <div className="receipt-discount"><dt>Multi-camper discounts</dt><dd>−{formatMoney(receipt.discountCents)}</dd></div> : null}
+      <div><dt>Merchandise subtotal</dt><dd>{formatMoney(receipt.merchandiseSubtotalCents)}</dd></div>
+      <div className="receipt-grand-total"><dt>Total</dt><dd>{formatMoney(receipt.totalDueCents)}</dd></div>
+    </dl>
+  </section>;
 }
