@@ -85,7 +85,7 @@ async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<
   const closesAt = family ? year.familyRegistrationClosesAt : year.workerRegistrationClosesAt;
   const state = resolveRegistrationAvailability({
     flow,
-    enabled: family ? year.familyRegistrationEnabled : year.workerRegistrationEnabled,
+    manuallyEnabled: family ? year.familyRegistrationEnabled : year.workerRegistrationEnabled,
     opensAt,
     closesAt,
     camperCapacity: year.camperCapacity,
@@ -208,7 +208,7 @@ export async function persistFamilySubmission(
         });
         const availability = resolveRegistrationAvailability({
           flow: "family",
-          enabled: camp.familyRegistrationEnabled,
+          manuallyEnabled: camp.familyRegistrationEnabled,
           opensAt: camp.familyRegistrationOpensAt,
           closesAt: camp.familyRegistrationClosesAt,
           camperCapacity: camp.camperCapacity,

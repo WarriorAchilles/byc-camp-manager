@@ -9,7 +9,7 @@ export type RegistrationAvailabilityState =
 
 type AvailabilityInput = {
   flow: RegistrationFlow;
-  enabled: boolean;
+  manuallyEnabled: boolean;
   opensAt: Date | null;
   closesAt: Date | null;
   camperCapacity?: number | null;
@@ -20,8 +20,14 @@ export function resolveRegistrationAvailability(
   input: AvailabilityInput,
   now: Date,
 ): RegistrationAvailabilityState {
-  if (!input.enabled) {
-    return "disabled";
+  const capacityReached =
+    input.flow === "family" &&
+    input.camperCapacity !== null &&
+    input.camperCapacity !== undefined &&
+    (input.activeCamperCount ?? 0) >= input.camperCapacity;
+
+  if (input.manuallyEnabled) {
+    return capacityReached ? "capacity_reached" : "open";
   }
   if (!input.opensAt) {
     return "not_configured";
@@ -32,13 +38,5 @@ export function resolveRegistrationAvailability(
   if (input.closesAt && now >= input.closesAt) {
     return "closed";
   }
-  if (
-    input.flow === "family" &&
-    input.camperCapacity !== null &&
-    input.camperCapacity !== undefined &&
-    (input.activeCamperCount ?? 0) >= input.camperCapacity
-  ) {
-    return "capacity_reached";
-  }
-  return "open";
+  return capacityReached ? "capacity_reached" : "open";
 }

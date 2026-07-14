@@ -42,7 +42,7 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
         familyRegistrationHeaderContent: "Family public copy",
         familyRegistrationClosedMessage: "Families are closed.",
         workerRegistrationEnabled: false,
-        workerRegistrationOpensAt: new Date(Date.now() - 60_000),
+        workerRegistrationOpensAt: new Date(Date.now() + 3_600_000),
         workerRegistrationHeaderContent: "Worker public copy",
         workerRegistrationClosedMessage: "Workers are closed.",
       },
@@ -77,7 +77,7 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
       headerContent: "Family public copy",
       camp: { id: campYearId, yearLabel: "2099" },
     });
-    expect(worker.body).toMatchObject({ flow: "worker", state: "disabled" });
+    expect(worker.body).toMatchObject({ flow: "worker", state: "scheduled" });
     expect(JSON.stringify(family.body)).not.toContain("camperCapacity");
     expect(family.headers["cache-control"]).toBe("no-store");
   });
@@ -87,6 +87,7 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     await prisma.campYear.update({
       where: { id: campYearId },
       data: {
+        familyRegistrationEnabled: false,
         familyRegistrationOpensAt: new Date(Date.now() + 3_600_000),
         familyRegistrationClosesAt: new Date(Date.now() + 7_200_000),
       },
@@ -95,7 +96,14 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
 
     await prisma.campYear.update({
       where: { id: campYearId },
+      data: { familyRegistrationEnabled: true },
+    });
+    expect((await request(app).get("/api/public/registration/family")).body.state).toBe("open");
+
+    await prisma.campYear.update({
+      where: { id: campYearId },
       data: {
+        familyRegistrationEnabled: false,
         familyRegistrationOpensAt: new Date(Date.now() - 7_200_000),
         familyRegistrationClosesAt: new Date(Date.now() - 3_600_000),
       },
