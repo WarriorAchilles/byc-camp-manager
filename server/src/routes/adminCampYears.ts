@@ -15,6 +15,7 @@ import { adminCampYearCamperFeeImportRouter } from "./adminCampYearCamperFeeImpo
 import { adminCampYearCsvImportRouter } from "./adminCampYearCsvImport.js";
 import { adminCampYearDormAssignmentsRouter } from "./adminCampYearDormAssignments.js";
 import { adminCampYearDormLeadersRouter } from "./adminCampYearDormLeaders.js";
+import { adminCampYearMerchandiseRouter } from "./adminCampYearMerchandise.js";
 import { adminCampYearWorkersRouter } from "./adminCampYearWorkers.js";
 
 const { AdminRole, CheckInStatus, DormGenderDesignation, DormPurpose, Gender } = prismaClientPkg;
@@ -214,6 +215,7 @@ adminCampYearsRouter.use("/:campYearId/workers", adminCampYearWorkersRouter);
 adminCampYearsRouter.use("/:campYearId/dorm-leaders", adminCampYearDormLeadersRouter);
 adminCampYearsRouter.use("/:campYearId/csv-import", adminCampYearCsvImportRouter);
 adminCampYearsRouter.use("/:campYearId/camper-fee-csv", adminCampYearCamperFeeImportRouter);
+adminCampYearsRouter.use("/:campYearId/merchandise", adminCampYearMerchandiseRouter);
 
 const ageBracketRouter = Router({ mergeParams: true });
 ageBracketRouter.use(requireAuth);

@@ -37,7 +37,13 @@ enum CheckInStatus {
 enum StripeCheckoutStatus {
   pending
   completed
+  failed
   expired
+}
+
+enum StripeCheckoutPurpose {
+  self_check_in
+  family_registration
 }
 
 enum RegistrationState {
@@ -392,19 +398,21 @@ model EmailDeliveryAttempt {
 }
 
 model StripeCheckoutSession {
-  id                   String               @id @default(uuid())
-  stripeSessionId      String               @map("stripe_session_id")
-  campYearId           String               @map("camp_year_id")
-  camperId             String               @map("camper_id")
-  familyRegistrationId String?              @map("family_registration_id")
-  amountCents          Int                  @map("amount_cents")
-  status               StripeCheckoutStatus @default(pending)
-  paymentIntentId      String?              @map("payment_intent_id")
-  completedAt          DateTime?            @map("completed_at")
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
+  id                   String                @id @default(uuid())
+  stripeSessionId      String                @map("stripe_session_id")
+  campYearId           String                @map("camp_year_id")
+  camperId             String?               @map("camper_id")
+  familyRegistrationId String?               @map("family_registration_id")
+  purpose              StripeCheckoutPurpose @default(self_check_in)
+  amountCents          Int                   @map("amount_cents")
+  currency             String                @default("usd")
+  status               StripeCheckoutStatus  @default(pending)
+  paymentIntentId      String?               @map("payment_intent_id")
+  completedAt          DateTime?             @map("completed_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
 
-  camper             Camper              @relation(fields: [camperId], references: [id], onDelete: Cascade)
+  camper             Camper?             @relation(fields: [camperId], references: [id], onDelete: Cascade)
   familyRegistration FamilyRegistration? @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
 
   @@index([stripeSessionId])
