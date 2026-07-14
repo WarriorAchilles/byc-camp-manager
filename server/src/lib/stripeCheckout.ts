@@ -1,4 +1,5 @@
 import prismaClientPkg, { type Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { loadEnv } from "../config/env.js";
 import { prisma } from "../db.js";
@@ -6,7 +7,14 @@ import { runCamperCheckInInTransaction } from "./camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "./checkInConfirmationMail.js";
 import { writeOpsLog } from "./opsLog.js";
 
-const { CamperPaymentStatus, CheckInStatus, StripeCheckoutStatus } = prismaClientPkg;
+const {
+  CamperPaymentStatus,
+  CheckInStatus,
+  RegistrationPaymentMethod,
+  RegistrationState,
+  StripeCheckoutPurpose,
+  StripeCheckoutStatus,
+} = prismaClientPkg;
 
 const stripeApiVersion = "2026-04-22.dahlia";
 
@@ -15,6 +23,7 @@ type Db = Prisma.TransactionClient;
 export type StripeRuntime = {
   stripe: Stripe;
   appPublicUrl: string;
+  registrationPublicUrl: string;
   webhookSecret: string;
 };
 
@@ -27,6 +36,7 @@ export function getStripeRuntime(): StripeRuntime | null {
     stripe: new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: stripeApiVersion }),
     // This checkout belongs to the posted self-check-in flow, which remains on the admin/check-in origin.
     appPublicUrl: env.ADMIN_PUBLIC_ORIGIN.replace(/\/+$/, ""),
+    registrationPublicUrl: env.REGISTRATION_PUBLIC_ORIGIN.replace(/\/+$/, ""),
     webhookSecret: env.STRIPE_WEBHOOK_SECRET,
   };
 }
@@ -140,6 +150,8 @@ export async function createSelfCheckInCheckoutSession(input: {
       campYearId: input.campYearId,
       camperId: camper.id,
       amountCents: camperAmountCents,
+      purpose: StripeCheckoutPurpose.self_check_in,
+      currency: "usd",
       status: StripeCheckoutStatus.pending,
     })),
   });
@@ -147,7 +159,7 @@ export async function createSelfCheckInCheckoutSession(input: {
   return { ok: true, url: session.url, stripeSessionId: session.id, amountCents };
 }
 
-async function applyCompletedCheckoutInTransaction(
+async function applyCompletedSelfCheckInCheckoutInTransaction(
   tx: Db,
   input: {
     session: Stripe.Checkout.Session;
@@ -161,19 +173,22 @@ async function applyCompletedCheckoutInTransaction(
   | null
 > {
   const sessionRows = await tx.stripeCheckoutSession.findMany({
-    where: { stripeSessionId: input.session.id },
+    where: { stripeSessionId: input.session.id, purpose: StripeCheckoutPurpose.self_check_in },
   });
-  if (sessionRows.length === 0) {
+  const selfCheckInRows = sessionRows.filter(
+    (sessionRow): sessionRow is typeof sessionRow & { camperId: string } => sessionRow.camperId !== null,
+  );
+  if (selfCheckInRows.length === 0) {
     return null;
   }
-  const firstSessionRow = sessionRows[0];
+  const firstSessionRow = selfCheckInRows[0];
   if (!firstSessionRow) {
     return null;
   }
-  if (sessionRows.every((sessionRow) => sessionRow.status === StripeCheckoutStatus.completed)) {
+  if (selfCheckInRows.every((sessionRow) => sessionRow.status === StripeCheckoutStatus.completed)) {
     return {
       campYearId: firstSessionRow.campYearId,
-      campers: sessionRows.map((sessionRow) => ({
+      campers: selfCheckInRows.map((sessionRow) => ({
         camperId: sessionRow.camperId,
         transitionedToCheckedIn: false,
       })),
@@ -190,7 +205,7 @@ async function applyCompletedCheckoutInTransaction(
 
   const completedCampers: Array<{ camperId: string; transitionedToCheckedIn: boolean }> = [];
 
-  for (const sessionRow of sessionRows) {
+  for (const sessionRow of selfCheckInRows) {
     if (sessionRow.status === StripeCheckoutStatus.completed) {
       completedCampers.push({ camperId: sessionRow.camperId, transitionedToCheckedIn: false });
       continue;
@@ -235,7 +250,7 @@ async function applyCompletedCheckoutInTransaction(
   }
 
   await tx.stripeCheckoutSession.updateMany({
-    where: { stripeSessionId: input.session.id },
+    where: { stripeSessionId: input.session.id, purpose: StripeCheckoutPurpose.self_check_in },
     data: {
       status: StripeCheckoutStatus.completed,
       paymentIntentId: paymentIntentIdFromSession(input.session),
@@ -249,6 +264,100 @@ async function applyCompletedCheckoutInTransaction(
   };
 }
 
+async function applyCompletedFamilyCheckoutInTransaction(
+  tx: Db,
+  input: { session: Stripe.Checkout.Session; now: Date },
+): Promise<{ completed: boolean; campYearId?: string; camperIds?: string[] }> {
+  const sessionRow = await tx.stripeCheckoutSession.findFirst({
+    where: {
+      stripeSessionId: input.session.id,
+      purpose: StripeCheckoutPurpose.family_registration,
+    },
+  });
+  if (!sessionRow?.familyRegistrationId) return { completed: false };
+  if (sessionRow.status === StripeCheckoutStatus.completed) {
+    const campers = await tx.camper.findMany({
+      where: { familyRegistrationId: sessionRow.familyRegistrationId },
+      select: { id: true },
+    });
+    return {
+      completed: true,
+      campYearId: sessionRow.campYearId,
+      camperIds: campers.map((camper) => camper.id),
+    };
+  }
+  const paidAmount = input.session.amount_total;
+  const paidCurrency = input.session.currency?.toLowerCase() ?? null;
+  if (
+    input.session.payment_status !== "paid" ||
+    paidAmount !== sessionRow.amountCents ||
+    paidCurrency !== sessionRow.currency.toLowerCase()
+  ) {
+    if (input.session.payment_status === "paid") {
+      await tx.stripeCheckoutSession.update({
+        where: { id: sessionRow.id },
+        data: { status: StripeCheckoutStatus.failed },
+      });
+    }
+    return { completed: false };
+  }
+  const registration = await tx.familyRegistration.findUnique({
+    where: { id: sessionRow.familyRegistrationId },
+    select: { state: true, paymentMethod: true, paymentStatus: true, totalDueCents: true },
+  });
+  if (!registration || registration.totalDueCents !== sessionRow.amountCents) {
+    await tx.stripeCheckoutSession.update({
+      where: { id: sessionRow.id },
+      data: { status: StripeCheckoutStatus.failed },
+    });
+    return { completed: false };
+  }
+  if (
+    registration.paymentMethod !== RegistrationPaymentMethod.stripe ||
+    (registration.state !== RegistrationState.pending_payment &&
+      !(registration.state === RegistrationState.confirmed && registration.paymentStatus === CamperPaymentStatus.paid_stripe))
+  ) {
+    return { completed: false };
+  }
+  await tx.familyRegistration.update({
+    where: { id: sessionRow.familyRegistrationId },
+    data: {
+      state: RegistrationState.confirmed,
+      paymentStatus: CamperPaymentStatus.paid_stripe,
+      amountPaidCents: sessionRow.amountCents,
+      confirmedAt: input.now,
+      expiresAt: null,
+    },
+  });
+  await tx.camper.updateMany({
+    where: { familyRegistrationId: sessionRow.familyRegistrationId },
+    data: { paymentStatus: CamperPaymentStatus.paid_stripe },
+  });
+  const campers = await tx.camper.findMany({
+    where: { familyRegistrationId: sessionRow.familyRegistrationId },
+    select: { id: true, feeDueCents: true },
+  });
+  for (const camper of campers) {
+    await tx.camper.update({
+      where: { id: camper.id },
+      data: { feePaidCents: camper.feeDueCents ?? 0 },
+    });
+  }
+  await tx.stripeCheckoutSession.update({
+    where: { id: sessionRow.id },
+    data: {
+      status: StripeCheckoutStatus.completed,
+      paymentIntentId: paymentIntentIdFromSession(input.session),
+      completedAt: input.now,
+    },
+  });
+  return {
+    completed: true,
+    campYearId: sessionRow.campYearId,
+    camperIds: campers.map((camper) => camper.id),
+  };
+}
+
 export async function completeCheckoutSessionIfPaid(
   session: Stripe.Checkout.Session,
 ): Promise<{ completed: boolean; campYearId?: string; camperIds?: string[] }> {
@@ -256,9 +365,27 @@ export async function completeCheckoutSessionIfPaid(
     return { completed: false };
   }
 
+  const familyRow = await prisma.stripeCheckoutSession.findFirst({
+    where: { stripeSessionId: session.id, purpose: StripeCheckoutPurpose.family_registration },
+    select: { id: true },
+  });
+  if (familyRow) {
+    const result = await prisma.$transaction((tx) =>
+      applyCompletedFamilyCheckoutInTransaction(tx, { session, now: new Date() }),
+    );
+    if (result.completed) {
+      writeOpsLog("stripe_checkout_completed", {
+        checkoutPurpose: StripeCheckoutPurpose.family_registration,
+        campYearId: result.campYearId,
+        stripeSessionId: session.id,
+      });
+    }
+    return result;
+  }
+
   const now = new Date();
   const result = await prisma.$transaction((tx) =>
-    applyCompletedCheckoutInTransaction(tx, { session, now }),
+    applyCompletedSelfCheckInCheckoutInTransaction(tx, { session, now }),
   );
   if (!result) {
     return { completed: false };
@@ -317,6 +444,230 @@ export async function completeCheckoutSessionIfPaid(
   };
 }
 
+export async function createFamilyRegistrationCheckoutSession(input: {
+  familyRegistrationId: string;
+  stripeRuntime: StripeRuntime;
+}): Promise<
+  | { ok: true; url: string; stripeSessionId: string; amountCents: number }
+  | { ok: false; status: number; error: string }
+> {
+  const now = new Date();
+  const existing = await prisma.familyRegistration.findUnique({
+    where: { id: input.familyRegistrationId },
+    include: {
+      stripeCheckoutSessions: {
+        where: { purpose: StripeCheckoutPurpose.family_registration, status: StripeCheckoutStatus.pending },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+  if (!existing) return { ok: false, status: 404, error: "registration_not_found" };
+  if (existing.state === RegistrationState.confirmed) {
+    return { ok: false, status: 409, error: "registration_already_confirmed" };
+  }
+  if (existing.state !== RegistrationState.pending_payment || (existing.expiresAt && existing.expiresAt <= now)) {
+    return { ok: false, status: 410, error: "registration_expired" };
+  }
+  const existingSessionRow = existing.stripeCheckoutSessions[0];
+  if (existing.paymentMethod === RegistrationPaymentMethod.stripe && existingSessionRow) {
+    const session = await input.stripeRuntime.stripe.checkout.sessions.retrieve(existingSessionRow.stripeSessionId);
+    if (session.url) {
+      return {
+        ok: true,
+        url: session.url,
+        stripeSessionId: session.id,
+        amountCents: existingSessionRow.amountCents,
+      };
+    }
+  }
+  if (existing.paymentMethod !== null) {
+    return { ok: false, status: 409, error: "payment_method_already_selected" };
+  }
+  const claimed = await prisma.familyRegistration.updateMany({
+    where: {
+      id: input.familyRegistrationId,
+      state: RegistrationState.pending_payment,
+      paymentMethod: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    data: { paymentMethod: RegistrationPaymentMethod.stripe },
+  });
+  if (claimed.count !== 1) return { ok: false, status: 409, error: "payment_action_in_progress" };
+
+  try {
+    const registration = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: input.familyRegistrationId },
+      include: {
+        campers: { orderBy: { createdAt: "asc" } },
+        merchandiseOrderLines: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (registration.totalDueCents <= 0) {
+      await prisma.familyRegistration.update({
+        where: { id: registration.id },
+        data: { paymentMethod: null },
+      });
+      return { ok: false, status: 409, error: "no_balance_due" };
+    }
+    const lineItems = [
+      ...registration.campers
+        .filter((camper) => (camper.feeDueCents ?? 0) > 0)
+        .map((camper) => ({
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            product_data: { name: `Camp registration - ${camper.firstName} ${camper.lastName}`.trim() },
+            unit_amount: camper.feeDueCents ?? 0,
+          },
+        })),
+      ...registration.merchandiseOrderLines.map((line) => ({
+        quantity: line.quantity,
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: line.itemNameSnapshot,
+            ...(line.selectedOptionsSnapshot
+              ? { description: Object.values(line.selectedOptionsSnapshot as Record<string, unknown>).join(", ") }
+              : {}),
+          },
+          unit_amount: line.unitPriceCents,
+        },
+      })),
+    ];
+    const successUrl =
+      `${input.stripeRuntime.registrationPublicUrl}/register/family?stripe=success` +
+      `&registration_id=${encodeURIComponent(registration.id)}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl =
+      `${input.stripeRuntime.registrationPublicUrl}/register/family?stripe=cancel` +
+      `&registration_id=${encodeURIComponent(registration.id)}`;
+    const session = await input.stripeRuntime.stripe.checkout.sessions.create({
+      mode: "payment",
+      client_reference_id: registration.id,
+      customer_email: registration.guardianEmail,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        purpose: StripeCheckoutPurpose.family_registration,
+        familyRegistrationId: registration.id,
+        campYearId: registration.campYearId,
+      },
+      line_items: lineItems,
+    }, { idempotencyKey: `family-registration-${registration.id}-${randomUUID()}` });
+    if (!session.url) throw new Error("Stripe did not return a checkout URL");
+    await prisma.stripeCheckoutSession.create({
+      data: {
+        stripeSessionId: session.id,
+        campYearId: registration.campYearId,
+        familyRegistrationId: registration.id,
+        purpose: StripeCheckoutPurpose.family_registration,
+        amountCents: registration.totalDueCents,
+        currency: "usd",
+        status: StripeCheckoutStatus.pending,
+      },
+    });
+    return {
+      ok: true,
+      url: session.url,
+      stripeSessionId: session.id,
+      amountCents: registration.totalDueCents,
+    };
+  } catch (error) {
+    await prisma.familyRegistration.updateMany({
+      where: {
+        id: input.familyRegistrationId,
+        state: RegistrationState.pending_payment,
+        paymentMethod: RegistrationPaymentMethod.stripe,
+        stripeCheckoutSessions: { none: { purpose: StripeCheckoutPurpose.family_registration } },
+      },
+      data: { paymentMethod: null },
+    });
+    throw error;
+  }
+}
+
+export async function confirmFamilyRegistrationCash(input: { familyRegistrationId: string; now?: Date }) {
+  const now = input.now ?? new Date();
+  return prisma.$transaction(async (tx) => {
+    const registration = await tx.familyRegistration.findUnique({ where: { id: input.familyRegistrationId } });
+    if (!registration) return { ok: false as const, status: 404, error: "registration_not_found" };
+    if (
+      registration.state === RegistrationState.confirmed &&
+      registration.paymentMethod === RegistrationPaymentMethod.cash
+    ) {
+      return { ok: true as const, registration };
+    }
+    if (registration.state !== RegistrationState.pending_payment || (registration.expiresAt && registration.expiresAt <= now)) {
+      return { ok: false as const, status: 410, error: "registration_expired" };
+    }
+    if (registration.paymentMethod !== null) {
+      return { ok: false as const, status: 409, error: "payment_method_already_selected" };
+    }
+    const updated = await tx.familyRegistration.updateMany({
+      where: {
+        id: registration.id,
+        state: RegistrationState.pending_payment,
+        paymentMethod: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      data: {
+        state: RegistrationState.confirmed,
+        paymentMethod: RegistrationPaymentMethod.cash,
+        paymentStatus: CamperPaymentStatus.unpaid,
+        amountPaidCents: 0,
+        confirmedAt: now,
+        expiresAt: null,
+      },
+    });
+    if (updated.count !== 1) {
+      return { ok: false as const, status: 409, error: "payment_action_in_progress" };
+    }
+    const confirmed = await tx.familyRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    return { ok: true as const, registration: confirmed };
+  });
+}
+
+export async function markCheckoutSessionUnsuccessful(
+  session: Stripe.Checkout.Session,
+  status: "failed" | "expired",
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.stripeCheckoutSession.findFirst({ where: { stripeSessionId: session.id } });
+    if (!row || row.status === StripeCheckoutStatus.completed) return;
+    await tx.stripeCheckoutSession.updateMany({
+      where: { stripeSessionId: session.id, status: { not: StripeCheckoutStatus.completed } },
+      data: { status: status === "failed" ? StripeCheckoutStatus.failed : StripeCheckoutStatus.expired },
+    });
+    if (row.purpose === StripeCheckoutPurpose.family_registration && row.familyRegistrationId) {
+      await tx.familyRegistration.updateMany({
+        where: {
+          id: row.familyRegistrationId,
+          state: RegistrationState.pending_payment,
+          paymentMethod: RegistrationPaymentMethod.stripe,
+        },
+        data: { paymentMethod: null },
+      });
+    }
+  });
+}
+
+export async function reconcileFamilyRegistrationCheckout(input: {
+  stripeRuntime: StripeRuntime;
+  stripeSessionId: string;
+  familyRegistrationId: string;
+}): Promise<void> {
+  const row = await prisma.stripeCheckoutSession.findFirst({
+    where: {
+      stripeSessionId: input.stripeSessionId,
+      familyRegistrationId: input.familyRegistrationId,
+      purpose: StripeCheckoutPurpose.family_registration,
+    },
+  });
+  if (!row) return;
+  const session = await input.stripeRuntime.stripe.checkout.sessions.retrieve(input.stripeSessionId);
+  if (session.payment_status === "paid") await completeCheckoutSessionIfPaid(session);
+}
+
 export async function reconcileCheckoutSession(input: {
   stripeRuntime: StripeRuntime;
   stripeSessionId: string;
@@ -345,7 +696,7 @@ export async function reconcileCheckoutSession(input: {
   | { ok: false; status: number; error: string }
 > {
   const sessionRows = await prisma.stripeCheckoutSession.findMany({
-    where: { stripeSessionId: input.stripeSessionId },
+    where: { stripeSessionId: input.stripeSessionId, purpose: StripeCheckoutPurpose.self_check_in },
     orderBy: { createdAt: "asc" },
   });
   if (sessionRows.length === 0) {
@@ -361,12 +712,14 @@ export async function reconcileCheckoutSession(input: {
     const session = await input.stripeRuntime.stripe.checkout.sessions.retrieve(input.stripeSessionId);
     await completeCheckoutSessionIfPaid(session);
     currentSessionRows = await prisma.stripeCheckoutSession.findMany({
-      where: { stripeSessionId: input.stripeSessionId },
+      where: { stripeSessionId: input.stripeSessionId, purpose: StripeCheckoutPurpose.self_check_in },
       orderBy: { createdAt: "asc" },
     });
   }
 
-  const camperIds = currentSessionRows.map((sessionRow) => sessionRow.camperId);
+  const camperIds = currentSessionRows
+    .map((sessionRow) => sessionRow.camperId)
+    .filter((camperId): camperId is string => camperId !== null);
   const campers = await prisma.camper.findMany({
     where: { id: { in: camperIds }, campYearId: firstSessionRow.campYearId },
     select: {

@@ -1,6 +1,7 @@
 import prismaClientPkg, { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
+import { z } from "zod";
 import { prisma } from "../db.js";
 import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
 import {
@@ -25,6 +26,13 @@ import {
 } from "../lib/registrationAvailability.js";
 import { createPublicRateLimit } from "../middleware/publicRateLimit.js";
 import { calculateRegistrationPricing, PricingError } from "../lib/registrationPricing.js";
+import {
+  confirmFamilyRegistrationCash,
+  createFamilyRegistrationCheckoutSession,
+  getStripeRuntime,
+  reconcileFamilyRegistrationCheckout,
+  stripeNotConfiguredError,
+} from "../lib/stripeCheckout.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
@@ -385,6 +393,104 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
       res.status(error.status).json({ error: error.code, details: error.details });
       return;
     }
+    next(error);
+  }
+});
+
+const registrationIdSchema = z.string().uuid();
+
+async function registrationReceipt(registrationId: string) {
+  return prisma.familyRegistration.findUnique({
+    where: { id: registrationId },
+    select: {
+      id: true,
+      state: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      registrationSubtotalCents: true,
+      merchandiseSubtotalCents: true,
+      discountCents: true,
+      totalDueCents: true,
+      amountPaidCents: true,
+      expiresAt: true,
+      confirmedAt: true,
+      receiptLineItems: { orderBy: { sortOrder: "asc" } },
+      merchandiseOrderLines: { orderBy: { createdAt: "asc" } },
+    },
+  });
+}
+
+publicRegistrationRouter.get("/family/:registrationId", async (req, res, next) => {
+  const parsedId = registrationIdSchema.safeParse(req.params.registrationId);
+  if (!parsedId.success) {
+    res.status(400).json({ error: "invalid_registration_id" });
+    return;
+  }
+  try {
+    const sessionId = typeof req.query.session_id === "string" ? req.query.session_id : null;
+    if (sessionId) {
+      const stripeRuntime = getStripeRuntime();
+      if (stripeRuntime) {
+        await reconcileFamilyRegistrationCheckout({
+          stripeRuntime,
+          stripeSessionId: sessionId,
+          familyRegistrationId: parsedId.data,
+        });
+      }
+    }
+    const registration = await registrationReceipt(parsedId.data);
+    if (!registration) {
+      res.status(404).json({ error: "registration_not_found" });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ registration });
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRegistrationRouter.post("/family/:registrationId/pay-cash", submissionLimit, async (req, res, next) => {
+  const parsedId = registrationIdSchema.safeParse(req.params.registrationId);
+  if (!parsedId.success) {
+    res.status(400).json({ error: "invalid_registration_id" });
+    return;
+  }
+  try {
+    const result = await confirmFamilyRegistrationCash({ familyRegistrationId: parsedId.data });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    const registration = await registrationReceipt(parsedId.data);
+    res.json({ registration });
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRegistrationRouter.post("/family/:registrationId/stripe-checkout", submissionLimit, async (req, res, next) => {
+  const parsedId = registrationIdSchema.safeParse(req.params.registrationId);
+  if (!parsedId.success) {
+    res.status(400).json({ error: "invalid_registration_id" });
+    return;
+  }
+  const stripeRuntime = getStripeRuntime();
+  if (!stripeRuntime) {
+    res.status(503).json(stripeNotConfiguredError());
+    return;
+  }
+  try {
+    const result = await createFamilyRegistrationCheckoutSession({
+      familyRegistrationId: parsedId.data,
+      stripeRuntime,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json(result);
+  } catch (error) {
     next(error);
   }
 });

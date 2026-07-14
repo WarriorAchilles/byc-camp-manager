@@ -2,6 +2,7 @@ import express, { Router } from "express";
 import {
   completeCheckoutSessionIfPaid,
   getStripeRuntime,
+  markCheckoutSessionUnsuccessful,
   stripeNotConfiguredError,
 } from "../lib/stripeCheckout.js";
 
@@ -32,8 +33,12 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
     return;
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     await completeCheckoutSessionIfPaid(event.data.object);
+  } else if (event.type === "checkout.session.async_payment_failed") {
+    await markCheckoutSessionUnsuccessful(event.data.object, "failed");
+  } else if (event.type === "checkout.session.expired") {
+    await markCheckoutSessionUnsuccessful(event.data.object, "expired");
   }
 
   res.json({ received: true });
