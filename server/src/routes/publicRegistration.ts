@@ -1,4 +1,5 @@
-import prismaClientPkg from "@prisma/client";
+import prismaClientPkg, { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
 import { prisma } from "../db.js";
 import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
@@ -23,6 +24,7 @@ import {
   type RegistrationFlow,
 } from "../lib/registrationAvailability.js";
 import { createPublicRateLimit } from "../middleware/publicRateLimit.js";
+import { calculateRegistrationPricing, PricingError } from "../lib/registrationPricing.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
@@ -122,36 +124,6 @@ publicRegistrationRouter.get("/family", async (_req, res, next) => {
   try { await sendAvailability("family", res); } catch (error) { next(error); }
 });
 
-type CampPricing = {
-  feeCutoverAt: Date | null;
-  earlyCamperFeeCents: number | null;
-  lateCamperFeeCents: number | null;
-  thirdPlusCamperFeeCents: number | null;
-};
-
-function priceCampers(camp: CampPricing, camperCount: number, now: Date) {
-  const early = camp.feeCutoverAt === null || now < camp.feeCutoverAt;
-  const firstTwoRate = early
-    ? (camp.earlyCamperFeeCents ?? 0)
-    : (camp.lateCamperFeeCents ?? camp.earlyCamperFeeCents ?? 0);
-  const thirdPlusRate = camp.thirdPlusCamperFeeCents ?? firstTwoRate;
-  const camperFees = Array.from({ length: camperCount }, (_, index) =>
-    index < 2 ? firstTwoRate : thirdPlusRate);
-  return {
-    camperFees,
-    total: camperFees.reduce((sum, value) => sum + value, 0),
-    snapshot: {
-      calculatedAt: now.toISOString(),
-      feeSchedule: early ? "early" : "late",
-      feeCutoverAt: camp.feeCutoverAt?.toISOString() ?? null,
-      earlyCamperFeeCents: camp.earlyCamperFeeCents,
-      lateCamperFeeCents: camp.lateCamperFeeCents,
-      thirdPlusCamperFeeCents: camp.thirdPlusCamperFeeCents,
-      camperFees,
-    },
-  };
-}
-
 function isRetryableTransactionError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
 }
@@ -174,7 +146,18 @@ export async function persistFamilySubmission(
       return await prisma.$transaction(async (tx) => {
         const existing = await tx.familyRegistration.findUnique({
           where: { submissionKey: input.submissionKey },
-          select: { id: true, submissionDigest: true, state: true, campers: { select: { id: true } } },
+          select: {
+            id: true,
+            submissionDigest: true,
+            state: true,
+            expiresAt: true,
+            totalDueCents: true,
+            registrationSubtotalCents: true,
+            merchandiseSubtotalCents: true,
+            discountCents: true,
+            campers: { select: { id: true } },
+            receiptLineItems: { orderBy: { sortOrder: "asc" } },
+          },
         });
         if (existing) {
           if (existing.submissionDigest !== digest) {
@@ -226,11 +209,27 @@ export async function persistFamilySubmission(
           });
         }
 
-        const pricing = priceCampers(camp, input.campers.length, now);
+        const merchandiseItems = await tx.merchandiseItem.findMany({
+          where: { campYearId: camp.id, id: { in: input.merchandiseSelections.map((line) => line.merchandiseItemId) } },
+        });
+        let pricing;
+        try {
+          pricing = calculateRegistrationPricing({
+            camp,
+            campers: input.campers,
+            merchandiseSelections: input.merchandiseSelections,
+            merchandiseItems,
+            now,
+          });
+        } catch (error) {
+          if (error instanceof PricingError) throw new SubmissionError(400, error.code);
+          throw error;
+        }
         const snapshot = agreementSnapshot(
           input.campers.map((camper) => `${camper.firstName} ${camper.lastName}`),
           input.registrationType,
         );
+        const camperIds = input.campers.map(() => randomUUID());
         const registration = await tx.familyRegistration.create({
           data: {
             submissionKey: input.submissionKey,
@@ -246,9 +245,11 @@ export async function persistFamilySubmission(
             stateOrProvince: input.guardian.address.stateOrProvince,
             postalCode: input.guardian.address.postalCode,
             country: input.guardian.address.country,
-            registrationSubtotalCents: pricing.total,
-            totalDueCents: pricing.total,
-            pricingSnapshot: pricing.snapshot,
+            registrationSubtotalCents: pricing.registrationSubtotalCents,
+            merchandiseSubtotalCents: pricing.merchandiseSubtotalCents,
+            discountCents: pricing.discountCents,
+            totalDueCents: pricing.totalDueCents,
+            pricingSnapshot: pricing.pricingSnapshot,
             agreementVersion: input.legal.agreementVersion,
             agreementTextSnapshot: snapshot,
             signatureMethod: "typed",
@@ -261,6 +262,7 @@ export async function persistFamilySubmission(
               create: input.campers.map((camper, index) => {
                 const address = camper.useFamilyAddress ? input.guardian.address : camper.address!;
                 return {
+                  id: camperIds[index],
                   campYearId: camp.id,
                   firstName: camper.firstName,
                   lastName: camper.lastName,
@@ -295,8 +297,36 @@ export async function persistFamilySubmission(
                 };
               }),
             },
+            receiptLineItems: {
+              create: pricing.receiptLines.map((line) => ({
+                ...line,
+                pricingSnapshot: line.pricingSnapshot as Prisma.InputJsonValue,
+              })),
+            },
+            merchandiseOrderLines: {
+              create: pricing.merchandiseLines.map((line) => ({
+                merchandiseItemId: line.merchandiseItemId,
+                camperId: line.camperIndex === null ? null : camperIds[line.camperIndex],
+                ownership: line.ownership,
+                itemNameSnapshot: line.itemNameSnapshot,
+                selectedOptionsSnapshot: line.selectedOptionsSnapshot ?? Prisma.JsonNull,
+                quantity: line.quantity,
+                unitPriceCents: line.unitPriceCents,
+                lineTotalCents: line.lineTotalCents,
+              })),
+            },
           },
-          select: { id: true, state: true, expiresAt: true, campers: { select: { id: true } } },
+          select: {
+            id: true,
+            state: true,
+            expiresAt: true,
+            totalDueCents: true,
+            registrationSubtotalCents: true,
+            merchandiseSubtotalCents: true,
+            discountCents: true,
+            campers: { select: { id: true } },
+            receiptLineItems: { orderBy: { sortOrder: "asc" } },
+          },
         });
         options.afterCreate?.();
         return { registration, replayed: false };
@@ -342,6 +372,13 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
       camperCount: result.registration.campers.length,
       expiresAt: "expiresAt" in result.registration ? result.registration.expiresAt : null,
       replayed: result.replayed,
+      receipt: {
+        registrationSubtotalCents: result.registration.registrationSubtotalCents,
+        merchandiseSubtotalCents: result.registration.merchandiseSubtotalCents,
+        discountCents: result.registration.discountCents,
+        totalDueCents: result.registration.totalDueCents,
+        lineItems: result.registration.receiptLineItems,
+      },
     });
   } catch (error) {
     if (error instanceof SubmissionError) {
@@ -356,9 +393,25 @@ publicRegistrationRouter.get("/worker", async (_req, res, next) => {
   try { await sendAvailability("worker", res); } catch (error) { next(error); }
 });
 
-publicRegistrationRouter.get("/family/form-options", (_req, res) => {
-  res.setHeader("Cache-Control", "public, max-age=3600");
-  res.json({
+publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => {
+  try {
+    const activeCampYearId = await getActiveCampYearId(prisma);
+    const merchandiseItems = activeCampYearId
+      ? await prisma.merchandiseItem.findMany({
+        where: { campYearId: activeCampYearId, isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          priceCents: true,
+          availableOptions: true,
+          ownership: true,
+        },
+      })
+      : [];
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({
     genders: ["male", "female"],
     stateOrProvinceOptions: STATE_PROVINCE_OPTIONS,
     tShirtSizes: CAMPER_T_SHIRT_SIZES,
@@ -374,5 +427,9 @@ publicRegistrationRouter.get("/family/form-options", (_req, res) => {
       acknowledgmentText: ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
       signatureMethod: "typed",
     },
-  });
+      merchandiseItems,
+    });
+  } catch (error) {
+    next(error);
+  }
 });

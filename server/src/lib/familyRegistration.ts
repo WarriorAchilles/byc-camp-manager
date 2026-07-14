@@ -109,6 +109,12 @@ export const familySubmissionSchema = z.object({
     address: addressSchema,
   }).strict(),
   campers: z.array(camperSchema).min(1).max(12),
+  merchandiseSelections: z.array(z.object({
+    merchandiseItemId: z.string().uuid(),
+    selectedOption: z.string().trim().min(1).max(100).nullable(),
+    quantity: z.number().int().min(1).max(20),
+    camperIndex: z.number().int().min(0).max(11).nullable(),
+  })).max(100).default([]),
   legal: z.object({
     typedName: requiredText(200),
     acknowledged: z.literal(true),

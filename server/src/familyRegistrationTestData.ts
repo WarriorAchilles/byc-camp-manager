@@ -44,6 +44,7 @@ export function validFamilySubmission(): FamilySubmission {
       emergencyContactPhone: "5557654321",
       specialNeeds: "None",
     }],
+    merchandiseSelections: [],
     legal: {
       typedName: "Jamie Guardian",
       acknowledged: true,
