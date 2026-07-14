@@ -2257,6 +2257,53 @@ tbody tr:hover td {
   text-align: left;
 }
 
+.registration-type-fieldset {
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.registration-type-intro {
+  margin: 0;
+  color: var(--muted);
+}
+
+.registration-type-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.registration-type-option {
+  display: grid;
+  min-height: 10rem;
+  align-content: center;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--brand-slate-950);
+  text-align: left;
+  cursor: pointer;
+}
+
+.registration-type-option:hover,
+.registration-type-option:focus-visible {
+  border-color: var(--brand-orange-500);
+  background: var(--brand-orange-soft);
+  outline: none;
+}
+
+.registration-type-option strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.registration-type-option span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .registration-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2376,6 +2423,7 @@ tbody tr:hover td {
 .registration-success { padding: 1rem; border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--success) 8%, var(--surface)); text-align: left; }
 
 @media (max-width: 720px) {
+  .registration-type-options,
   .registration-grid,
   .registration-grid-three { grid-template-columns: 1fr; }
   .registration-grid .span-two { grid-column: auto; }

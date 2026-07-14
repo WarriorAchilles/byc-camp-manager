@@ -6,6 +6,7 @@ import {
 export function validFamilySubmission(): FamilySubmission {
   return {
     submissionKey: "e3ae65c2-ffbe-42d3-89fb-59ccd022d917",
+    registrationType: "family",
     guardian: {
       fullName: "Jamie Guardian",
       email: "jamie@example.test",
@@ -50,4 +51,3 @@ export function validFamilySubmission(): FamilySubmission {
     },
   };
 }
-

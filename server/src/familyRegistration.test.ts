@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADULT_MEDICAL_AGREEMENT_VERSION,
   agreementSnapshot,
   CAMPER_T_SHIRT_SIZES,
   familySubmissionSchema,
@@ -33,6 +34,45 @@ describe("family registration contract", () => {
 
     const noCampers = { ...validFamilySubmission(), campers: [] };
     expect(familySubmissionSchema.safeParse(noCampers).success).toBe(false);
+  });
+
+  it("accepts adult self-registration and rejects self-registration for a minor", () => {
+    const adult = validFamilySubmission();
+    adult.registrationType = "self";
+    adult.guardian = {
+      ...adult.guardian,
+      fullName: "Taylor Camper",
+      relationship: "Self",
+    };
+    adult.campers[0] = {
+      ...adult.campers[0]!,
+      dateOfBirth: "1999-05-04",
+      guardianName: "Taylor Camper",
+      guardianPhone: adult.guardian.phone,
+    };
+    adult.legal = {
+      ...adult.legal,
+      typedName: "Taylor Camper",
+      agreementVersion: ADULT_MEDICAL_AGREEMENT_VERSION,
+    };
+    expect(familySubmissionSchema.safeParse(adult).success).toBe(true);
+
+    adult.campers.push({ ...adult.campers[0]! });
+    expect(familySubmissionSchema.safeParse(adult).success).toBe(false);
+    adult.campers.pop();
+
+    adult.campers[0]!.dateOfBirth = new Date().toISOString().slice(0, 10);
+    const result = familySubmissionSchema.safeParse(adult);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes("at least 18"))).toBe(true);
+    }
+  });
+
+  it("requires the registration type to use its matching legal agreement", () => {
+    const input = validFamilySubmission();
+    input.legal.agreementVersion = ADULT_MEDICAL_AGREEMENT_VERSION;
+    expect(familySubmissionSchema.safeParse(input).success).toBe(false);
   });
 
   it("keeps the legacy option lists and agreement snapshot stable", () => {

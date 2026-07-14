@@ -5,11 +5,22 @@ export const FAMILY_RESERVATION_MINUTES = 30;
 
 export const MEDICAL_AGREEMENT_VERSION = "byc-medical-authorization-2026-07-11";
 
+export const ADULT_MEDICAL_AGREEMENT_VERSION = "byc-adult-medical-authorization-2026-07-13";
+
 export const MEDICAL_AGREEMENT_TEXT =
   "This is to give Douglas Severt consent to sign for EMERGENCY MEDICAL and/or SURGICAL TREATMENT for the camper(s) listed in this registration.";
 
 export const LEGAL_ACKNOWLEDGMENT_TEXT =
   "I am the parent or legal guardian authorized to provide this consent, agree to use electronic records, and intend my typed name to be my legal electronic signature.";
+
+export const ADULT_MEDICAL_AGREEMENT_TEXT =
+  "I authorize Douglas Severt to consent to EMERGENCY MEDICAL and/or SURGICAL TREATMENT on my behalf if I am unable to provide consent myself.";
+
+export const ADULT_LEGAL_ACKNOWLEDGMENT_TEXT =
+  "I am the adult camper named in this registration, I am at least 18 years old, I agree to use electronic records, and I intend my typed name to be my legal electronic signature.";
+
+export const REGISTRATION_TYPES = ["family", "self"] as const;
+export type RegistrationType = typeof REGISTRATION_TYPES[number];
 
 export const CAMPER_GENDERS = ["male", "female"] as const;
 
@@ -89,6 +100,7 @@ const camperSchema = z.object({
 
 export const familySubmissionSchema = z.object({
   submissionKey: z.string().uuid(),
+  registrationType: z.enum(REGISTRATION_TYPES),
   guardian: z.object({
     fullName: requiredText(200),
     email: z.string().trim().email().max(320),
@@ -100,17 +112,84 @@ export const familySubmissionSchema = z.object({
   legal: z.object({
     typedName: requiredText(200),
     acknowledged: z.literal(true),
-    agreementVersion: z.literal(MEDICAL_AGREEMENT_VERSION),
+    agreementVersion: z.enum([MEDICAL_AGREEMENT_VERSION, ADULT_MEDICAL_AGREEMENT_VERSION]),
   }).strict(),
-}).strict();
+}).strict().superRefine((submission, ctx) => {
+  const expectedAgreementVersion = submission.registrationType === "self"
+    ? ADULT_MEDICAL_AGREEMENT_VERSION
+    : MEDICAL_AGREEMENT_VERSION;
+  if (submission.legal.agreementVersion !== expectedAgreementVersion) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["legal", "agreementVersion"],
+      message: "Agreement version does not match the registration type",
+    });
+  }
+
+  if (submission.registrationType !== "self") return;
+
+  if (submission.campers.length !== 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["campers"],
+      message: "Self-registration is limited to one adult camper",
+    });
+    return;
+  }
+
+  const camper = submission.campers[0]!;
+  const today = new Date();
+  const adultCutoff = new Date(Date.UTC(
+    today.getUTCFullYear() - 18,
+    today.getUTCMonth(),
+    today.getUTCDate(),
+    23, 59, 59, 999,
+  ));
+  const dateOfBirth = new Date(`${camper.dateOfBirth}T12:00:00.000Z`);
+  if (dateOfBirth > adultCutoff) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["campers", 0, "dateOfBirth"],
+      message: "You must be at least 18 years old to register yourself",
+    });
+  }
+
+  const expectedCamperName = `${camper.firstName} ${camper.lastName}`.trim().toLocaleLowerCase();
+  if (submission.guardian.fullName.toLocaleLowerCase() !== expectedCamperName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["guardian", "fullName"],
+      message: "Self-registration contact name must match the camper name",
+    });
+  }
+  if (submission.guardian.relationship.toLocaleLowerCase() !== "self") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["guardian", "relationship"],
+      message: "Self-registration relationship must be Self",
+    });
+  }
+  if (camper.guardianName.toLocaleLowerCase() !== submission.guardian.fullName.toLocaleLowerCase()
+    || camper.guardianPhone !== submission.guardian.phone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["campers", 0, "guardianName"],
+      message: "Self-registration contact details must match the camper contact details",
+    });
+  }
+});
 
 export type FamilySubmission = z.infer<typeof familySubmissionSchema>;
 
-export function agreementSnapshot(camperNames: string[]): string {
+export function agreementSnapshot(camperNames: string[], registrationType: RegistrationType = "family"): string {
+  const medicalText = registrationType === "self" ? ADULT_MEDICAL_AGREEMENT_TEXT : MEDICAL_AGREEMENT_TEXT;
+  const acknowledgmentText = registrationType === "self"
+    ? ADULT_LEGAL_ACKNOWLEDGMENT_TEXT
+    : LEGAL_ACKNOWLEDGMENT_TEXT;
   return [
-    MEDICAL_AGREEMENT_TEXT,
+    medicalText,
     `Covered camper(s): ${camperNames.join(", ")}.`,
-    LEGAL_ACKNOWLEDGMENT_TEXT,
+    acknowledgmentText,
   ].join("\n\n");
 }
 

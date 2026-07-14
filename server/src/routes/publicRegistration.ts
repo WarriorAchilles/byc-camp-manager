@@ -4,6 +4,9 @@ import { prisma } from "../db.js";
 import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
 import {
   agreementSnapshot,
+  ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
+  ADULT_MEDICAL_AGREEMENT_TEXT,
+  ADULT_MEDICAL_AGREEMENT_VERSION,
   FAMILY_RESERVATION_MINUTES,
   familySubmissionSchema,
   MEDICAL_AGREEMENT_TEXT,
@@ -224,7 +227,10 @@ export async function persistFamilySubmission(
         }
 
         const pricing = priceCampers(camp, input.campers.length, now);
-        const snapshot = agreementSnapshot(input.campers.map((camper) => `${camper.firstName} ${camper.lastName}`));
+        const snapshot = agreementSnapshot(
+          input.campers.map((camper) => `${camper.firstName} ${camper.lastName}`),
+          input.registrationType,
+        );
         const registration = await tx.familyRegistration.create({
           data: {
             submissionKey: input.submissionKey,
@@ -243,7 +249,7 @@ export async function persistFamilySubmission(
             registrationSubtotalCents: pricing.total,
             totalDueCents: pricing.total,
             pricingSnapshot: pricing.snapshot,
-            agreementVersion: MEDICAL_AGREEMENT_VERSION,
+            agreementVersion: input.legal.agreementVersion,
             agreementTextSnapshot: snapshot,
             signatureMethod: "typed",
             signatureData: input.legal.typedName,
@@ -315,7 +321,12 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
   if (parsed.data.legal.typedName.toLocaleLowerCase() !== parsed.data.guardian.fullName.toLocaleLowerCase()) {
     res.status(400).json({
       error: "validation_failed",
-      fields: [{ path: "legal.typedName", message: "Signature must match the parent or guardian full name" }],
+      fields: [{
+        path: "legal.typedName",
+        message: parsed.data.registrationType === "self"
+          ? "Signature must match your full name"
+          : "Signature must match the parent or guardian full name",
+      }],
     });
     return;
   }
@@ -355,6 +366,12 @@ publicRegistrationRouter.get("/family/form-options", (_req, res) => {
       version: MEDICAL_AGREEMENT_VERSION,
       text: MEDICAL_AGREEMENT_TEXT,
       acknowledgmentText: LEGAL_ACKNOWLEDGMENT_TEXT,
+      signatureMethod: "typed",
+    },
+    adultMedicalAgreement: {
+      version: ADULT_MEDICAL_AGREEMENT_VERSION,
+      text: ADULT_MEDICAL_AGREEMENT_TEXT,
+      acknowledgmentText: ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
       signatureMethod: "typed",
     },
   });

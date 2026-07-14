@@ -103,7 +103,14 @@ For each flow, before the open time the public page may display a **countdown ti
 
 ### Family Registration Flow
 
-Registration is structured as a **single family registration**, where a parent/guardian fills out one form for their entire family.
+The flow begins by asking whether the registrant is an adult camper registering themselves or a parent/guardian registering campers. Adult self-registration is limited to one camper who is at least 18 on the submission date. Parent/guardian registration supports one or more campers.
+
+For storage and downstream operational compatibility, an adult self-registrant's own contact details are used as the registration and camper contact, with the relationship recorded as **Self**.
+
+#### Entry Choice - Registration Type
+
+- **I am 18 or older and registering myself** - collect the adult camper's own email, phone, mailing address, and camper information; do not request parent/guardian information.
+- **The camper is under 18, or I am a parent/guardian** - use the family flow below for minors, children, or multiple campers; a parent or legal guardian completes this branch.
 
 #### Step 1 - Parent / Guardian Information
 
@@ -132,6 +139,7 @@ The parent adds one or more campers. For each camper, collect at least the field
 
 - Display the medical release / liability waiver text.
 - Parent/guardian provides a **digital legal signature** (typed full name + checkbox acknowledgment, or drawn signature via signature pad).
+- Adult self-registrants receive and sign an adult-specific authorization that identifies them as the camper and does not assert that they are a parent or legal guardian.
 - Timestamp and IP address recorded for legal purposes.
 
 #### Step 4 - Merchandise Pre-Order (Optional)

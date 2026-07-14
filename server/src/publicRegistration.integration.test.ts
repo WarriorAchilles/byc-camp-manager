@@ -6,6 +6,7 @@ import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { SETTINGS_ROW_ID } from "./lib/activeCampYearSetting.js";
 import { validFamilySubmission } from "./familyRegistrationTestData.js";
+import { ADULT_MEDICAL_AGREEMENT_VERSION } from "./lib/familyRegistration.js";
 import { persistFamilySubmission } from "./routes/publicRegistration.js";
 
 async function schemaIsReady(): Promise<boolean> {
@@ -182,6 +183,43 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(stored.agreementTextSnapshot).toContain("Taylor Camper, Jordan Camper");
     expect(stored.pricingSnapshot).not.toBeNull();
     expect("qrToken" in stored.campers[0]!).toBe(false);
+  });
+
+  it("persists an adult self-registration without requiring separate guardian details", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
+    const input = validFamilySubmission();
+    input.registrationType = "self";
+    input.guardian = {
+      ...input.guardian,
+      fullName: "Taylor Camper",
+      relationship: "Self",
+    };
+    input.campers[0] = {
+      ...input.campers[0]!,
+      dateOfBirth: "1999-05-04",
+      guardianName: "Taylor Camper",
+      guardianPhone: input.guardian.phone,
+    };
+    input.legal = {
+      typedName: "Taylor Camper",
+      acknowledged: true,
+      agreementVersion: ADULT_MEDICAL_AGREEMENT_VERSION,
+    };
+
+    const response = await request(app).post("/api/public/registration/family").send(input);
+    expect(response.status).toBe(201);
+
+    const stored = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: response.body.registrationId },
+      include: { campers: true },
+    });
+    expect(stored.guardianRelationship).toBe("Self");
+    expect(stored.guardianName).toBe("Taylor Camper");
+    expect(stored.campers[0]?.guardianName).toBe("Taylor Camper");
+    expect(stored.agreementVersion).toBe(ADULT_MEDICAL_AGREEMENT_VERSION);
+    expect(stored.agreementTextSnapshot).toContain("adult camper named in this registration");
+    expect(stored.agreementTextSnapshot).not.toContain("parent or legal guardian");
   });
 
   it("replays the same idempotency key without creating another family", async () => {

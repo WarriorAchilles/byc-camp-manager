@@ -22,6 +22,8 @@ Implement the public family registration form through parent information, repeat
 
 ## Agent Tasks
 
+- [ ] Add an entry screen that branches between an adult camper registering themselves and a parent/guardian registering camper(s).
+- [ ] For self-registration, require exactly one camper age 18 or older, use the camper's own contact details with relationship `Self`, and do not display parent/guardian fields.
 - [ ] Build the parent or guardian information step with full name, email, phone, mailing address, and relationship to campers.
 - [ ] Build repeatable camper entry for one or more children.
 - [ ] Capture camper identity, date of birth, gender, shared or overridden address, camper cell, parent contact fields, faith and church fields, pastor name, t-shirt size intent, medical notes, allergies, medications, dietary restrictions, emergency contact, and special needs.
@@ -29,6 +31,7 @@ Implement the public family registration form through parent information, repeat
 - [ ] Support a shared family address with optional per-camper overrides.
 - [ ] Add client-side and server-side validation for required fields, date formats, phone-number constraints where specified, and repeatable camper rules.
 - [ ] Add medical release display and legal signature capture with timestamp and IP address persistence.
+- [ ] Present an adult-specific authorization for self-registration without parent/legal-guardian assertions, and require its version to match the selected registration type.
 - [ ] Snapshot the exact medical release version or rendered text accepted by the signer so later copy changes do not alter the legal record.
 - [ ] Persist the family registration, all campers, legal agreement, and initial price snapshot atomically so a failed submission cannot leave a partial family; do not create individual camper QR tokens.
 - [ ] Enforce camper capacity inside the same transaction with concurrency-safe semantics; do not rely on a separate count followed by inserts.
@@ -44,6 +47,7 @@ Implement the public family registration form through parent information, repeat
 - [ ] Run the repository typecheck command.
 - [ ] Run the repository test command.
 - [ ] Complete a family registration with one camper and confirm records persist correctly.
+- [ ] Complete an adult self-registration and confirm it is rejected for a camper under 18, cannot contain multiple campers, and stores the adult agreement snapshot.
 - [ ] Complete a family registration with multiple campers using a shared address and one address override.
 - [ ] Attempt submission with missing legacy-required fields and confirm useful validation errors.
 - [ ] Confirm the stored legal signature includes timestamp and IP address.
@@ -54,6 +58,7 @@ Implement the public family registration form through parent information, repeat
 ## Completion Criteria
 
 - [ ] A parent can submit the non-payment portions of family camper registration for one or more campers on the registration origin.
+- [ ] An adult camper can register themselves without entering parent/guardian information or signing a parent/legal-guardian assertion.
 - [ ] No required legacy camper field is omitted from the captured data.
 - [ ] Medical release signature data is stored with each relevant family registration.
 - [ ] Submitted campers are available to Phase 1 management workflows.
