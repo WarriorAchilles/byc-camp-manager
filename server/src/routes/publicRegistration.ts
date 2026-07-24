@@ -33,10 +33,23 @@ import {
   reconcileFamilyRegistrationCheckout,
   stripeNotConfiguredError,
 } from "../lib/stripeCheckout.js";
+import {
+  normalizedPhone,
+  workerSubmissionDigest,
+  workerSubmissionSchema,
+  WORKER_CONFIRMATION_GUIDANCE,
+  WORKER_GENDERS,
+  WORKER_STATE_PROVINCE_OPTIONS,
+  WORKER_TASK_GUIDANCE,
+  WORKER_TASK_OPTIONS,
+  WORKER_T_SHIRT_GUIDANCE,
+  WORKER_T_SHIRT_SIZES,
+  type WorkerSubmission,
+} from "../lib/workerRegistration.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
-const { ImportSource, RegistrationState } = prismaClientPkg;
+const { ImportSource, RegistrationState, WorkerRegistrationSubmissionStatus } = prismaClientPkg;
 
 export const publicRegistrationRouter = Router();
 publicRegistrationRouter.use(availabilityLimit);
@@ -134,6 +147,10 @@ publicRegistrationRouter.get("/family", async (_req, res, next) => {
 
 function isRetryableTransactionError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
 class SubmissionError extends Error {
@@ -397,6 +414,47 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
   }
 });
 
+publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => {
+  try {
+    const activeCampYearId = await getActiveCampYearId(prisma);
+    const merchandiseItems = activeCampYearId
+      ? await prisma.merchandiseItem.findMany({
+        where: { campYearId: activeCampYearId, isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          priceCents: true,
+          availableOptions: true,
+          ownership: true,
+        },
+      })
+      : [];
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({
+      genders: ["male", "female"],
+      stateOrProvinceOptions: STATE_PROVINCE_OPTIONS,
+      tShirtSizes: CAMPER_T_SHIRT_SIZES,
+      medicalAgreement: {
+        version: MEDICAL_AGREEMENT_VERSION,
+        text: MEDICAL_AGREEMENT_TEXT,
+        acknowledgmentText: LEGAL_ACKNOWLEDGMENT_TEXT,
+        signatureMethod: "typed",
+      },
+      adultMedicalAgreement: {
+        version: ADULT_MEDICAL_AGREEMENT_VERSION,
+        text: ADULT_MEDICAL_AGREEMENT_TEXT,
+        acknowledgmentText: ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
+        signatureMethod: "typed",
+      },
+      merchandiseItems,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 const registrationIdSchema = z.string().uuid();
 
 async function registrationReceipt(registrationId: string) {
@@ -499,43 +557,235 @@ publicRegistrationRouter.get("/worker", async (_req, res, next) => {
   try { await sendAvailability("worker", res); } catch (error) { next(error); }
 });
 
-publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => {
+function workerPersistenceData(
+  input: WorkerSubmission,
+  campYearId: string,
+  submittedAt: Date,
+  requestIp: string,
+) {
+  return {
+    campYearId,
+    email: input.email.toLocaleLowerCase(),
+    firstName: input.firstName,
+    lastName: input.lastName,
+    dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T12:00:00.000Z`) : null,
+    gender: input.gender,
+    cellPhone: input.cellPhone,
+    altPhone: input.altPhone || null,
+    streetAddress: input.streetAddress,
+    city: input.city,
+    stateOrProvince: input.stateOrProvince,
+    postalCode: input.postalCode,
+    country: input.country,
+    faithServingResponse: input.faithServingResponse,
+    churchName: input.churchName,
+    pastorName: input.pastorName,
+    pastorPhone: input.pastorPhone,
+    taskPreferenceFirst: input.taskPreferences[0],
+    taskPreferenceSecond: input.taskPreferences[1],
+    taskPreferenceThird: input.taskPreferences[2],
+    tShirtSize: input.tShirtSize || null,
+    publicSubmittedAt: submittedAt,
+    publicSubmissionIp: safeRequestIp(requestIp),
+    importSource: ImportSource.online_registration,
+  };
+}
+
+export async function persistWorkerSubmission(
+  input: WorkerSubmission,
+  requestIp: string,
+  now: Date,
+) {
+  const digest = workerSubmissionDigest(input);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const existing = await tx.workerRegistrationSubmission.findUnique({
+          where: { submissionKey: input.submissionKey },
+          select: { id: true, submissionDigest: true, status: true, resolvedWorkerId: true },
+        });
+        if (existing) {
+          if (existing.submissionDigest !== digest) {
+            throw new SubmissionError(409, "submission_key_reused");
+          }
+          return { submission: existing, replayed: true };
+        }
+
+        const activeCampYearId = await getActiveCampYearId(tx);
+        if (!activeCampYearId) throw new SubmissionError(409, "registration_not_configured");
+        const camp = await tx.campYear.findUnique({ where: { id: activeCampYearId } });
+        if (!camp) throw new SubmissionError(409, "registration_not_configured");
+        const availability = resolveRegistrationAvailability({
+          flow: "worker",
+          manuallyEnabled: camp.workerRegistrationEnabled,
+          opensAt: camp.workerRegistrationOpensAt,
+          closesAt: camp.workerRegistrationClosesAt,
+          camperCapacity: null,
+          activeCamperCount: 0,
+        }, now);
+        if (availability !== "open") {
+          throw new SubmissionError(409, "registration_closed");
+        }
+
+        const normalizedEmail = input.email.toLocaleLowerCase();
+        const potentialMatches = await tx.worker.findMany({
+          where: {
+            campYearId: camp.id,
+            archivedAt: null,
+            OR: [
+              { email: { equals: normalizedEmail, mode: "insensitive" } },
+              {
+                firstName: { equals: input.firstName, mode: "insensitive" },
+                lastName: { equals: input.lastName, mode: "insensitive" },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true,
+            cellPhone: true,
+          },
+        });
+        const submittedBirthDate = input.dateOfBirth ?? null;
+        const likelyMatches = potentialMatches.flatMap((worker) => {
+          const emailMatch = worker.email.trim().toLocaleLowerCase() === normalizedEmail;
+          const nameMatch = worker.firstName.trim().toLocaleLowerCase() === input.firstName.toLocaleLowerCase()
+            && worker.lastName.trim().toLocaleLowerCase() === input.lastName.toLocaleLowerCase();
+          const birthDateMatch = Boolean(
+            submittedBirthDate
+            && worker.dateOfBirth?.toISOString().slice(0, 10) === submittedBirthDate,
+          );
+          const phoneMatch = normalizedPhone(worker.cellPhone) === normalizedPhone(input.cellPhone);
+          if (!emailMatch && !(nameMatch && (birthDateMatch || phoneMatch))) return [];
+          return [{
+            workerId: worker.id,
+            matchReason: emailMatch
+              ? "email"
+              : birthDateMatch
+                ? "name_date_of_birth"
+                : "name_cell_phone",
+          }];
+        });
+
+        const submissionData = {
+          submissionKey: input.submissionKey,
+          submissionDigest: digest,
+          campYearId: camp.id,
+          email: normalizedEmail,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T12:00:00.000Z`) : null,
+          gender: input.gender,
+          cellPhone: input.cellPhone,
+          altPhone: input.altPhone || null,
+          streetAddress: input.streetAddress,
+          city: input.city,
+          stateOrProvince: input.stateOrProvince,
+          postalCode: input.postalCode,
+          country: input.country,
+          faithServingResponse: input.faithServingResponse,
+          churchName: input.churchName,
+          pastorName: input.pastorName,
+          pastorPhone: input.pastorPhone,
+          taskPreferenceFirst: input.taskPreferences[0],
+          taskPreferenceSecond: input.taskPreferences[1],
+          taskPreferenceThird: input.taskPreferences[2],
+          tShirtSize: input.tShirtSize || null,
+          requestIp: safeRequestIp(requestIp),
+          submittedAt: now,
+        };
+
+        if (likelyMatches.length > 0) {
+          const submission = await tx.workerRegistrationSubmission.create({
+            data: {
+              ...submissionData,
+              status: WorkerRegistrationSubmissionStatus.pending_review,
+              likelyMatches: {
+                create: likelyMatches,
+              },
+            },
+            select: { id: true, status: true, resolvedWorkerId: true },
+          });
+          return { submission, replayed: false };
+        }
+
+        const worker = await tx.worker.create({
+          data: workerPersistenceData(input, camp.id, now, requestIp),
+          select: { id: true },
+        });
+        const submission = await tx.workerRegistrationSubmission.create({
+          data: {
+            ...submissionData,
+            status: WorkerRegistrationSubmissionStatus.created,
+            resolvedWorkerId: worker.id,
+            resolvedAt: now,
+          },
+          select: { id: true, status: true, resolvedWorkerId: true },
+        });
+        return { submission, replayed: false };
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (isRetryableTransactionError(error) && attempt < 2) continue;
+      if (isUniqueConstraintError(error)) {
+        const existing = await prisma.workerRegistrationSubmission.findUnique({
+          where: { submissionKey: input.submissionKey },
+          select: { id: true, submissionDigest: true, status: true, resolvedWorkerId: true },
+        });
+        if (existing?.submissionDigest === digest) {
+          return { submission: existing, replayed: true };
+        }
+        throw new SubmissionError(409, "submission_key_reused");
+      }
+      throw error;
+    }
+  }
+  throw new SubmissionError(409, "submission_conflict");
+}
+
+publicRegistrationRouter.get("/worker/form-options", (_req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.json({
+    genders: WORKER_GENDERS,
+    stateOrProvinceOptions: WORKER_STATE_PROVINCE_OPTIONS,
+    taskOptions: WORKER_TASK_OPTIONS,
+    tShirtSizes: WORKER_T_SHIRT_SIZES,
+    taskGuidance: WORKER_TASK_GUIDANCE,
+    tShirtGuidance: WORKER_T_SHIRT_GUIDANCE,
+    confirmationGuidance: WORKER_CONFIRMATION_GUIDANCE,
+  });
+});
+
+publicRegistrationRouter.post("/worker", submissionLimit, async (req, res, next) => {
+  const parsed = workerSubmissionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "validation_failed",
+      fields: parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
+    return;
+  }
   try {
-    const activeCampYearId = await getActiveCampYearId(prisma);
-    const merchandiseItems = activeCampYearId
-      ? await prisma.merchandiseItem.findMany({
-        where: { campYearId: activeCampYearId, isActive: true },
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          priceCents: true,
-          availableOptions: true,
-          ownership: true,
-        },
-      })
-      : [];
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.json({
-    genders: ["male", "female"],
-    stateOrProvinceOptions: STATE_PROVINCE_OPTIONS,
-    tShirtSizes: CAMPER_T_SHIRT_SIZES,
-    medicalAgreement: {
-      version: MEDICAL_AGREEMENT_VERSION,
-      text: MEDICAL_AGREEMENT_TEXT,
-      acknowledgmentText: LEGAL_ACKNOWLEDGMENT_TEXT,
-      signatureMethod: "typed",
-    },
-    adultMedicalAgreement: {
-      version: ADULT_MEDICAL_AGREEMENT_VERSION,
-      text: ADULT_MEDICAL_AGREEMENT_TEXT,
-      acknowledgmentText: ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
-      signatureMethod: "typed",
-    },
-      merchandiseItems,
+    const result = await persistWorkerSubmission(
+      parsed.data,
+      req.ip || req.socket.remoteAddress || "unknown",
+      new Date(),
+    );
+    res.status(result.replayed ? 200 : 201).json({
+      registrationId: result.submission.id,
+      status: "received",
+      replayed: result.replayed,
     });
   } catch (error) {
+    if (error instanceof SubmissionError) {
+      res.status(error.status).json({ error: error.code, details: error.details });
+      return;
+    }
     next(error);
   }
 });

@@ -80,6 +80,13 @@ enum EmailDeliveryStatus {
   failed
 }
 
+enum WorkerRegistrationSubmissionStatus {
+  created
+  pending_review
+  linked_existing
+  dismissed
+}
+
 enum DormPurpose {
   camper
   worker
@@ -159,14 +166,15 @@ model CampYear {
   createdAt                         DateTime  @default(now()) @map("created_at")
   updatedAt                         DateTime  @updatedAt @map("updated_at")
 
-  ageGroupBrackets            AgeGroupBracket[]
-  dorms                       Dorm[]
-  campers                     Camper[]
-  familyRegistrations         FamilyRegistration[]
-  merchandiseItems            MerchandiseItem[]
-  workers                     Worker[]
-  dormLeaders                 DormLeader[]
-  appSettingsAsActiveCampYear AppSettings?
+  ageGroupBrackets              AgeGroupBracket[]
+  dorms                         Dorm[]
+  campers                       Camper[]
+  familyRegistrations           FamilyRegistration[]
+  merchandiseItems              MerchandiseItem[]
+  workers                       Worker[]
+  workerRegistrationSubmissions WorkerRegistrationSubmission[]
+  dormLeaders                   DormLeader[]
+  appSettingsAsActiveCampYear   AppSettings?
 
   @@map("camp_years")
 }
@@ -456,12 +464,71 @@ model Worker {
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
-  campYear CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
-  dorm     Dorm?    @relation(fields: [dormId], references: [id], onDelete: SetNull)
+  campYear                        CampYear                       @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  dorm                            Dorm?                          @relation(fields: [dormId], references: [id], onDelete: SetNull)
+  resolvedRegistrationSubmissions WorkerRegistrationSubmission[] @relation("WorkerRegistrationResolution")
+  registrationMatches             WorkerRegistrationMatch[]
 
   @@index([campYearId])
   @@index([campYearId, email])
   @@map("workers")
+}
+
+model WorkerRegistrationSubmission {
+  id                    String                             @id @default(uuid())
+  submissionKey         String                             @unique @map("submission_key")
+  submissionDigest      String                             @map("submission_digest")
+  campYearId            String                             @map("camp_year_id")
+  status                WorkerRegistrationSubmissionStatus
+  email                 String
+  firstName             String                             @map("first_name")
+  lastName              String                             @map("last_name")
+  dateOfBirth           DateTime?                          @map("date_of_birth") @db.Date
+  gender                Gender
+  cellPhone             String                             @map("cell_phone")
+  altPhone              String?                            @map("alt_phone")
+  streetAddress         String                             @map("street_address")
+  city                  String
+  stateOrProvince       String                             @map("state_or_province")
+  postalCode            String                             @map("postal_code")
+  country               String
+  faithServingResponse  String                             @map("faith_serving_response") @db.Text
+  churchName            String                             @map("church_name")
+  pastorName            String                             @map("pastor_name")
+  pastorPhone           String                             @map("pastor_phone")
+  taskPreferenceFirst   String                             @map("task_preference_first")
+  taskPreferenceSecond  String                             @map("task_preference_second")
+  taskPreferenceThird   String                             @map("task_preference_third")
+  tShirtSize            String?                            @map("t_shirt_size")
+  requestIp             String?                            @map("request_ip")
+  submittedAt           DateTime                           @default(now()) @map("submitted_at")
+  resolvedAt            DateTime?                          @map("resolved_at")
+  resolvedByAdminUserId String?                            @map("resolved_by_admin_user_id")
+  resolvedWorkerId      String?                            @map("resolved_worker_id")
+  createdAt             DateTime                           @default(now()) @map("created_at")
+  updatedAt             DateTime                           @updatedAt @map("updated_at")
+
+  campYear       CampYear                  @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  resolvedWorker Worker?                   @relation("WorkerRegistrationResolution", fields: [resolvedWorkerId], references: [id], onDelete: SetNull)
+  likelyMatches  WorkerRegistrationMatch[]
+
+  @@index([campYearId, status, submittedAt])
+  @@index([campYearId, email])
+  @@map("worker_registration_submissions")
+}
+
+model WorkerRegistrationMatch {
+  id           String @id @default(uuid())
+  submissionId String @map("submission_id")
+  workerId     String @map("worker_id")
+  matchReason  String @map("match_reason")
+
+  worker                 Worker                       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  registrationSubmission WorkerRegistrationSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, workerId])
+  @@index([workerId])
+  @@map("worker_registration_matches")
 }
 
 model DormLeader {

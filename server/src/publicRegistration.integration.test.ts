@@ -83,6 +83,21 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(family.headers["cache-control"]).toBe("no-store");
   });
 
+  it("serves family form options without treating the route as a registration id", async () => {
+    await selectActiveYear();
+    const response = await request(app).get("/api/public/registration/family/form-options");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      genders: ["male", "female"],
+      medicalAgreement: { signatureMethod: "typed" },
+      adultMedicalAgreement: { signatureMethod: "typed" },
+    });
+    expect(response.body.stateOrProvinceOptions).toContain("IN");
+    expect(response.body.tShirtSizes).toContain("Adult M");
+    expect(response.body.merchandiseItems).toEqual([]);
+  });
+
   it("uses server time for future and elapsed windows", async () => {
     await selectActiveYear();
     await prisma.campYear.update({

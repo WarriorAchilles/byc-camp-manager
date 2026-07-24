@@ -2257,6 +2257,84 @@ tbody tr:hover td {
   text-align: left;
 }
 
+.worker-registration-form {
+  margin-top: 1rem;
+  text-align: left;
+}
+
+.registration-guidance {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-left: 4px solid var(--brand-orange-500);
+  background: var(--surface-muted);
+  color: var(--brand-slate-800);
+  line-height: 1.5;
+}
+
+.worker-confirmation-next {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.worker-confirmation-next h3 {
+  margin: 0 0 0.5rem;
+}
+
+.worker-confirmation-next p {
+  margin: 0.5rem 0;
+}
+
+.worker-review-queue {
+  padding: 1rem 0;
+  border-block: 1px solid var(--border);
+}
+
+.worker-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.worker-review-heading h3,
+.worker-review-heading p {
+  margin: 0;
+}
+
+.worker-review-heading > strong {
+  display: grid;
+  min-width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand-orange-soft);
+}
+
+.worker-review-detail,
+.worker-review-match,
+.worker-review-match span {
+  display: block;
+}
+
+.worker-review-detail,
+.worker-review-match span {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.worker-review-match + .worker-review-match {
+  margin-top: 0.65rem;
+}
+
+.worker-review-actions {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 11rem;
+}
+
 .registration-type-fieldset {
   max-width: 48rem;
   margin-inline: auto;

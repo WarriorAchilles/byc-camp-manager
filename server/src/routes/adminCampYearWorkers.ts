@@ -7,7 +7,14 @@ import { writeOpsLog } from "../lib/opsLog.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const { AdminRole, CheckInStatus, DormPurpose, Gender, ImportSource } = prismaClientPkg;
+const {
+  AdminRole,
+  CheckInStatus,
+  DormPurpose,
+  Gender,
+  ImportSource,
+  WorkerRegistrationSubmissionStatus,
+} = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 
@@ -63,6 +70,12 @@ const convertToDormLeaderBody = z.object({
   assignedCamperDormId: z.string().uuid().nullable().optional(),
 });
 
+const resolveRegistrationReviewBody = z.discriminatedUnion("decision", [
+  z.object({ decision: z.literal("create_new") }),
+  z.object({ decision: z.literal("link_existing"), workerId: z.string().uuid() }),
+  z.object({ decision: z.literal("dismiss") }),
+]);
+
 async function assertDormForWorkerYear(
   campYearId: string,
   dormId: string | null | undefined,
@@ -94,8 +107,186 @@ router.get("/", async (req: AuthedRequest, res) => {
     where: { campYearId, archivedAt: null },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
-  res.json({ workers });
+  const pendingRegistrationReviews = await prisma.workerRegistrationSubmission.findMany({
+    where: {
+      campYearId,
+      status: WorkerRegistrationSubmissionStatus.pending_review,
+    },
+    orderBy: { submittedAt: "asc" },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      dateOfBirth: true,
+      gender: true,
+      cellPhone: true,
+      churchName: true,
+      pastorName: true,
+      taskPreferenceFirst: true,
+      taskPreferenceSecond: true,
+      taskPreferenceThird: true,
+      submittedAt: true,
+      likelyMatches: {
+        select: {
+          matchReason: true,
+          worker: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              dateOfBirth: true,
+              cellPhone: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  res.json({ workers, pendingRegistrationReviews });
 });
+
+router.post(
+  "/registration-reviews/:submissionId/resolve",
+  async (req: AuthedRequest, res) => {
+    const campYearId = campYearIdFromParams(req.params.campYearId, res);
+    if (!campYearId) return;
+    const submissionId = pathParam(req.params.submissionId);
+    if (!submissionId || !z.string().uuid().safeParse(submissionId).success) {
+      res.status(400).json({ error: "Invalid worker registration review id" });
+      return;
+    }
+    const parsed = resolveRegistrationReviewBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const submission = await tx.workerRegistrationSubmission.findFirst({
+        where: {
+          id: submissionId,
+          campYearId,
+          status: WorkerRegistrationSubmissionStatus.pending_review,
+        },
+        include: { likelyMatches: true },
+      });
+      if (!submission) return null;
+
+      const resolvedAt = new Date();
+      const resolvedByAdminUserId = req.adminUser?.id ?? null;
+
+      if (parsed.data.decision === "link_existing") {
+        const matchedWorkerId = parsed.data.workerId;
+        if (!submission.likelyMatches.some((match) => match.workerId === matchedWorkerId)) {
+          return { error: "Worker is not a likely match for this submission" } as const;
+        }
+        const claimed = await tx.workerRegistrationSubmission.updateMany({
+          where: {
+            id: submission.id,
+            status: WorkerRegistrationSubmissionStatus.pending_review,
+          },
+          data: {
+            status: WorkerRegistrationSubmissionStatus.linked_existing,
+            resolvedAt,
+            resolvedByAdminUserId,
+            resolvedWorkerId: matchedWorkerId,
+          },
+        });
+        if (claimed.count === 0) return null;
+        const updated = await tx.workerRegistrationSubmission.findUniqueOrThrow({
+          where: { id: submission.id },
+        });
+        return { submission: updated, worker: null };
+      }
+
+      if (parsed.data.decision === "dismiss") {
+        const claimed = await tx.workerRegistrationSubmission.updateMany({
+          where: {
+            id: submission.id,
+            status: WorkerRegistrationSubmissionStatus.pending_review,
+          },
+          data: {
+            status: WorkerRegistrationSubmissionStatus.dismissed,
+            resolvedAt,
+            resolvedByAdminUserId,
+          },
+        });
+        if (claimed.count === 0) return null;
+        const updated = await tx.workerRegistrationSubmission.findUniqueOrThrow({
+          where: { id: submission.id },
+        });
+        return { submission: updated, worker: null };
+      }
+
+      const claimed = await tx.workerRegistrationSubmission.updateMany({
+        where: {
+          id: submission.id,
+          status: WorkerRegistrationSubmissionStatus.pending_review,
+        },
+        data: {
+          status: WorkerRegistrationSubmissionStatus.created,
+          resolvedAt,
+          resolvedByAdminUserId,
+        },
+      });
+      if (claimed.count === 0) return null;
+      const worker = await tx.worker.create({
+        data: {
+          campYearId,
+          email: submission.email,
+          firstName: submission.firstName,
+          lastName: submission.lastName,
+          dateOfBirth: submission.dateOfBirth,
+          gender: submission.gender,
+          cellPhone: submission.cellPhone,
+          altPhone: submission.altPhone,
+          streetAddress: submission.streetAddress,
+          city: submission.city,
+          stateOrProvince: submission.stateOrProvince,
+          postalCode: submission.postalCode,
+          country: submission.country,
+          faithServingResponse: submission.faithServingResponse,
+          churchName: submission.churchName,
+          pastorName: submission.pastorName,
+          pastorPhone: submission.pastorPhone,
+          taskPreferenceFirst: submission.taskPreferenceFirst,
+          taskPreferenceSecond: submission.taskPreferenceSecond,
+          taskPreferenceThird: submission.taskPreferenceThird,
+          tShirtSize: submission.tShirtSize,
+          publicSubmittedAt: submission.submittedAt,
+          publicSubmissionIp: submission.requestIp,
+          importSource: ImportSource.online_registration,
+        },
+      });
+      const updated = await tx.workerRegistrationSubmission.update({
+        where: { id: submission.id },
+        data: {
+          resolvedWorkerId: worker.id,
+        },
+      });
+      return { submission: updated, worker };
+    });
+
+    if (!result) {
+      res.status(404).json({ error: "Pending worker registration review not found" });
+      return;
+    }
+    if ("error" in result) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    writeOpsLog("worker_registration_review_resolved", {
+      adminUserId: req.adminUser?.id,
+      campYearId,
+      submissionId,
+      decision: parsed.data.decision,
+      resolvedWorkerId: result.submission.resolvedWorkerId,
+    });
+    res.json(result);
+  },
+);
 
 router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
   const campYearId = campYearIdFromParams(req.params.campYearId, res);

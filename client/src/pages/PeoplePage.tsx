@@ -43,6 +43,33 @@ type WorkerRow = {
   importSource: string;
 };
 
+type WorkerRegistrationReview = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  dateOfBirth: string | null;
+  gender: string;
+  cellPhone: string;
+  churchName: string;
+  pastorName: string;
+  taskPreferenceFirst: string;
+  taskPreferenceSecond: string;
+  taskPreferenceThird: string;
+  submittedAt: string;
+  likelyMatches: Array<{
+    matchReason: string;
+    worker: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      dateOfBirth: string | null;
+      cellPhone: string;
+    };
+  }>;
+};
+
 type DormLeaderRow = {
   id: string;
   firstName: string;
@@ -192,6 +219,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [campYearId, setCampYearId] = useState<string>("");
   const [campers, setCampers] = useState<CamperRow[]>([]);
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
+  const [workerRegistrationReviews, setWorkerRegistrationReviews] = useState<WorkerRegistrationReview[]>([]);
   const [dormLeaders, setDormLeaders] = useState<DormLeaderRow[]>([]);
   const [allDorms, setAllDorms] = useState<DormOption[]>([]);
   const [ageGroupBrackets, setAgeGroupBrackets] = useState<AgeGroupBracket[]>([]);
@@ -207,6 +235,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
   const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
   const [personToEdit, setPersonToEdit] = useState<PersonToEdit | null>(null);
+  const [workerReviewError, setWorkerReviewError] = useState<string | null>(null);
+  const [resolvingWorkerReviewId, setResolvingWorkerReviewId] = useState<string | null>(null);
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState<PeopleGenderFilter>("");
   const [checkInFilter, setCheckInFilter] = useState<PeopleCheckInFilter>("");
@@ -265,6 +295,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
     if (!yearId) {
       setCampers([]);
       setWorkers([]);
+      setWorkerRegistrationReviews([]);
       setDormLeaders([]);
       setAllDorms([]);
       setAgeGroupBrackets([]);
@@ -272,8 +303,12 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
     }
     const [campersRes, workersRes, leadersRes, dormsRes, ageGroupRes] = await Promise.all([
       apiJson<{ campers: CamperRow[] }>(`/api/admin/camp-years/${yearId}/campers`),
-      apiJson<{ workers: WorkerRow[] }>(`/api/admin/camp-years/${yearId}/workers`).catch(() => ({
+      apiJson<{
+        workers: WorkerRow[];
+        pendingRegistrationReviews: WorkerRegistrationReview[];
+      }>(`/api/admin/camp-years/${yearId}/workers`).catch(() => ({
         workers: [],
+        pendingRegistrationReviews: [],
       })),
       apiJson<{ dormLeaders: DormLeaderRow[] }>(
         `/api/admin/camp-years/${yearId}/dorm-leaders`,
@@ -287,9 +322,42 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
     ]);
     setCampers(campersRes.campers);
     setWorkers(workersRes.workers);
+    setWorkerRegistrationReviews(workersRes.pendingRegistrationReviews);
     setDormLeaders(leadersRes.dormLeaders);
     setAllDorms(dormsRes.dorms);
     setAgeGroupBrackets(ageGroupRes.ageGroupBrackets);
+  };
+
+  const resolveWorkerRegistrationReview = async (
+    reviewId: string,
+    decision: "create_new" | "link_existing" | "dismiss",
+    workerId?: string,
+  ): Promise<void> => {
+    if (!campYearId) return;
+    setResolvingWorkerReviewId(reviewId);
+    setWorkerReviewError(null);
+    try {
+      await apiJson(
+        `/api/admin/camp-years/${campYearId}/workers/registration-reviews/${reviewId}/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            decision,
+            ...(workerId ? { workerId } : {}),
+          }),
+        },
+      );
+      await loadPeopleData(campYearId);
+    } catch (caught) {
+      const httpError = caught as ApiHttpError;
+      setWorkerReviewError(
+        httpError instanceof Error
+          ? httpError.message
+          : "Could not resolve the worker registration review.",
+      );
+    } finally {
+      setResolvingWorkerReviewId(null);
+    }
   };
 
   useEffect(() => {
@@ -1217,8 +1285,91 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
           ) : null}
 
       {peopleListKind === "worker" ? (
-      <div id="workers-panel" role="tabpanel" aria-labelledby="workers-tab" className="card">
+      <div id="workers-panel" role="tabpanel" aria-labelledby="workers-tab" className="card stack">
         <h2 style={{ marginTop: 0 }}>Workers</h2>
+        {workerRegistrationReviews.length > 0 ? (
+          <section className="worker-review-queue" aria-labelledby="worker-review-heading">
+            <div className="worker-review-heading">
+              <div>
+                <h3 id="worker-review-heading">Registrations needing review</h3>
+                <p className="muted">
+                  These submissions match an existing worker and are not available to check-in or
+                  dorm workflows.
+                </p>
+              </div>
+              <strong>{workerRegistrationReviews.length}</strong>
+            </div>
+            {workerReviewError ? <p className="error" role="alert">{workerReviewError}</p> : null}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Submission</th>
+                    <th>Likely match</th>
+                    <th>Submitted</th>
+                    <th>Review</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workerRegistrationReviews.map((review) => (
+                    <tr key={review.id}>
+                      <td>
+                        <strong>{review.firstName} {review.lastName}</strong>
+                        <span className="worker-review-detail">{review.email}</span>
+                        <span className="worker-review-detail">{review.cellPhone}</span>
+                      </td>
+                      <td>
+                        {review.likelyMatches.map((match) => (
+                          <span className="worker-review-match" key={match.worker.id}>
+                            <strong>{match.worker.firstName} {match.worker.lastName}</strong>
+                            <span>{match.worker.email}</span>
+                            <span>{match.matchReason.replaceAll("_", " ")}</span>
+                          </span>
+                        ))}
+                      </td>
+                      <td>{new Date(review.submittedAt).toLocaleString()}</td>
+                      <td>
+                        <div className="worker-review-actions">
+                          {review.likelyMatches.map((match) => (
+                            <button
+                              key={match.worker.id}
+                              type="button"
+                              className="btn secondary"
+                              disabled={resolvingWorkerReviewId !== null}
+                              onClick={() => void resolveWorkerRegistrationReview(
+                                review.id,
+                                "link_existing",
+                                match.worker.id,
+                              )}
+                            >
+                              Link existing
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={resolvingWorkerReviewId !== null}
+                            onClick={() => void resolveWorkerRegistrationReview(review.id, "create_new")}
+                          >
+                            Create separate worker
+                          </button>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={resolvingWorkerReviewId !== null}
+                            onClick={() => void resolveWorkerRegistrationReview(review.id, "dismiss")}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
         {workers.length === 0 ? (
           <p className="muted">No workers yet for this year.</p>
         ) : filteredWorkers.length === 0 ? (

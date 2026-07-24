@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiJson } from "../api";
 import { FamilyRegistrationForm } from "../components/FamilyRegistrationForm";
+import { WorkerRegistrationForm } from "../components/WorkerRegistrationForm";
 
 type Flow = "family" | "worker";
 type AvailabilityState =
@@ -138,7 +139,7 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
               {flow === "family" ? (
                 <FamilyRegistrationForm />
               ) : (
-                <p>The worker registration form will appear here in its registration-flow step.</p>
+                <WorkerRegistrationForm />
               )}
             </div>
           ) : null}
