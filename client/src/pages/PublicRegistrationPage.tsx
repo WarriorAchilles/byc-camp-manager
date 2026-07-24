@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { apiJson } from "../api";
 import { FamilyRegistrationForm } from "../components/FamilyRegistrationForm";
 import { WorkerRegistrationForm } from "../components/WorkerRegistrationForm";
+import { LeaderRegistrationForm } from "../components/LeaderRegistrationForm";
 
-type Flow = "family" | "worker";
+type Flow = "family" | "worker" | "leader";
 type AvailabilityState =
   | "not_configured"
   | "disabled"
@@ -88,9 +89,11 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
     return () => window.clearInterval(interval);
   }, [load, serverOffset, targetTime]);
 
-  const title = flow === "family" ? "Camper registration" : "Worker registration";
-  const alternatePath = flow === "family" ? "/register/worker" : "/register/family";
-  const alternateLabel = flow === "family" ? "Register as a worker" : "Register campers";
+  const title = flow === "family"
+    ? "Camper registration"
+    : flow === "worker"
+      ? "Worker registration"
+      : "Leader registration";
   const remaining = targetTime === null ? 0 : targetTime - (now + serverOffset);
   const returningFromPayment = flow === "family" && new URLSearchParams(window.location.search).has("registration_id");
 
@@ -136,11 +139,9 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
           {!loading && !error && !returningFromPayment && availability?.state === "open" ? (
             <div>
               <h2>{title} is open</h2>
-              {flow === "family" ? (
-                <FamilyRegistrationForm />
-              ) : (
-                <WorkerRegistrationForm />
-              )}
+              {flow === "family" ? <FamilyRegistrationForm /> : null}
+              {flow === "worker" ? <WorkerRegistrationForm /> : null}
+              {flow === "leader" ? <LeaderRegistrationForm /> : null}
             </div>
           ) : null}
           {!loading && !error && !returningFromPayment && availability?.state === "capacity_reached" ? (
@@ -158,7 +159,9 @@ export function PublicRegistrationPage({ flow }: { flow: Flow }): React.ReactEle
         </div>
 
         <nav className="registration-switch" aria-label="Registration options">
-          <Link to={alternatePath}>{alternateLabel}</Link>
+          {flow !== "family" ? <Link to="/register/family">Register campers</Link> : null}
+          {flow !== "worker" ? <Link to="/register/worker">Register as a worker</Link> : null}
+          {flow !== "leader" ? <Link to="/register/leader">Register as a leader</Link> : null}
         </nav>
       </section>
     </main>

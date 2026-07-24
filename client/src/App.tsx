@@ -59,6 +59,7 @@ export function App(): React.ReactElement {
       <Routes>
         <Route path="/register/family" element={<PublicRegistrationPage flow="family" />} />
         <Route path="/register/worker" element={<PublicRegistrationPage flow="worker" />} />
+        <Route path="/register/leader" element={<PublicRegistrationPage flow="leader" />} />
         <Route path="/" element={<Navigate to="/register/family" replace />} />
         <Route path="*" element={<Navigate to="/register/family" replace />} />
       </Routes>

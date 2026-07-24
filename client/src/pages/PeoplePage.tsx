@@ -77,6 +77,7 @@ type DormLeaderRow = {
   email: string;
   phone: string;
   gender: string;
+  roleLabel: string | null;
   checkInStatus: CheckInStatus;
   importSource: string;
   assignedCamperDormId: string | null;
@@ -457,7 +458,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         if (checkInFilter && leader.checkInStatus !== checkInFilter) {
           return false;
         }
-        return !selectedAgeGroup;
+        return !selectedAgeGroup || leader.roleLabel === selectedAgeGroup.label;
       }),
     [checkInFilter, dormLeaders, genderFilter, normalizedNameSearch, selectedAgeGroup],
   );
@@ -1186,8 +1187,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
             </div>
             {ageGroupFilter && peopleListKind === "dorm_leader" ? (
               <p className="muted people-filter-note">
-                Dorm leaders do not have dates of birth, so age group filters apply to campers and
-                workers only.
+                Dorm leader filtering uses the preferred age group recorded on their registration.
               </p>
             ) : null}
             {paymentFilter && peopleListKind !== "camper" ? (
@@ -1451,6 +1451,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
+                  <th>Preferred age group</th>
                   <th>Gender</th>
                   <th>Check-in</th>
                   <th>Camper dorm</th>
@@ -1466,6 +1467,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     </td>
                     <td>{leader.email}</td>
                     <td>{leader.phone}</td>
+                    <td>{leader.roleLabel ?? "—"}</td>
                     <td>{genderLabel(leader.gender)}</td>
                     <td>{checkInLabel(leader.checkInStatus)}</td>
                     <td>{leader.assignedCamperDorm?.name ?? "—"}</td>

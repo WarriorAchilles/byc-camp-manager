@@ -46,6 +46,16 @@ import {
   WORKER_T_SHIRT_SIZES,
   type WorkerSubmission,
 } from "../lib/workerRegistration.js";
+import {
+  LEADER_GENDERS,
+  LEADER_MARITAL_STATUSES,
+  LEADER_STATE_PROVINCE_OPTIONS,
+  LEADER_T_SHIRT_GUIDANCE,
+  LEADER_T_SHIRT_SIZES,
+  leaderSubmissionDigest,
+  leaderSubmissionSchema,
+  type LeaderSubmission,
+} from "../lib/leaderRegistration.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
@@ -81,6 +91,11 @@ async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<
       workerRegistrationEnabled: true,
       workerRegistrationHeaderContent: true,
       workerRegistrationClosedMessage: true,
+      leaderRegistrationOpensAt: true,
+      leaderRegistrationClosesAt: true,
+      leaderRegistrationEnabled: true,
+      leaderRegistrationHeaderContent: true,
+      leaderRegistrationClosedMessage: true,
     },
   });
   if (!year) {
@@ -106,12 +121,24 @@ async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<
       },
     })
     : 0;
-  const family = flow === "family";
-  const opensAt = family ? year.familyRegistrationOpensAt : year.workerRegistrationOpensAt;
-  const closesAt = family ? year.familyRegistrationClosesAt : year.workerRegistrationClosesAt;
+  const opensAt = flow === "family"
+    ? year.familyRegistrationOpensAt
+    : flow === "worker"
+      ? year.workerRegistrationOpensAt
+      : year.leaderRegistrationOpensAt;
+  const closesAt = flow === "family"
+    ? year.familyRegistrationClosesAt
+    : flow === "worker"
+      ? year.workerRegistrationClosesAt
+      : year.leaderRegistrationClosesAt;
+  const manuallyEnabled = flow === "family"
+    ? year.familyRegistrationEnabled
+    : flow === "worker"
+      ? year.workerRegistrationEnabled
+      : year.leaderRegistrationEnabled;
   const state = resolveRegistrationAvailability({
     flow,
-    manuallyEnabled: family ? year.familyRegistrationEnabled : year.workerRegistrationEnabled,
+    manuallyEnabled,
     opensAt,
     closesAt,
     camperCapacity: year.camperCapacity,
@@ -125,12 +152,16 @@ async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<
     serverTime: now.toISOString(),
     opensAt: opensAt?.toISOString() ?? null,
     closesAt: closesAt?.toISOString() ?? null,
-    headerContent: family
+    headerContent: flow === "family"
       ? year.familyRegistrationHeaderContent
-      : year.workerRegistrationHeaderContent,
-    closedMessage: family
+      : flow === "worker"
+        ? year.workerRegistrationHeaderContent
+        : year.leaderRegistrationHeaderContent,
+    closedMessage: flow === "family"
       ? year.familyRegistrationClosedMessage
-      : year.workerRegistrationClosedMessage,
+      : flow === "worker"
+        ? year.workerRegistrationClosedMessage
+        : year.leaderRegistrationClosedMessage,
     camp: {
       id: year.id,
       name: year.name,
@@ -778,6 +809,184 @@ publicRegistrationRouter.post("/worker", submissionLimit, async (req, res, next)
     );
     res.status(result.replayed ? 200 : 201).json({
       registrationId: result.submission.id,
+      status: "received",
+      replayed: result.replayed,
+    });
+  } catch (error) {
+    if (error instanceof SubmissionError) {
+      res.status(error.status).json({ error: error.code, details: error.details });
+      return;
+    }
+    next(error);
+  }
+});
+
+publicRegistrationRouter.get("/leader", async (_req, res, next) => {
+  try { await sendAvailability("leader", res); } catch (error) { next(error); }
+});
+
+function leaderPersistenceData(
+  input: LeaderSubmission,
+  campYearId: string,
+  submittedAt: Date,
+  requestIp: string,
+) {
+  return {
+    campYearId,
+    email: input.email.toLocaleLowerCase(),
+    firstName: input.firstName,
+    lastName: input.lastName,
+    dateOfBirth: new Date(`${input.dateOfBirth}T12:00:00.000Z`),
+    gender: input.gender,
+    phone: input.cellPhone,
+    altPhone: input.altPhone || null,
+    streetAddress: input.streetAddress,
+    city: input.city,
+    stateOrProvince: input.stateOrProvince,
+    postalCode: input.postalCode,
+    country: input.country,
+    maritalStatus: input.maritalStatus,
+    faithServingResponse: input.faithServingResponse,
+    churchName: input.churchName,
+    pastorName: input.pastorName,
+    pastorPhone: input.pastorPhone,
+    roleLabel: input.ageGroupPreference,
+    tShirtSize: input.tShirtSize || null,
+    publicSubmittedAt: submittedAt,
+    publicSubmissionIp: safeRequestIp(requestIp),
+    publicSubmissionKey: input.submissionKey,
+    publicSubmissionDigest: leaderSubmissionDigest(input),
+    importSource: ImportSource.online_registration,
+  };
+}
+
+export async function persistLeaderSubmission(
+  input: LeaderSubmission,
+  requestIp: string,
+  now: Date,
+) {
+  const digest = leaderSubmissionDigest(input);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const replay = await tx.dormLeader.findUnique({
+          where: { publicSubmissionKey: input.submissionKey },
+          select: { id: true, publicSubmissionDigest: true },
+        });
+        if (replay) {
+          if (replay.publicSubmissionDigest !== digest) {
+            throw new SubmissionError(409, "submission_key_reused");
+          }
+          return { leader: replay, replayed: true };
+        }
+
+        const activeCampYearId = await getActiveCampYearId(tx);
+        if (!activeCampYearId) throw new SubmissionError(409, "registration_not_configured");
+        const camp = await tx.campYear.findUnique({ where: { id: activeCampYearId } });
+        if (!camp) throw new SubmissionError(409, "registration_not_configured");
+        const availability = resolveRegistrationAvailability({
+          flow: "leader",
+          manuallyEnabled: camp.leaderRegistrationEnabled,
+          opensAt: camp.leaderRegistrationOpensAt,
+          closesAt: camp.leaderRegistrationClosesAt,
+        }, now);
+        if (availability !== "open") {
+          throw new SubmissionError(409, "registration_closed");
+        }
+
+        const normalizedEmail = input.email.toLocaleLowerCase();
+        const potentialMatches = await tx.dormLeader.findMany({
+          where: {
+            campYearId: camp.id,
+            archivedAt: null,
+            OR: [
+              { email: { equals: normalizedEmail, mode: "insensitive" } },
+              {
+                firstName: { equals: input.firstName, mode: "insensitive" },
+                lastName: { equals: input.lastName, mode: "insensitive" },
+              },
+            ],
+          },
+          select: { email: true, firstName: true, lastName: true, phone: true },
+        });
+        const duplicate = potentialMatches.some((leader) => {
+          const emailMatch = leader.email.trim().toLocaleLowerCase() === normalizedEmail;
+          const nameMatch = leader.firstName.trim().toLocaleLowerCase() === input.firstName.toLocaleLowerCase()
+            && leader.lastName.trim().toLocaleLowerCase() === input.lastName.toLocaleLowerCase();
+          return emailMatch || (nameMatch && normalizedPhone(leader.phone) === input.cellPhone);
+        });
+        if (duplicate) {
+          throw new SubmissionError(409, "leader_already_registered");
+        }
+
+        const leader = await tx.dormLeader.create({
+          data: leaderPersistenceData(input, camp.id, now, requestIp),
+          select: { id: true, publicSubmissionDigest: true },
+        });
+        return { leader, replayed: false };
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (isRetryableTransactionError(error) && attempt < 2) continue;
+      if (isUniqueConstraintError(error)) {
+        const replay = await prisma.dormLeader.findUnique({
+          where: { publicSubmissionKey: input.submissionKey },
+          select: { id: true, publicSubmissionDigest: true },
+        });
+        if (replay?.publicSubmissionDigest === digest) {
+          return { leader: replay, replayed: true };
+        }
+        throw new SubmissionError(409, "submission_key_reused");
+      }
+      throw error;
+    }
+  }
+  throw new SubmissionError(409, "submission_conflict");
+}
+
+publicRegistrationRouter.get("/leader/form-options", async (_req, res, next) => {
+  try {
+    const activeCampYearId = await getActiveCampYearId(prisma);
+    const ageGroupOptions = activeCampYearId
+      ? (await prisma.ageGroupBracket.findMany({
+          where: { campYearId: activeCampYearId, isActive: true },
+          select: { label: true },
+          orderBy: { sortOrder: "asc" },
+        })).map((bracket) => bracket.label)
+      : [];
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      genders: LEADER_GENDERS,
+      stateOrProvinceOptions: LEADER_STATE_PROVINCE_OPTIONS,
+      maritalStatuses: LEADER_MARITAL_STATUSES,
+      ageGroupOptions,
+      tShirtSizes: LEADER_T_SHIRT_SIZES,
+      tShirtGuidance: LEADER_T_SHIRT_GUIDANCE,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRegistrationRouter.post("/leader", submissionLimit, async (req, res, next) => {
+  const parsed = leaderSubmissionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "validation_failed",
+      fields: parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
+    return;
+  }
+  try {
+    const result = await persistLeaderSubmission(
+      parsed.data,
+      req.ip || req.socket.remoteAddress || "unknown",
+      new Date(),
+    );
+    res.status(result.replayed ? 200 : 201).json({
+      registrationId: result.leader.id,
       status: "received",
       replayed: result.replayed,
     });

@@ -14,13 +14,28 @@ const router = Router({ mergeParams: true });
 router.use(requireAuth);
 router.use(requireRole(AdminRole.super_admin, AdminRole.camp_admin));
 
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+
 const leaderBody = {
   firstName: z.string().min(1),
   lastName: z.string().min(1),
+  dateOfBirth: dateOnly.nullable().optional(),
   gender: z.nativeEnum(Gender),
   email: z.string().email(),
   phone: z.string().min(1),
+  altPhone: z.string().nullable().optional(),
+  streetAddress: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  stateOrProvince: z.string().nullable().optional(),
+  postalCode: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+  maritalStatus: z.string().nullable().optional(),
+  faithServingResponse: z.string().nullable().optional(),
+  churchName: z.string().nullable().optional(),
+  pastorName: z.string().nullable().optional(),
+  pastorPhone: z.string().nullable().optional(),
   roleLabel: z.string().nullable().optional(),
+  tShirtSize: z.string().nullable().optional(),
   assignedCamperDormId: z.string().uuid().nullable().optional(),
 };
 
@@ -145,10 +160,25 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       campYearId,
       firstName: parsed.data.firstName.trim(),
       lastName: parsed.data.lastName.trim(),
+      dateOfBirth: parsed.data.dateOfBirth
+        ? new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`)
+        : null,
       gender: parsed.data.gender,
       email: parsed.data.email.trim().toLowerCase(),
       phone: parsed.data.phone.trim(),
+      altPhone: parsed.data.altPhone?.trim() ?? null,
+      streetAddress: parsed.data.streetAddress?.trim() ?? null,
+      city: parsed.data.city?.trim() ?? null,
+      stateOrProvince: parsed.data.stateOrProvince?.trim() ?? null,
+      postalCode: parsed.data.postalCode?.trim() ?? null,
+      country: parsed.data.country?.trim() ?? null,
+      maritalStatus: parsed.data.maritalStatus?.trim() ?? null,
+      faithServingResponse: parsed.data.faithServingResponse?.trim() ?? null,
+      churchName: parsed.data.churchName?.trim() ?? null,
+      pastorName: parsed.data.pastorName?.trim() ?? null,
+      pastorPhone: parsed.data.pastorPhone?.trim() ?? null,
       roleLabel: parsed.data.roleLabel?.trim() ?? null,
+      tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
       assignedCamperDormId: parsed.data.assignedCamperDormId ?? null,
       importSource: ImportSource.admin_entry,
     },
@@ -220,6 +250,11 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   if (partial.lastName !== undefined) {
     data.lastName = partial.lastName.trim();
   }
+  if (partial.dateOfBirth !== undefined) {
+    data.dateOfBirth = partial.dateOfBirth
+      ? new Date(`${partial.dateOfBirth}T12:00:00.000Z`)
+      : null;
+  }
   if (partial.gender !== undefined) {
     data.gender = partial.gender;
   }
@@ -229,8 +264,44 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   if (partial.phone !== undefined) {
     data.phone = partial.phone.trim();
   }
+  if (partial.altPhone !== undefined) {
+    data.altPhone = partial.altPhone?.trim() ?? null;
+  }
+  if (partial.streetAddress !== undefined) {
+    data.streetAddress = partial.streetAddress?.trim() ?? null;
+  }
+  if (partial.city !== undefined) {
+    data.city = partial.city?.trim() ?? null;
+  }
+  if (partial.stateOrProvince !== undefined) {
+    data.stateOrProvince = partial.stateOrProvince?.trim() ?? null;
+  }
+  if (partial.postalCode !== undefined) {
+    data.postalCode = partial.postalCode?.trim() ?? null;
+  }
+  if (partial.country !== undefined) {
+    data.country = partial.country?.trim() ?? null;
+  }
+  if (partial.maritalStatus !== undefined) {
+    data.maritalStatus = partial.maritalStatus?.trim() ?? null;
+  }
+  if (partial.faithServingResponse !== undefined) {
+    data.faithServingResponse = partial.faithServingResponse?.trim() ?? null;
+  }
+  if (partial.churchName !== undefined) {
+    data.churchName = partial.churchName?.trim() ?? null;
+  }
+  if (partial.pastorName !== undefined) {
+    data.pastorName = partial.pastorName?.trim() ?? null;
+  }
+  if (partial.pastorPhone !== undefined) {
+    data.pastorPhone = partial.pastorPhone?.trim() ?? null;
+  }
   if (partial.roleLabel !== undefined) {
     data.roleLabel = partial.roleLabel?.trim() ?? null;
+  }
+  if (partial.tShirtSize !== undefined) {
+    data.tShirtSize = partial.tShirtSize?.trim() ?? null;
   }
   if (partial.assignedCamperDormId !== undefined) {
     data.assignedCamperDorm = partial.assignedCamperDormId

@@ -147,6 +147,11 @@ model CampYear {
   workerRegistrationEnabled         Boolean   @default(false) @map("worker_registration_enabled")
   workerRegistrationHeaderContent   String    @default("Worker registration details will be posted here. Please contact the camp office with questions.") @map("worker_registration_header_content") @db.Text
   workerRegistrationClosedMessage   String    @default("Worker registration is currently closed.") @map("worker_registration_closed_message") @db.Text
+  leaderRegistrationOpensAt         DateTime? @map("leader_registration_opens_at")
+  leaderRegistrationClosesAt        DateTime? @map("leader_registration_closes_at")
+  leaderRegistrationEnabled         Boolean   @default(false) @map("leader_registration_enabled")
+  leaderRegistrationHeaderContent   String    @default("Leader registration details will be posted here. Please contact the camp office with questions.") @map("leader_registration_header_content") @db.Text
+  leaderRegistrationClosedMessage   String    @default("Leader registration is currently closed.") @map("leader_registration_closed_message") @db.Text
   feeCutoverAt                      DateTime? @map("fee_cutover_at")
   earlyCamperFeeCents               Int?      @map("early_camper_fee_cents")
   lateCamperFeeCents                Int?      @map("late_camper_fee_cents")
@@ -532,25 +537,43 @@ model WorkerRegistrationMatch {
 }
 
 model DormLeader {
-  id                   String        @id @default(uuid())
-  campYearId           String        @map("camp_year_id")
-  firstName            String        @map("first_name")
-  lastName             String        @map("last_name")
-  gender               Gender
-  email                String        @map("email")
-  phone                String
-  roleLabel            String?       @map("role_label")
-  assignedCamperDormId String?       @map("assigned_camper_dorm_id")
-  checkInStatus        CheckInStatus @default(not_checked_in) @map("check_in_status")
-  checkedInAt          DateTime?     @map("checked_in_at")
-  importSource         ImportSource  @map("import_source")
-  archivedAt           DateTime?     @map("archived_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
-  updatedAt            DateTime      @updatedAt @map("updated_at")
+  id                     String        @id @default(uuid())
+  campYearId             String        @map("camp_year_id")
+  firstName              String        @map("first_name")
+  lastName               String        @map("last_name")
+  dateOfBirth            DateTime?     @map("date_of_birth") @db.Date
+  gender                 Gender
+  email                  String        @map("email")
+  phone                  String
+  altPhone               String?       @map("alt_phone")
+  streetAddress          String?       @map("street_address")
+  city                   String?
+  stateOrProvince        String?       @map("state_or_province")
+  postalCode             String?       @map("postal_code")
+  country                String?
+  maritalStatus          String?       @map("marital_status")
+  faithServingResponse   String?       @map("faith_serving_response") @db.Text
+  churchName             String?       @map("church_name")
+  pastorName             String?       @map("pastor_name")
+  pastorPhone            String?       @map("pastor_phone")
+  roleLabel              String?       @map("role_label")
+  tShirtSize             String?       @map("t_shirt_size")
+  publicSubmittedAt      DateTime?     @map("public_submitted_at")
+  publicSubmissionIp     String?       @map("public_submission_ip")
+  publicSubmissionKey    String?       @unique @map("public_submission_key")
+  publicSubmissionDigest String?       @map("public_submission_digest")
+  assignedCamperDormId   String?       @map("assigned_camper_dorm_id")
+  checkInStatus          CheckInStatus @default(not_checked_in) @map("check_in_status")
+  checkedInAt            DateTime?     @map("checked_in_at")
+  importSource           ImportSource  @map("import_source")
+  archivedAt             DateTime?     @map("archived_at")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
 
   campYear           CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
   assignedCamperDorm Dorm?    @relation(fields: [assignedCamperDormId], references: [id], onDelete: SetNull)
 
   @@index([campYearId])
+  @@index([campYearId, email])
   @@map("dorm_leaders")
 }

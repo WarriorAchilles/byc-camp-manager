@@ -100,6 +100,11 @@ export function PersonEditDialog({
           taskPreferenceSecond: textValue(row.taskPreferenceSecond),
           taskPreferenceThird: textValue(row.taskPreferenceThird),
           tShirtSize: textValue(row.tShirtSize),
+          maritalStatus: textValue(row.maritalStatus),
+          faithServingResponse: textValue(row.faithServingResponse),
+          churchName: textValue(row.churchName),
+          pastorName: textValue(row.pastorName),
+          pastorPhone: textValue(row.pastorPhone),
           roleLabel: textValue(row.roleLabel),
           assignedCamperDormId: textValue(row.assignedCamperDormId),
         });
@@ -205,7 +210,20 @@ export function PersonEditDialog({
           email: value("email"),
           gender: value("gender"),
           phone: value("cellPhone"),
+          dateOfBirth: nullable(value("dateOfBirth")),
+          altPhone: nullable(value("altPhone")),
+          streetAddress: nullable(value("streetAddress")),
+          city: nullable(value("city")),
+          stateOrProvince: nullable(value("stateOrProvince")),
+          postalCode: nullable(value("postalCode")),
+          country: nullable(value("country")),
+          maritalStatus: nullable(value("maritalStatus")),
+          faithServingResponse: nullable(value("faithServingResponse")),
+          churchName: nullable(value("churchName")),
+          pastorName: nullable(value("pastorName")),
+          pastorPhone: nullable(value("pastorPhone")),
           roleLabel: nullable(value("roleLabel")),
+          tShirtSize: nullable(value("tShirtSize")),
           assignedCamperDormId: nullable(value("assignedCamperDormId")),
         };
         if (initialKind === "dorm_leader") payload.checkInStatus = value("checkInStatus");
@@ -266,7 +284,15 @@ export function PersonEditDialog({
             {initialKind === "worker" ? checkInSelect : null}
           </> : null}
           {kind === "dorm_leader" ? <>
-            {input("email", "Email", false, "email")}{input("cellPhone", "Phone")}{input("roleLabel", "Role label")}
+            {input("email", "Email", false, "email")}{input("dateOfBirth", "Date of birth", false, "date")}
+            {input("cellPhone", "Cell phone")}{input("altPhone", "Alternate phone")}
+            {input("streetAddress", "Street address")}{input("city", "City")}
+            {input("stateOrProvince", "State / province")}{input("postalCode", "Postal code")}
+            {input("country", "Country")}{input("maritalStatus", "Marital status")}
+            <label>Faithfully serving response<textarea value={value("faithServingResponse")} onChange={(event) => setValue("faithServingResponse", event.target.value)} /></label>
+            {input("churchName", "Church presently attending")}{input("pastorName", "Pastor name")}
+            {input("pastorPhone", "Pastor phone")}{input("roleLabel", "Preferred age group / role label")}
+            {input("tShirtSize", "T-shirt size")}
             <label>Camper dorm<select value={value("assignedCamperDormId")} onChange={(event) => setValue("assignedCamperDormId", event.target.value)}><option value="">Unassigned</option>{dorms.filter((dorm) => dorm.purpose === "camper").map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}</select></label>
             {initialKind === "dorm_leader" ? checkInSelect : null}
           </> : null}

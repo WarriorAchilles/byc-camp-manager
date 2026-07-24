@@ -38,6 +38,11 @@ const campYearCreateBody = z.object({
   workerRegistrationEnabled: z.boolean().optional(),
   workerRegistrationHeaderContent: z.string().trim().min(1).max(10_000).optional(),
   workerRegistrationClosedMessage: z.string().trim().min(1).max(2_000).optional(),
+  leaderRegistrationOpensAt: z.string().datetime().nullable().optional(),
+  leaderRegistrationClosesAt: z.string().datetime().nullable().optional(),
+  leaderRegistrationEnabled: z.boolean().optional(),
+  leaderRegistrationHeaderContent: z.string().trim().min(1).max(10_000).optional(),
+  leaderRegistrationClosedMessage: z.string().trim().min(1).max(2_000).optional(),
   feeCutoverAt: z.string().datetime().nullable().optional(),
   earlyCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
   lateCamperFeeCents: z.number().int().nonnegative().nullable().optional(),
@@ -122,8 +127,11 @@ adminCampYearsRouter.post(
     const familyClosesAt = parsed.data.familyRegistrationClosesAt ? new Date(parsed.data.familyRegistrationClosesAt) : null;
     const workerOpensAt = parsed.data.workerRegistrationOpensAt ? new Date(parsed.data.workerRegistrationOpensAt) : null;
     const workerClosesAt = parsed.data.workerRegistrationClosesAt ? new Date(parsed.data.workerRegistrationClosesAt) : null;
+    const leaderOpensAt = parsed.data.leaderRegistrationOpensAt ? new Date(parsed.data.leaderRegistrationOpensAt) : null;
+    const leaderClosesAt = parsed.data.leaderRegistrationClosesAt ? new Date(parsed.data.leaderRegistrationClosesAt) : null;
     if ((familyOpensAt && familyClosesAt && familyClosesAt <= familyOpensAt) ||
-        (workerOpensAt && workerClosesAt && workerClosesAt <= workerOpensAt)) {
+        (workerOpensAt && workerClosesAt && workerClosesAt <= workerOpensAt) ||
+        (leaderOpensAt && leaderClosesAt && leaderClosesAt <= leaderOpensAt)) {
       res.status(400).json({ error: "Registration close time must be after open time" });
       return;
     }
@@ -144,6 +152,11 @@ adminCampYearsRouter.post(
         workerRegistrationEnabled: parsed.data.workerRegistrationEnabled ?? false,
         ...(parsed.data.workerRegistrationHeaderContent ? { workerRegistrationHeaderContent: parsed.data.workerRegistrationHeaderContent } : {}),
         ...(parsed.data.workerRegistrationClosedMessage ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage } : {}),
+        leaderRegistrationOpensAt: leaderOpensAt,
+        leaderRegistrationClosesAt: leaderClosesAt,
+        leaderRegistrationEnabled: parsed.data.leaderRegistrationEnabled ?? false,
+        ...(parsed.data.leaderRegistrationHeaderContent ? { leaderRegistrationHeaderContent: parsed.data.leaderRegistrationHeaderContent } : {}),
+        ...(parsed.data.leaderRegistrationClosedMessage ? { leaderRegistrationClosedMessage: parsed.data.leaderRegistrationClosedMessage } : {}),
         feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null,
         earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
         lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
@@ -778,8 +791,15 @@ adminCampYearsRouter.patch(
     const nextWorkerClosesAt = parsed.data.workerRegistrationClosesAt !== undefined
       ? (parsed.data.workerRegistrationClosesAt ? new Date(parsed.data.workerRegistrationClosesAt) : null)
       : existing.workerRegistrationClosesAt;
+    const nextLeaderOpensAt = parsed.data.leaderRegistrationOpensAt !== undefined
+      ? (parsed.data.leaderRegistrationOpensAt ? new Date(parsed.data.leaderRegistrationOpensAt) : null)
+      : existing.leaderRegistrationOpensAt;
+    const nextLeaderClosesAt = parsed.data.leaderRegistrationClosesAt !== undefined
+      ? (parsed.data.leaderRegistrationClosesAt ? new Date(parsed.data.leaderRegistrationClosesAt) : null)
+      : existing.leaderRegistrationClosesAt;
     if ((nextFamilyOpensAt && nextFamilyClosesAt && nextFamilyClosesAt <= nextFamilyOpensAt) ||
-        (nextWorkerOpensAt && nextWorkerClosesAt && nextWorkerClosesAt <= nextWorkerOpensAt)) {
+        (nextWorkerOpensAt && nextWorkerClosesAt && nextWorkerClosesAt <= nextWorkerOpensAt) ||
+        (nextLeaderOpensAt && nextLeaderClosesAt && nextLeaderClosesAt <= nextLeaderOpensAt)) {
       res.status(400).json({ error: "Registration close time must be after open time" });
       return;
     }
@@ -829,6 +849,21 @@ adminCampYearsRouter.patch(
           : {}),
         ...(parsed.data.workerRegistrationClosedMessage !== undefined
           ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage }
+          : {}),
+        ...(parsed.data.leaderRegistrationOpensAt !== undefined
+          ? { leaderRegistrationOpensAt: nextLeaderOpensAt }
+          : {}),
+        ...(parsed.data.leaderRegistrationClosesAt !== undefined
+          ? { leaderRegistrationClosesAt: nextLeaderClosesAt }
+          : {}),
+        ...(parsed.data.leaderRegistrationEnabled !== undefined
+          ? { leaderRegistrationEnabled: parsed.data.leaderRegistrationEnabled }
+          : {}),
+        ...(parsed.data.leaderRegistrationHeaderContent !== undefined
+          ? { leaderRegistrationHeaderContent: parsed.data.leaderRegistrationHeaderContent }
+          : {}),
+        ...(parsed.data.leaderRegistrationClosedMessage !== undefined
+          ? { leaderRegistrationClosedMessage: parsed.data.leaderRegistrationClosedMessage }
           : {}),
         ...(parsed.data.feeCutoverAt !== undefined
           ? { feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null }

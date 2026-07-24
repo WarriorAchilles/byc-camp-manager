@@ -2257,7 +2257,8 @@ tbody tr:hover td {
   text-align: left;
 }
 
-.worker-registration-form {
+.worker-registration-form,
+.leader-registration-form {
   margin-top: 1rem;
   text-align: left;
 }

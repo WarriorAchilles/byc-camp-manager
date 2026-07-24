@@ -1,4 +1,4 @@
-export type RegistrationFlow = "family" | "worker";
+export type RegistrationFlow = "family" | "worker" | "leader";
 export type RegistrationAvailabilityState =
   | "not_configured"
   | "disabled"

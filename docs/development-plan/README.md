@@ -2,7 +2,7 @@
 
 Source spec: `docs/specs.md`
 
-This plan is split into two independently useful phases. Phase 1 builds the protected camp operations system so camp staff can manage imported or manually entered data before public registration is available. Phase 2 adds public camper and worker registration, payment collection, and registration-time notifications.
+This plan is split into two independently useful phases. Phase 1 builds the protected camp operations system so camp staff can manage imported or manually entered data before public registration is available. Phase 2 adds public camper, worker, and leader registration, payment collection, and registration-time notifications.
 
 ## Recommended Execution Order
 
@@ -23,15 +23,16 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 3. `phase-2-camper-registration/02-family-camper-registration-flow.md`
 4. `phase-2-camper-registration/03-pricing-merchandise-and-stripe-payments.md`
 5. `phase-2-camper-registration/04-worker-registration-flow.md`
-6. `phase-2-camper-registration/05-registration-confirmation-emails.md`
-7. `phase-2-camper-registration/06-phase-2-release-verification.md`
+6. `phase-2-camper-registration/04a-leader-registration-flow.md`
+7. `phase-2-camper-registration/05-registration-confirmation-emails.md`
+8. `phase-2-camper-registration/06-phase-2-release-verification.md`
 
 ## Global Assumptions
 
 - The first production milestone prioritizes camp operations over public registration, matching the spec note that registration may not be used in the first year.
 - Phase 1 still includes worker and dorm leader records because check-in, dorm assignment, imports, and reports need them operationally. Public worker registration itself is deferred to Phase 2.
 - Phase 1 already provides payment status fields, cash collection UI, SMTP/log mail delivery, Stripe Checkout for self check-in, and a camp-year self-check-in token. Phase 2 removes the obsolete individual-camper QR tokens and staff camera-scanning path while preserving the posted camp-level self-check-in QR, and extends the other shared capabilities without triggering check-in as a registration-payment side effect.
-- Public family and worker registration are deployed on a registration subdomain that is separate from the admin/check-in origin. Both portions share the same API and database, but browser routes, generated URLs, CORS/host rules, cookies, Stripe redirects, and the posted self-check-in QR destination must respect the correct origin.
+- Public family, worker, and leader registration are deployed on a registration subdomain that is separate from the admin/check-in origin. Both portions share the same API and database, but browser routes, generated URLs, CORS/host rules, cookies, Stripe redirects, and the posted self-check-in QR destination must respect the correct origin.
 - The exact Node.js, React, database, and deployment scaffolding should follow the repository's conventions if an application exists by the time each step is executed.
 - Future wish-list items are explicitly deferred unless a later product decision moves them into scope.
 
@@ -70,6 +71,7 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - [ ] `Post-Registration` - Covered in Phase 2 step 5.
 - [ ] `Camper fields (legacy parity)` - Covered in Phase 2 step 2 and Phase 2 step 6.
 - [ ] `Worker Registration Flow` - Covered in Phase 2 step 4.
+- [ ] `Leader Registration Flow` - Covered in Phase 2 step 4a.
 - [ ] `Collected fields (same semantics as the Google Form)` - Covered in Phase 2 step 4.
 - [ ] `Informational content (not form fields)` - Covered in Phase 2 step 4 and Phase 2 step 5.
 - [ ] `Post-worker registration` - Covered in Phase 2 step 4 and Phase 2 step 5.

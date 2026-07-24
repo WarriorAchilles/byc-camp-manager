@@ -20,10 +20,11 @@ describe("registration availability", () => {
     expect(resolveRegistrationAvailability({ flow: "worker", manuallyEnabled: true, opensAt: new Date("2030-01-01T00:00:00Z"), closesAt: now }, now)).toBe("open");
   });
 
-  it("blocks family capacity without affecting workers", () => {
+  it("blocks family capacity without affecting workers or leaders", () => {
     const common = { manuallyEnabled: true, opensAt: new Date("2030-01-01T00:00:00Z"), closesAt: null, camperCapacity: 10, activeCamperCount: 10 };
     expect(resolveRegistrationAvailability({ ...common, flow: "family" }, now)).toBe("capacity_reached");
     expect(resolveRegistrationAvailability({ ...common, flow: "worker" }, now)).toBe("open");
+    expect(resolveRegistrationAvailability({ ...common, flow: "leader" }, now)).toBe("open");
   });
 
   it("shows the scheduled countdown before capacity status", () => {

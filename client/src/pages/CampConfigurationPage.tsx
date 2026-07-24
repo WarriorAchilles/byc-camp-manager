@@ -21,6 +21,11 @@ type CampYearRow = {
   workerRegistrationEnabled: boolean;
   workerRegistrationHeaderContent: string;
   workerRegistrationClosedMessage: string;
+  leaderRegistrationOpensAt: string | null;
+  leaderRegistrationClosesAt: string | null;
+  leaderRegistrationEnabled: boolean;
+  leaderRegistrationHeaderContent: string;
+  leaderRegistrationClosedMessage: string;
   feeCutoverAt: string | null;
   earlyCamperFeeCents: number | null;
   lateCamperFeeCents: number | null;
@@ -392,8 +397,11 @@ export function CampConfigurationPage(): React.ReactElement {
     const familyClosesLocal = String(formData.get("familyRegistrationClosesAt") ?? "").trim();
     const workerOpensLocal = String(formData.get("workerRegistrationOpensAt") ?? "").trim();
     const workerClosesLocal = String(formData.get("workerRegistrationClosesAt") ?? "").trim();
+    const leaderOpensLocal = String(formData.get("leaderRegistrationOpensAt") ?? "").trim();
+    const leaderClosesLocal = String(formData.get("leaderRegistrationClosesAt") ?? "").trim();
     if ((familyOpensLocal && familyClosesLocal && familyClosesLocal <= familyOpensLocal) ||
-        (workerOpensLocal && workerClosesLocal && workerClosesLocal <= workerOpensLocal)) {
+        (workerOpensLocal && workerClosesLocal && workerClosesLocal <= workerOpensLocal) ||
+        (leaderOpensLocal && leaderClosesLocal && leaderClosesLocal <= leaderOpensLocal)) {
       setError("Each registration close time must be after its open time.");
       return;
     }
@@ -416,6 +424,11 @@ export function CampConfigurationPage(): React.ReactElement {
           workerRegistrationEnabled: formData.get("workerRegistrationEnabled") === "on",
           workerRegistrationHeaderContent: String(formData.get("workerRegistrationHeaderContent") ?? "").trim(),
           workerRegistrationClosedMessage: String(formData.get("workerRegistrationClosedMessage") ?? "").trim(),
+          leaderRegistrationOpensAt: leaderOpensLocal ? new Date(leaderOpensLocal).toISOString() : null,
+          leaderRegistrationClosesAt: leaderClosesLocal ? new Date(leaderClosesLocal).toISOString() : null,
+          leaderRegistrationEnabled: formData.get("leaderRegistrationEnabled") === "on",
+          leaderRegistrationHeaderContent: String(formData.get("leaderRegistrationHeaderContent") ?? "").trim(),
+          leaderRegistrationClosedMessage: String(formData.get("leaderRegistrationClosedMessage") ?? "").trim(),
           feeCutoverAt: feeCutoverLocal ? new Date(feeCutoverLocal).toISOString() : null,
           earlyCamperFeeCents,
           lateCamperFeeCents,
@@ -938,6 +951,32 @@ export function CampConfigurationPage(): React.ReactElement {
             <label>
               Closed/countdown message
               <textarea name="workerRegistrationClosedMessage" rows={3} maxLength={2_000} defaultValue={selected.workerRegistrationClosedMessage} required />
+            </label>
+          </fieldset>
+
+          <fieldset className="configuration-fieldset stack">
+            <legend>Leader registration availability</legend>
+            <label className="row configuration-toggle">
+              <input type="checkbox" name="leaderRegistrationEnabled" defaultChecked={selected.leaderRegistrationEnabled} />
+              <span>Manually enable leader registration</span>
+            </label>
+            <div className="configuration-time-grid">
+              <label>
+                Opens at
+                <input name="leaderRegistrationOpensAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.leaderRegistrationOpensAt)} />
+              </label>
+              <label>
+                Closes at (optional)
+                <input name="leaderRegistrationClosesAt" type="datetime-local" defaultValue={datetimeLocalInputFromIso(selected.leaderRegistrationClosesAt)} />
+              </label>
+            </div>
+            <label>
+              Public header content
+              <textarea name="leaderRegistrationHeaderContent" rows={6} maxLength={10_000} defaultValue={selected.leaderRegistrationHeaderContent} required />
+            </label>
+            <label>
+              Closed/countdown message
+              <textarea name="leaderRegistrationClosedMessage" rows={3} maxLength={2_000} defaultValue={selected.leaderRegistrationClosedMessage} required />
             </label>
           </fieldset>
 
