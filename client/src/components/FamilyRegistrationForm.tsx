@@ -64,7 +64,7 @@ type MerchandiseItem = {
 
 type MerchandiseSelectionDraft = { quantity: number; selectedOption: string };
 
-type ReceiptLine = {
+export type ReceiptLine = {
   id?: string;
   description: string;
   quantity: number;
@@ -74,7 +74,7 @@ type ReceiptLine = {
   lineType: "registration" | "merchandise" | "discount";
 };
 
-type RegistrationReceipt = {
+export type RegistrationReceipt = {
   id?: string;
   state?: "pending_payment" | "confirmed" | "expired" | "cancelled";
   paymentMethod?: "stripe" | "cash" | null;
@@ -335,7 +335,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
         {receipt.paymentStatus === "paid_stripe" ? (
           <div className="registration-confirmation-message"><h3>Paid online</h3><p>Your Stripe payment was confirmed by the server. No payment is due at camp.</p></div>
         ) : receipt.paymentMethod === "cash" && confirmed ? (
-          <div className="registration-confirmation-message cash-due"><h3>Pay at camp with cash</h3><p>Registration is confirmed and remains unpaid.</p><p><strong>Bring exactly {formatMoney(receipt.totalDueCents)} to camp.</strong></p></div>
+          <CashConfirmation totalDueCents={receipt.totalDueCents} />
         ) : (
           <fieldset className="registration-fieldset payment-choice">
             <legend>Choose a payment method</legend>
@@ -512,7 +512,11 @@ function TextAreaField({ label, value, onChange }: { label: string; value: strin
   return <label>{label}<textarea rows={3} maxLength={4000} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
-function ReceiptBreakdown({ receipt }: { receipt: RegistrationReceipt }): React.ReactElement {
+export function CashConfirmation({ totalDueCents }: { totalDueCents: number }): React.ReactElement {
+  return <div className="registration-confirmation-message cash-due"><h3>Pay at camp with cash</h3><p>Registration is confirmed and remains unpaid.</p><p><strong>Bring exactly {formatMoney(totalDueCents)} to camp.</strong></p></div>;
+}
+
+export function ReceiptBreakdown({ receipt }: { receipt: RegistrationReceipt }): React.ReactElement {
   const lines = receipt.receiptLineItems ?? receipt.lineItems ?? [];
   return <section className="registration-receipt" aria-labelledby="registration-receipt-title">
     <h3 id="registration-receipt-title">Itemized receipt</h3>

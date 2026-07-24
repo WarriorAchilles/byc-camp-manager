@@ -55,11 +55,11 @@ Build registration pricing and merchandise on the existing camp configuration, t
 - [x] Run the repository test command.
 - [ ] Complete test registrations for one, two, three, and four campers before and after the configured cutover date and confirm totals.
 - [ ] Complete a test Stripe payment and confirm the registration becomes paid only after server-side payment confirmation.
-- [ ] Confirm Stripe success and cancel redirects remain on the registration subdomain.
-- [ ] Confirm a registration Stripe payment does not change camper check-in status or send check-in confirmation emails.
-- [ ] Replay the same webhook and confirm payment totals and registration state change only once.
-- [ ] Complete a cash-at-camp registration and confirm the exact amount due appears on screen and in stored registration data.
-- [ ] Add merchandise selections and confirm order totals and summary records match the displayed receipt.
+- [x] Confirm Stripe success and cancel redirects remain on the registration subdomain.
+- [x] Confirm a registration Stripe payment does not change camper check-in status or send check-in confirmation emails.
+- [x] Replay the same webhook and confirm payment totals and registration state change only once.
+- [x] Complete a cash-at-camp registration and confirm the exact amount due appears on screen and in stored registration data.
+- [x] Add merchandise selections and confirm order totals and summary records match the displayed receipt.
 
 ## Completion Criteria
 
@@ -73,3 +73,10 @@ Build registration pricing and merchandise on the existing camp configuration, t
 
 - Worker t-shirt selection remains informational and payment is explicitly deferred to the worker-registration step or a later approved scope decision.
 - Automated verification completed on 2026-07-13. Live Stripe/Dashboard checks and browser walkthroughs remain unchecked above until the human setup decisions are completed.
+- Additional automated verification completed on 2026-07-23:
+  - The connected Stripe account is USD-capable with charges and card payments enabled. The Stripe MCP credential cannot list Checkout Sessions, so no live/test Checkout Session, webhook endpoint, or event replay was inspected or mutated. Test mode must still be confirmed before a real payment attempt.
+  - Signed `checkout.session.completed` webhook delivery and replay were exercised through the HTTP route. The family was paid once, remained not checked in, and produced no check-in confirmation email effect.
+  - Registration-origin success/cancel URLs, cash amount persistence and rendering, and merchandise receipt persistence and rendering passed automated checks.
+  - Pricing calculations passed for one through four campers both before and at/after cutover: early totals are $165, $330, $420, and $510; late totals are $180, $360, $450, and $540.
+  - Full persistence remains blocked for third-and-additional campers: discount receipt rows currently use negative `unit_price_cents` and `line_total_cents`, while the `registration_receipt_line_items_amounts_valid` database constraint requires both to be nonnegative. The public registration endpoint therefore returns 500 when the first multi-camper discount is persisted.
+  - The complete repository test command passed with 176 server tests and 5 client tests; repository lint and typecheck also passed.

@@ -63,7 +63,26 @@ describe("calculateRegistrationPricing", () => {
     expect(result.totalDueCents).toBe(subtotal - discount);
   });
 
-  it("uses late pricing at the cutover and snapshots merchandise prices", () => {
+  it.each([
+    [1, [18000], 18000, 0],
+    [2, [18000, 18000], 36000, 0],
+    [3, [18000, 18000, 9000], 54000, 9000],
+    [4, [18000, 18000, 9000, 9000], 72000, 18000],
+  ])("prices %i campers at or after cutover", (count, fees, subtotal, discount) => {
+    const result = calculateRegistrationPricing({
+      camp,
+      campers: campers(count),
+      merchandiseSelections: [],
+      merchandiseItems: [],
+      now: new Date("2026-06-10T12:00:00.000Z"),
+    });
+    expect(result.camperFees).toEqual(fees);
+    expect(result.registrationSubtotalCents).toBe(subtotal);
+    expect(result.discountCents).toBe(discount);
+    expect(result.totalDueCents).toBe(subtotal - discount);
+  });
+
+  it("snapshots merchandise prices at the cutover", () => {
     const result = calculateRegistrationPricing({
       camp,
       campers: campers(3),

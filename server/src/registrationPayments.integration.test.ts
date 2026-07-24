@@ -1,6 +1,9 @@
 import prismaClientPkg from "@prisma/client";
-import type Stripe from "stripe";
+import request from "supertest";
+import Stripe from "stripe";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp } from "./app.js";
+import { resetEnvCacheForTests } from "./config/env.js";
 import { prisma } from "./db.js";
 import {
   completeCheckoutSessionIfPaid,
@@ -156,6 +159,101 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       status: StripeCheckoutStatus.completed,
       paymentIntentId: "pi_family_paid",
     });
+  });
+
+  it("verifies and replays the same signed webhook without duplicate payment or check-in email effects", async () => {
+    const registration = await createRegistration();
+    await prisma.campYear.update({
+      where: { id: registration.campYearId },
+      data: { checkInConfirmationEmailsEnabled: true },
+    });
+    await prisma.familyRegistration.update({
+      where: { id: registration.id },
+      data: { paymentMethod: RegistrationPaymentMethod.stripe },
+    });
+    await prisma.stripeCheckoutSession.create({
+      data: {
+        stripeSessionId: "cs_family_webhook_replay",
+        campYearId: registration.campYearId,
+        familyRegistrationId: registration.id,
+        purpose: StripeCheckoutPurpose.family_registration,
+        amountCents: 33000,
+        currency: "usd",
+      },
+    });
+
+    const originalKey = process.env.STRIPE_SECRET_KEY;
+    const originalSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = "whsec_family_registration_test";
+    process.env.STRIPE_SECRET_KEY = "rk_test_family_registration_test";
+    process.env.STRIPE_WEBHOOK_SECRET = webhookSecret;
+    resetEnvCacheForTests();
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      const payload = JSON.stringify({
+        id: "evt_family_webhook_replay",
+        object: "event",
+        api_version: "2026-04-22.dahlia",
+        created: Math.floor(Date.now() / 1000),
+        data: {
+          object: {
+            id: "cs_family_webhook_replay",
+            object: "checkout.session",
+            payment_status: "paid",
+            amount_total: 33000,
+            currency: "usd",
+            payment_intent: "pi_family_webhook_replay",
+          },
+        },
+        livemode: false,
+        pending_webhooks: 1,
+        request: { id: null, idempotency_key: null },
+        type: "checkout.session.completed",
+      });
+      const signature = Stripe.webhooks.generateTestHeaderString({ payload, secret: webhookSecret });
+      const app = createApp();
+
+      const before = await prisma.familyRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+      expect(before).toMatchObject({
+        state: RegistrationState.pending_payment,
+        paymentStatus: CamperPaymentStatus.unpaid,
+        amountPaidCents: 0,
+      });
+
+      const first = await request(app)
+        .post("/api/stripe/webhook")
+        .set("Content-Type", "application/json")
+        .set("stripe-signature", signature)
+        .send(payload);
+      const replay = await request(app)
+        .post("/api/stripe/webhook")
+        .set("Content-Type", "application/json")
+        .set("stripe-signature", signature)
+        .send(payload);
+
+      expect(first.status).toBe(200);
+      expect(replay.status).toBe(200);
+      const stored = await prisma.familyRegistration.findUniqueOrThrow({
+        where: { id: registration.id },
+        include: { campers: true, stripeCheckoutSessions: true },
+      });
+      expect(stored).toMatchObject({
+        state: RegistrationState.confirmed,
+        paymentStatus: CamperPaymentStatus.paid_stripe,
+        amountPaidCents: 33000,
+      });
+      expect(stored.campers.every((camper) => camper.checkInStatus === CheckInStatus.not_checked_in)).toBe(true);
+      expect(stored.stripeCheckoutSessions).toHaveLength(1);
+      expect(infoSpy.mock.calls.some((call) => String(call[0]).includes("[email log]"))).toBe(false);
+    } finally {
+      infoSpy.mockRestore();
+      if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = originalKey;
+      if (originalSecret === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+      else process.env.STRIPE_WEBHOOK_SECRET = originalSecret;
+      resetEnvCacheForTests();
+    }
   });
 
   it("refuses wrong amounts or currency and leaves registration unpaid", async () => {
