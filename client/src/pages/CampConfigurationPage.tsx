@@ -1035,8 +1035,11 @@ export function CampConfigurationPage(): React.ReactElement {
               defaultChecked={selected.checkInFamilyPaymentOptionEnabled === true}
             />
             <span>
-              Show <strong>Mark all campers with this guardian email paid (cash)</strong> on the staff
-              Check-in page.
+              Show{" "}
+              <strong>
+                Check all campers with this parent/guardian email in and mark them paid (cash)
+              </strong>{" "}
+              on the staff Check-in page.
             </span>
           </label>
           <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>

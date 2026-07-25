@@ -1254,6 +1254,22 @@ tbody tr:hover td {
   font-size: 1.05rem;
 }
 
+.check-in-family-dorm-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.check-in-family-dorm-list li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
 .check-in-modal-hint {
   margin: 0 0 1rem;
   font-size: 0.9rem;

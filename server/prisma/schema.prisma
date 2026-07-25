@@ -162,7 +162,7 @@ model CampYear {
    */
   selfCheckInToken                  String?   @unique @map("self_check_in_token")
   /**
-   * When false, staff Check-in page hides the option to mark all campers sharing a guardian email paid.
+   * When false, staff Check-in hides the option to check in and cash-pay all campers sharing a guardian email.
    */
   checkInFamilyPaymentOptionEnabled Boolean   @default(false) @map("check_in_family_payment_option_enabled")
   /**

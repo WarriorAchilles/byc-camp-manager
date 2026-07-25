@@ -64,6 +64,12 @@ type CamperCheckInPostResponse = {
   alreadyCheckedIn: boolean;
   checkInCompletedThisRequest?: boolean;
   dormAutoAssigned?: boolean;
+  campers?: Array<{
+    camper: CamperCheckIn;
+    alreadyCheckedIn: boolean;
+    checkInCompletedThisRequest: boolean;
+    dormAutoAssigned: boolean;
+  }>;
 };
 
 type CamperUndoCheckInPostResponse = {
@@ -73,12 +79,16 @@ type CamperUndoCheckInPostResponse = {
 };
 
 type CamperCheckInDoneModal = {
-  firstName: string;
-  lastName: string;
-  middleName: string | null;
-  dormLabel: string;
-  dormLeader: string | null;
-  dormAutoAssigned: boolean;
+  familyCheckIn: boolean;
+  campers: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleName: string | null;
+    dormLabel: string;
+    dormLeader: string | null;
+    dormAutoAssigned: boolean;
+  }>;
 };
 
 export function CheckInPage(): React.ReactElement {
@@ -274,14 +284,29 @@ export function CheckInPage(): React.ReactElement {
           }),
         },
       );
-      if (data.checkInCompletedThisRequest) {
-        setCamperCheckInModal({
-          firstName: data.camper.firstName,
-          lastName: data.camper.lastName,
-          middleName: data.camper.middleName,
-          dormLabel: data.camper.dormAssignment ?? "Unassigned",
-          dormLeader: data.camper.dormLeader,
+      const affectedCampers =
+        data.campers ??
+        [{
+          camper: data.camper,
+          alreadyCheckedIn: data.alreadyCheckedIn,
+          checkInCompletedThisRequest: data.checkInCompletedThisRequest ?? false,
           dormAutoAssigned: data.dormAutoAssigned ?? false,
+        }];
+      if (
+        (markPaidFamily && affectedCampers.length > 0) ||
+        affectedCampers.some((result) => result.checkInCompletedThisRequest)
+      ) {
+        setCamperCheckInModal({
+          familyCheckIn: markPaidFamily,
+          campers: affectedCampers.map((result) => ({
+            id: result.camper.id,
+            firstName: result.camper.firstName,
+            lastName: result.camper.lastName,
+            middleName: result.camper.middleName,
+            dormLabel: result.camper.dormAssignment ?? "Unassigned",
+            dormLeader: result.camper.dormLeader,
+            dormAutoAssigned: result.dormAutoAssigned,
+          })),
         });
       }
       setSelectedCamper(null);
@@ -714,7 +739,7 @@ export function CheckInPage(): React.ReactElement {
                       }
                     }}
                   />
-                  Mark all campers with this guardian email paid (cash)
+                  Check all campers with this parent/guardian email in and mark them paid (cash)
                 </label>
               ) : null}
             </fieldset>
@@ -743,10 +768,12 @@ export function CheckInPage(): React.ReactElement {
               }
               onClick={() => void confirmCamperCheckIn()}
             >
-              {selectedCamper.checkInStatus === "checked_in" &&
-              selectedCamper.paymentStatus === "unpaid" &&
-              (markPaidCamper || markPaidFamily)
-                ? "Record cash payment"
+              {markPaidFamily
+                ? "Check all campers in and record cash payment"
+                : selectedCamper.checkInStatus === "checked_in" &&
+                    selectedCamper.paymentStatus === "unpaid" &&
+                    markPaidCamper
+                  ? "Record cash payment"
                 : selectedCamper.checkInStatus === "checked_in"
                   ? "Already checked in"
                   : "Confirm check-in"}
@@ -831,27 +858,37 @@ export function CheckInPage(): React.ReactElement {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 id="camper-check-in-done-title" className="check-in-modal-title">
-              Camper checked in
+              {camperCheckInModal.familyCheckIn ? "Campers checked in" : "Camper checked in"}
             </h2>
             <p className="check-in-modal-lead">
-              <strong>
-                {[camperCheckInModal.firstName, camperCheckInModal.middleName, camperCheckInModal.lastName]
+              {camperCheckInModal.familyCheckIn
+                ? "All campers with this parent/guardian email have been checked in and marked paid (cash)."
+                : "The camper has been checked in."}
+            </p>
+            <ul className="check-in-family-dorm-list">
+              {camperCheckInModal.campers.map((camper) => {
+                const fullName = [camper.firstName, camper.middleName, camper.lastName]
                   .filter(Boolean)
-                  .join(" ")}
-              </strong>{" "}
-              has been checked in.
-            </p>
-            <p className="check-in-modal-dorm">
-              <strong>Dorm assignment:</strong> {camperCheckInModal.dormLabel}
-              {camperCheckInModal.dormAutoAssigned ? (
-                <span className="muted"> (placed automatically)</span>
-              ) : null}
-            </p>
-            <p className="check-in-modal-dorm">
-              <strong>Dorm leader:</strong> {camperCheckInModal.dormLeader ?? "Unassigned"}
-            </p>
+                  .join(" ");
+                return (
+                  <li key={camper.id}>
+                    <strong>{fullName}</strong>
+                    <span>
+                      <strong>Dorm assignment:</strong> {camper.dormLabel}
+                      {camper.dormAutoAssigned ? (
+                        <span className="muted"> (placed automatically)</span>
+                      ) : null}
+                    </span>
+                    <span>
+                      <strong>Dorm leader:</strong> {camper.dormLeader ?? "Unassigned"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
             <p className="muted check-in-modal-hint">
-              You can still move this camper on the Dorms page if the assignment needs to change.
+              You can still move {camperCheckInModal.familyCheckIn ? "these campers" : "this camper"} on
+              the Dorms page if an assignment needs to change.
             </p>
             <div className="check-in-modal-actions">
               <button type="button" className="btn primary" onClick={() => setCamperCheckInModal(null)}>

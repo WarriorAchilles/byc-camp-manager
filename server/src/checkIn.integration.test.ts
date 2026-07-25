@@ -456,7 +456,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(row.paymentStatus).toBe(CamperPaymentStatus.paid_cash);
   });
 
-  it("mark paid cash for guardian family updates all siblings with same guardian email", async () => {
+  it("checks in and marks paid all campers with the same guardian email", async () => {
     const header = await authHeader();
     const sharedEmail = "family-pay@example.com";
     const a = await request(app)
@@ -465,20 +465,20 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       .send({
         firstName: "Kid",
         lastName: "One",
-        dateOfBirth: "2012-05-01",
+        dateOfBirth: "2082-05-01",
         gender: Gender.male,
         guardianName: "Parent",
         guardianEmail: sharedEmail,
         guardianPhone: "555",
         paymentStatus: CamperPaymentStatus.unpaid,
       });
-    await request(app)
+    const b = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", header)
       .send({
         firstName: "Kid",
         lastName: "Two",
-        dateOfBirth: "2014-05-01",
+        dateOfBirth: "2084-05-01",
         gender: Gender.male,
         guardianName: "Parent",
         guardianEmail: sharedEmail,
@@ -487,15 +487,49 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
       });
     const camperId = a.body.id as string;
 
-    await request(app)
+    const response = await request(app)
       .post(`/api/admin/camp-years/${campYearId}/check-in/campers/${camperId}/check-in`)
       .set("Authorization", header)
       .send({ markPaidCashForGuardianFamily: true });
 
-    const unpaid = await prisma.camper.count({
-      where: { campYearId, guardianEmail: sharedEmail, paymentStatus: CamperPaymentStatus.unpaid },
+    expect(response.status).toBe(200);
+    expect(response.body.campers).toHaveLength(2);
+    expect(response.body.campers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          camper: expect.objectContaining({
+            id: camperId,
+            paymentStatus: CamperPaymentStatus.paid_cash,
+            checkInStatus: CheckInStatus.checked_in,
+            dormAssignment: "Camper Hall A",
+          }),
+          checkInCompletedThisRequest: true,
+        }),
+        expect.objectContaining({
+          camper: expect.objectContaining({
+            id: b.body.id,
+            paymentStatus: CamperPaymentStatus.paid_cash,
+            checkInStatus: CheckInStatus.checked_in,
+            dormAssignment: "Camper Hall A",
+          }),
+          checkInCompletedThisRequest: true,
+        }),
+      ]),
+    );
+
+    const familyCampers = await prisma.camper.findMany({
+      where: { campYearId, guardianEmail: sharedEmail },
     });
-    expect(unpaid).toBe(0);
+    expect(familyCampers).toHaveLength(2);
+    expect(
+      familyCampers.every(
+        (camper) =>
+          camper.paymentStatus === CamperPaymentStatus.paid_cash &&
+          camper.checkInStatus === CheckInStatus.checked_in &&
+          camper.checkedInAt !== null &&
+          camper.dormId === camperDormId,
+      ),
+    ).toBe(true);
   });
 
   it("worker and dorm leader name search and check-in update summary", async () => {

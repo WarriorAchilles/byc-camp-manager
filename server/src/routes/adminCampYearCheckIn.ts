@@ -312,61 +312,120 @@ router.post("/campers/:camperId/check-in", async (req: AuthedRequest, res) => {
   }
 
   const now = new Date();
-  let emailResult: Awaited<ReturnType<typeof sendCheckInConfirmationMail>> | null = null;
+  const txResults = await prisma.$transaction(async (tx) => {
+    const selectedCamper = await tx.camper.findFirst({
+      where: { id: camperId, campYearId, archivedAt: null },
+      select: { guardianEmail: true },
+    });
+    if (!selectedCamper) {
+      return null;
+    }
 
-  const txResult = await prisma.$transaction(async (tx) =>
-    runCamperCheckInInTransaction(tx, {
-      campYearId,
-      camperId,
-      campStart: year.startDate,
-      now,
-      payments: {
-        markPaidCashForCamper: parsed.data.markPaidCashForCamper,
-        markPaidCashForGuardianFamily: parsed.data.markPaidCashForGuardianFamily,
-      },
-    }),
-  );
+    let camperIds = [camperId];
+    if (
+      parsed.data.markPaidCashForGuardianFamily &&
+      selectedCamper.guardianEmail.trim()
+    ) {
+      const matchingCampers = await tx.camper.findMany({
+        where: {
+          campYearId,
+          archivedAt: null,
+          guardianEmail: selectedCamper.guardianEmail,
+        },
+        select: { id: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+      });
+      camperIds = [
+        camperId,
+        ...matchingCampers
+          .map((camper) => camper.id)
+          .filter((matchingCamperId) => matchingCamperId !== camperId),
+      ];
+    }
 
-  if (!txResult) {
+    const results = [];
+    for (const matchingCamperId of camperIds) {
+      const result = await runCamperCheckInInTransaction(tx, {
+        campYearId,
+        camperId: matchingCamperId,
+        campStart: year.startDate,
+        now,
+        payments: parsed.data.markPaidCashForGuardianFamily
+          ? { markPaidCashForCamper: true }
+          : {
+              markPaidCashForCamper: parsed.data.markPaidCashForCamper,
+              markPaidCashForGuardianFamily: parsed.data.markPaidCashForGuardianFamily,
+            },
+      });
+      if (result) {
+        results.push(result);
+      }
+    }
+    return results;
+  });
+
+  if (!txResults) {
     res.status(404).json({ error: "Camper not found" });
     return;
   }
 
-  const { camper: finalCamper, dormAutoAssigned, transitionedToCheckedIn } = txResult;
+  const selectedResult = txResults.find((result) => result.camper.id === camperId);
+  if (!selectedResult) {
+    res.status(404).json({ error: "Camper not found" });
+    return;
+  }
 
-  if (transitionedToCheckedIn) {
-    writeOpsLog("camper_check_in_admin", {
-      actorAdminUserId: req.adminUser?.id,
-      campYearId,
-      camperId,
-      dormAutoAssigned,
-    });
-    if (year.checkInConfirmationEmailsEnabled) {
-      const dormLabel = finalCamper.dorm?.name ?? "unassigned";
-      const fullName = [finalCamper.firstName, finalCamper.middleName, finalCamper.lastName]
-        .filter(Boolean)
-        .join(" ");
-      emailResult = await sendCheckInConfirmationMail({
-        to: finalCamper.guardianEmail,
-        camperFullName: fullName,
-        dormLabel,
-        checkedInAt: now,
-      });
-      writeOpsLog("check_in_confirmation_email", {
+  const emailResults = new Map<
+    string,
+    Awaited<ReturnType<typeof sendCheckInConfirmationMail>>
+  >();
+  for (const result of txResults) {
+    if (result.transitionedToCheckedIn) {
+      writeOpsLog("camper_check_in_admin", {
+        actorAdminUserId: req.adminUser?.id,
         campYearId,
-        camperId,
-        channel: "admin",
-        result: emailResult.status,
+        camperId: result.camper.id,
+        dormAutoAssigned: result.dormAutoAssigned,
       });
+      if (year.checkInConfirmationEmailsEnabled) {
+        const dormLabel = result.camper.dorm?.name ?? "unassigned";
+        const fullName = [
+          result.camper.firstName,
+          result.camper.middleName,
+          result.camper.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const emailResult = await sendCheckInConfirmationMail({
+          to: result.camper.guardianEmail,
+          camperFullName: fullName,
+          dormLabel,
+          checkedInAt: now,
+        });
+        emailResults.set(result.camper.id, emailResult);
+        writeOpsLog("check_in_confirmation_email", {
+          campYearId,
+          camperId: result.camper.id,
+          channel: "admin",
+          result: emailResult.status,
+        });
+      }
     }
   }
 
   res.json({
-    camper: serializeCamperCheckIn(finalCamper),
-    alreadyCheckedIn: !transitionedToCheckedIn,
-    checkInCompletedThisRequest: transitionedToCheckedIn,
-    dormAutoAssigned,
-    checkInConfirmationEmail: emailResult,
+    camper: serializeCamperCheckIn(selectedResult.camper),
+    alreadyCheckedIn: !selectedResult.transitionedToCheckedIn,
+    checkInCompletedThisRequest: selectedResult.transitionedToCheckedIn,
+    dormAutoAssigned: selectedResult.dormAutoAssigned,
+    checkInConfirmationEmail: emailResults.get(camperId) ?? null,
+    campers: txResults.map((result) => ({
+      camper: serializeCamperCheckIn(result.camper),
+      alreadyCheckedIn: !result.transitionedToCheckedIn,
+      checkInCompletedThisRequest: result.transitionedToCheckedIn,
+      dormAutoAssigned: result.dormAutoAssigned,
+      checkInConfirmationEmail: emailResults.get(result.camper.id) ?? null,
+    })),
   });
 });
 
