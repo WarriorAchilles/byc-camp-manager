@@ -1,38 +1,10 @@
 import { useEffect, useState } from "react";
 import { apiJson, type ApiHttpError } from "../api";
-
-type Address = {
-  streetAddress: string;
-  city: string;
-  stateOrProvince: string;
-  postalCode: string;
-  country: string;
-};
-
-type CamperDraft = {
-  firstName: string;
-  lastName: string;
-  middleName: string;
-  dateOfBirth: string;
-  gender: "male" | "female";
-  useFamilyAddress: boolean;
-  address: Address;
-  camperCellPhone: string;
-  guardianName: string;
-  guardianPhone: string;
-  identifiesAsChristian: boolean;
-  receivedHolyGhost: boolean;
-  churchName: string;
-  pastorName: string;
-  tShirtIntent: string;
-  medicalNotes: string;
-  allergies: string;
-  medications: string;
-  dietaryRestrictions: string;
-  emergencyContactName: string;
-  emergencyContactPhone: string;
-  specialNeeds: string;
-};
+import {
+  createAdditionalCamper,
+  type Address,
+  type CamperDraft,
+} from "./familyRegistrationCamper";
 
 type FormOptions = {
   genders: string[];
@@ -103,14 +75,14 @@ const emptyCamper = (): CamperDraft => ({
   lastName: "",
   middleName: "",
   dateOfBirth: "",
-  gender: "male",
+  gender: "",
   useFamilyAddress: true,
   address: emptyAddress(),
   camperCellPhone: "",
   guardianName: "",
   guardianPhone: "",
-  identifiesAsChristian: false,
-  receivedHolyGhost: false,
+  identifiesAsChristian: null,
+  receivedHolyGhost: null,
   churchName: "",
   pastorName: "",
   tShirtIntent: "",
@@ -418,7 +390,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
                 <label>Middle name or initial<input value={camper.middleName} onChange={(event) => updateCamper(index, "middleName", event.target.value)} /></label>
                 <label>Last name<input required value={camper.lastName} onChange={(event) => updateCamper(index, "lastName", event.target.value)} /></label>
                 <label>Date of birth<input required type="date" max={selfRegistration ? adultBirthDateMaximum() : new Date().toISOString().slice(0, 10)} value={camper.dateOfBirth} onChange={(event) => updateCamper(index, "dateOfBirth", event.target.value)} /></label>
-                <label>Gender<select required value={camper.gender} onChange={(event) => updateCamper(index, "gender", event.target.value as CamperDraft["gender"])}>{options.genders.map((gender) => <option key={gender} value={gender}>{gender === "male" ? "Male" : "Female"}</option>)}</select></label>
+                <label>Gender<select required value={camper.gender} onChange={(event) => updateCamper(index, "gender", event.target.value as CamperDraft["gender"])}><option value="">Select one</option>{options.genders.map((gender) => <option key={gender} value={gender}>{gender === "male" ? "Male" : "Female"}</option>)}</select></label>
                 <label>Camper cell (optional, digits only)<input inputMode="numeric" minLength={10} maxLength={15} value={camper.camperCellPhone} onChange={(event) => updateCamper(index, "camperCellPhone", digitsOnly(event.target.value))} /></label>
                 {!selfRegistration ? <label>Parent/guardian name<input required value={camper.guardianName} onChange={(event) => updateCamper(index, "guardianName", event.target.value)} /></label> : null}
                 {!selfRegistration ? <label>Parent/guardian phone<input required inputMode="numeric" minLength={10} maxLength={15} value={camper.guardianPhone} onChange={(event) => updateCamper(index, "guardianPhone", digitsOnly(event.target.value))} /></label> : null}
@@ -445,7 +417,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
               </div>
             </fieldset>
           ))}
-          {!selfRegistration ? <button className="btn secondary add-camper" type="button" onClick={() => setCampers((current) => [...current, { ...emptyCamper(), guardianName: guardian.fullName, guardianPhone: guardian.phone }])}>Add another camper</button> : null}
+          {!selfRegistration ? <button className="btn secondary add-camper" type="button" onClick={() => setCampers((current) => [...current, createAdditionalCamper(current[0]!)])}>Add another camper</button> : null}
           <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(1)}>Back</button><button className="btn" type="submit">Continue to authorization</button></div>
         </form>
       ) : null}
@@ -504,8 +476,8 @@ function AddressFields({ address, options, onChange }: { address: Address; optio
   </div>;
 }
 
-function YesNoField({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }): React.ReactElement {
-  return <label>{label}<select value={value ? "yes" : "no"} onChange={(event) => onChange(event.target.value === "yes")}><option value="yes">Yes</option><option value="no">No</option></select></label>;
+function YesNoField({ label, value, onChange }: { label: string; value: boolean | null; onChange: (value: boolean | null) => void }): React.ReactElement {
+  return <label>{label}<select required value={value === null ? "" : value ? "yes" : "no"} onChange={(event) => onChange(event.target.value === "" ? null : event.target.value === "yes")}><option value="">Select one</option><option value="yes">Yes</option><option value="no">No</option></select></label>;
 }
 
 function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }): React.ReactElement {
