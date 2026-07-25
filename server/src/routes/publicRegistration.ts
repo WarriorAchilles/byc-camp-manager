@@ -1,5 +1,4 @@
 import prismaClientPkg, { Prisma } from "@prisma/client";
-import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -26,6 +25,7 @@ import {
 } from "../lib/registrationAvailability.js";
 import { createPublicRateLimit } from "../middleware/publicRateLimit.js";
 import { calculateRegistrationPricing, PricingError } from "../lib/registrationPricing.js";
+import { createPendingFamilyRegistrationSnapshot } from "../lib/pendingFamilyRegistration.js";
 import {
   confirmFamilyRegistrationCash,
   createFamilyRegistrationCheckoutSession,
@@ -106,24 +106,36 @@ async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<
     return;
   }
 
-  const activeCamperCount = flow === "family"
-    ? await prisma.camper.count({
-      where: {
-        campYearId: year.id,
-        archivedAt: null,
-        OR: [
-          { familyRegistrationId: null },
-          { familyRegistration: { state: RegistrationState.confirmed } },
-          {
-            familyRegistration: {
-              state: RegistrationState.pending_payment,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+  let activeCamperCount = 0;
+  if (flow === "family") {
+    const [storedCamperCount, pendingReservations] = await Promise.all([
+      prisma.camper.count({
+        where: {
+          campYearId: year.id,
+          archivedAt: null,
+          OR: [
+            { familyRegistrationId: null },
+            { familyRegistration: { state: RegistrationState.confirmed } },
+            {
+              familyRegistration: {
+                state: RegistrationState.pending_payment,
+                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+              },
             },
-          },
-        ],
-      },
-    })
-    : 0;
+          ],
+        },
+      }),
+      prisma.familyRegistration.aggregate({
+        where: {
+          campYearId: year.id,
+          state: RegistrationState.pending_payment,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        _sum: { pendingCamperCount: true },
+      }),
+    ]);
+    activeCamperCount = storedCamperCount + (pendingReservations._sum.pendingCamperCount ?? 0);
+  }
   const opensAt = flow === "family"
     ? year.familyRegistrationOpensAt
     : flow === "worker"
@@ -214,6 +226,7 @@ export async function persistFamilySubmission(
             registrationSubtotalCents: true,
             merchandiseSubtotalCents: true,
             discountCents: true,
+            pendingCamperCount: true,
             campers: { select: { id: true } },
             receiptLineItems: { orderBy: { sortOrder: "asc" } },
           },
@@ -241,16 +254,34 @@ export async function persistFamilySubmission(
         const camp = await tx.campYear.findUnique({ where: { id: activeCampYearId } });
         if (!camp) throw new SubmissionError(409, "registration_not_configured");
 
-        const activeCamperCount = await tx.camper.count({
-          where: {
-            campYearId: camp.id,
-            archivedAt: null,
-            OR: [
-              { familyRegistrationId: null },
-              { familyRegistration: { state: { in: [RegistrationState.pending_payment, RegistrationState.confirmed] } } },
-            ],
-          },
-        });
+        const [storedCamperCount, pendingReservations] = await Promise.all([
+          tx.camper.count({
+            where: {
+              campYearId: camp.id,
+              archivedAt: null,
+              OR: [
+                { familyRegistrationId: null },
+                {
+                  familyRegistration: {
+                    state: RegistrationState.pending_payment,
+                    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+                  },
+                },
+                { familyRegistration: { state: RegistrationState.confirmed } },
+              ],
+            },
+          }),
+          tx.familyRegistration.aggregate({
+            where: {
+              campYearId: camp.id,
+              state: RegistrationState.pending_payment,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            },
+            _sum: { pendingCamperCount: true },
+          }),
+        ]);
+        const activeCamperCount =
+          storedCamperCount + (pendingReservations._sum.pendingCamperCount ?? 0);
         const availability = resolveRegistrationAvailability({
           flow: "family",
           manuallyEnabled: camp.familyRegistrationEnabled,
@@ -288,11 +319,15 @@ export async function persistFamilySubmission(
           input.campers.map((camper) => `${camper.firstName} ${camper.lastName}`),
           input.registrationType,
         );
-        const camperIds = input.campers.map(() => randomUUID());
         const registration = await tx.familyRegistration.create({
           data: {
             submissionKey: input.submissionKey,
             submissionDigest: digest,
+            pendingSubmissionSnapshot: createPendingFamilyRegistrationSnapshot(
+              input,
+              pricing.camperFees,
+            ),
+            pendingCamperCount: input.campers.length,
             campYearId: camp.id,
             state: RegistrationState.pending_payment,
             guardianName: input.guardian.fullName,
@@ -317,45 +352,6 @@ export async function persistFamilySubmission(
             signedAt: now,
             requestIp: safeRequestIp(requestIp),
             expiresAt: new Date(now.getTime() + FAMILY_RESERVATION_MINUTES * 60_000),
-            campers: {
-              create: input.campers.map((camper, index) => {
-                const address = camper.useFamilyAddress ? input.guardian.address : camper.address!;
-                return {
-                  id: camperIds[index],
-                  campYearId: camp.id,
-                  firstName: camper.firstName,
-                  lastName: camper.lastName,
-                  middleName: camper.middleName || null,
-                  dateOfBirth: new Date(`${camper.dateOfBirth}T12:00:00.000Z`),
-                  gender: camper.gender,
-                  streetAddress: address.streetAddress,
-                  city: address.city,
-                  stateOrProvince: address.stateOrProvince,
-                  postalCode: address.postalCode,
-                  country: address.country,
-                  camperCellPhone: camper.camperCellPhone || null,
-                  guardianName: camper.guardianName,
-                  guardianEmail: input.guardian.email,
-                  guardianPhone: camper.guardianPhone,
-                  identifiesAsChristian: camper.identifiesAsChristian,
-                  receivedHolyGhost: camper.receivedHolyGhost,
-                  churchName: camper.churchName,
-                  pastorName: camper.pastorName,
-                  tShirtIntent: camper.tShirtIntent,
-                  medicalNotes: camper.medicalNotes || null,
-                  allergies: camper.allergies || null,
-                  medications: camper.medications || null,
-                  dietaryRestrictions: camper.dietaryRestrictions || null,
-                  emergencyContactName: camper.emergencyContactName,
-                  emergencyContactPhone: camper.emergencyContactPhone,
-                  specialNeeds: camper.specialNeeds || null,
-                  feeDueCents: pricing.camperFees[index],
-                  paymentStatus: "unpaid",
-                  medicalReleaseSigned: true,
-                  importSource: ImportSource.online_registration,
-                };
-              }),
-            },
             receiptLineItems: {
               create: pricing.receiptLines.map((line) => ({
                 ...line,
@@ -365,7 +361,7 @@ export async function persistFamilySubmission(
             merchandiseOrderLines: {
               create: pricing.merchandiseLines.map((line) => ({
                 merchandiseItemId: line.merchandiseItemId,
-                camperId: line.camperIndex === null ? null : camperIds[line.camperIndex],
+                pendingCamperIndex: line.camperIndex,
                 ownership: line.ownership,
                 itemNameSnapshot: line.itemNameSnapshot,
                 selectedOptionsSnapshot: line.selectedOptionsSnapshot ?? Prisma.JsonNull,
@@ -383,6 +379,7 @@ export async function persistFamilySubmission(
             registrationSubtotalCents: true,
             merchandiseSubtotalCents: true,
             discountCents: true,
+            pendingCamperCount: true,
             campers: { select: { id: true } },
             receiptLineItems: { orderBy: { sortOrder: "asc" } },
           },
@@ -428,7 +425,8 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
     res.status(result.replayed ? 200 : 201).json({
       registrationId: result.registration.id,
       state: result.registration.state,
-      camperCount: result.registration.campers.length,
+      camperCount:
+        result.registration.pendingCamperCount || result.registration.campers.length,
       expiresAt: "expiresAt" in result.registration ? result.registration.expiresAt : null,
       replayed: result.replayed,
       receipt: {

@@ -282,6 +282,8 @@ model FamilyRegistration {
   id                        String                     @id @default(uuid())
   submissionKey             String?                    @unique @map("submission_key")
   submissionDigest          String?                    @map("submission_digest")
+  pendingSubmissionSnapshot Json?                      @map("pending_submission_snapshot")
+  pendingCamperCount        Int                        @default(0) @map("pending_camper_count")
   campYearId                String                     @map("camp_year_id")
   state                     RegistrationState          @default(confirmed)
   guardianName              String                     @map("guardian_name")
@@ -372,6 +374,7 @@ model MerchandiseOrderLine {
   familyRegistrationId    String               @map("family_registration_id")
   merchandiseItemId       String?              @map("merchandise_item_id")
   camperId                String?              @map("camper_id")
+  pendingCamperIndex      Int?                 @map("pending_camper_index")
   ownership               MerchandiseOwnership
   itemNameSnapshot        String               @map("item_name_snapshot")
   selectedOptionsSnapshot Json?                @map("selected_options_snapshot")

@@ -82,6 +82,30 @@ describe("calculateRegistrationPricing", () => {
     expect(result.totalDueCents).toBe(subtotal - discount);
   });
 
+  it("stores the third-camper discount on a nonnegative registration receipt line", () => {
+    const result = calculateRegistrationPricing({
+      camp,
+      campers: campers(3),
+      merchandiseSelections: [],
+      merchandiseItems: [],
+      now: new Date("2026-06-09T12:00:00.000Z"),
+    });
+
+    expect(result.receiptLines).toHaveLength(3);
+    expect(result.receiptLines[2]).toMatchObject({
+      lineType: "registration",
+      description: "Registration - Camper3 Camper",
+      unitPriceCents: 9000,
+      originalUnitPriceCents: 16500,
+      discountCents: 7500,
+      lineTotalCents: 9000,
+      pricingSnapshot: { camperIndex: 2, appliedFeeCents: 9000 },
+    });
+    expect(result.receiptLines.every((line) =>
+      line.unitPriceCents >= 0 && line.lineTotalCents >= 0
+    )).toBe(true);
+  });
+
   it("snapshots merchandise prices at the cutover", () => {
     const result = calculateRegistrationPricing({
       camp,

@@ -65,32 +65,20 @@ export function calculateRegistrationPricing(input: {
   const camperFees = input.campers.map((_, index) => index < 2 ? baseRateCents : thirdPlusRateCents);
   const registrationSubtotalCents = baseRateCents * input.campers.length;
   const discountCents = camperFees.reduce((sum, fee) => sum + Math.max(baseRateCents - fee, 0), 0);
-  const receiptLines: CalculatedReceiptLine[] = input.campers.map((camper, index) => ({
-    lineType: "registration",
-    description: `Registration - ${camper.firstName} ${camper.lastName}`.trim(),
-    quantity: 1,
-    unitPriceCents: baseRateCents,
-    originalUnitPriceCents: null,
-    discountCents: 0,
-    lineTotalCents: baseRateCents,
-    pricingSnapshot: { camperIndex: index, appliedFeeCents: camperFees[index] },
-    sortOrder: index * 2,
-  }));
-  input.campers.forEach((camper, index) => {
-    const camperDiscount = Math.max(baseRateCents - (camperFees[index] ?? baseRateCents), 0);
-    if (camperDiscount > 0) {
-      receiptLines.push({
-        lineType: "discount",
-        description: `Third-and-additional camper discount - ${camper.firstName} ${camper.lastName}`.trim(),
-        quantity: 1,
-        unitPriceCents: -camperDiscount,
-        originalUnitPriceCents: baseRateCents,
-        discountCents: camperDiscount,
-        lineTotalCents: -camperDiscount,
-        pricingSnapshot: { camperIndex: index, appliedFeeCents: camperFees[index] },
-        sortOrder: index * 2 + 1,
-      });
-    }
+  const receiptLines: CalculatedReceiptLine[] = input.campers.map((camper, index) => {
+    const appliedFeeCents = camperFees[index] ?? baseRateCents;
+    const camperDiscount = Math.max(baseRateCents - appliedFeeCents, 0);
+    return {
+      lineType: "registration",
+      description: `Registration - ${camper.firstName} ${camper.lastName}`.trim(),
+      quantity: 1,
+      unitPriceCents: appliedFeeCents,
+      originalUnitPriceCents: camperDiscount > 0 ? baseRateCents : null,
+      discountCents: camperDiscount,
+      lineTotalCents: appliedFeeCents,
+      pricingSnapshot: { camperIndex: index, appliedFeeCents },
+      sortOrder: index * 2,
+    };
   });
 
   const itemById = new Map(input.merchandiseItems.map((item) => [item.id, item]));

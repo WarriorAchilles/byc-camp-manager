@@ -221,6 +221,43 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(listed.body.campers).toHaveLength(0);
   });
 
+  it("does not list legacy camper rows from registrations that are still awaiting payment", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const token = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const registration = await prisma.familyRegistration.create({
+      data: {
+        campYearId,
+        state: "pending_payment",
+        guardianName: "Pending Guardian",
+        guardianEmail: "pending@example.test",
+        guardianPhone: "5551234567",
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+        campers: {
+          create: {
+            campYearId,
+            firstName: "Pending",
+            lastName: "Camper",
+            dateOfBirth: new Date("2012-05-01T12:00:00.000Z"),
+            gender: Gender.male,
+            guardianName: "Pending Guardian",
+            guardianEmail: "pending@example.test",
+            guardianPhone: "5551234567",
+            paymentStatus: CamperPaymentStatus.unpaid,
+            importSource: "online_registration",
+          },
+        },
+      },
+    });
+
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.campers).toHaveLength(0);
+    expect(await prisma.camper.count({ where: { familyRegistrationId: registration.id } })).toBe(1);
+  });
+
   it("allows only super admins to delete workers and dorm leaders", async () => {
     const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });

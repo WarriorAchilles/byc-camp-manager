@@ -8,10 +8,11 @@ import { SETTINGS_ROW_ID } from "./lib/activeCampYearSetting.js";
 import { validFamilySubmission } from "./familyRegistrationTestData.js";
 import { ADULT_MEDICAL_AGREEMENT_VERSION } from "./lib/familyRegistration.js";
 import { persistFamilySubmission } from "./routes/publicRegistration.js";
+import { confirmFamilyRegistrationCash } from "./lib/stripeCheckout.js";
 
 async function schemaIsReady(): Promise<boolean> {
   try {
-    await prisma.familyRegistration.findFirst({ select: { submissionKey: true } });
+    await prisma.familyRegistration.findFirst({ select: { pendingCamperCount: true } });
     return true;
   } catch {
     return false;
@@ -162,7 +163,7 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(oversized.body).toEqual({ error: "Request too large" });
   });
 
-  it("persists one or more campers, address overrides, signature evidence, and snapshots atomically", async () => {
+  it("keeps campers as a pending draft until pay-at-camp confirmation materializes them atomically", async () => {
     await selectActiveYear();
     await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
     const input = validFamilySubmission();
@@ -184,20 +185,69 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
       .send(input);
     expect(response.status).toBe(201);
 
-    const stored = await prisma.familyRegistration.findUniqueOrThrow({
+    const pending = await prisma.familyRegistration.findUniqueOrThrow({
       where: { id: response.body.registrationId },
       include: { campers: true },
     });
-    expect(stored.campers).toHaveLength(2);
-    expect(stored.campers[0]?.streetAddress).toBe("100 Camp Road");
-    expect(stored.campers[1]?.streetAddress).toBe("200 Other Road");
-    expect(stored.signatureMethod).toBe("typed");
-    expect(stored.signatureData).toBe("Jamie Guardian");
-    expect(stored.signedAt).not.toBeNull();
-    expect(stored.requestIp).toBeTruthy();
-    expect(stored.agreementTextSnapshot).toContain("Taylor Camper, Jordan Camper");
-    expect(stored.pricingSnapshot).not.toBeNull();
-    expect("qrToken" in stored.campers[0]!).toBe(false);
+    expect(pending.campers).toHaveLength(0);
+    expect(pending.pendingCamperCount).toBe(2);
+    expect(pending.pendingSubmissionSnapshot).not.toBeNull();
+    expect(pending.signatureMethod).toBe("typed");
+    expect(pending.signatureData).toBe("Jamie Guardian");
+    expect(pending.signedAt).not.toBeNull();
+    expect(pending.requestIp).toBeTruthy();
+    expect(pending.agreementTextSnapshot).toContain("Taylor Camper, Jordan Camper");
+    expect(pending.pricingSnapshot).not.toBeNull();
+
+    expect((await confirmFamilyRegistrationCash({
+      familyRegistrationId: response.body.registrationId,
+    })).ok).toBe(true);
+    const confirmed = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: response.body.registrationId },
+      include: { campers: { orderBy: { createdAt: "asc" } } },
+    });
+    expect(confirmed.campers).toHaveLength(2);
+    expect(confirmed.campers[0]?.streetAddress).toBe("100 Camp Road");
+    expect(confirmed.campers[1]?.streetAddress).toBe("200 Other Road");
+    expect(confirmed.pendingCamperCount).toBe(0);
+    expect(confirmed.pendingSubmissionSnapshot).toBeNull();
+    expect("qrToken" in confirmed.campers[0]!).toBe(false);
+  });
+
+  it("persists a third-camper discount without violating receipt amount constraints", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: {
+        camperCapacity: 10,
+        earlyCamperFeeCents: 10000,
+        thirdPlusCamperFeeCents: 8000,
+      },
+    });
+    const input = validFamilySubmission();
+    input.campers.push(
+      { ...input.campers[0]!, firstName: "Jordan" },
+      { ...input.campers[0]!, firstName: "Sarah" },
+    );
+
+    const response = await request(app).post("/api/public/registration/family").send(input);
+
+    expect(response.status).toBe(201);
+    expect(response.body.receipt).toMatchObject({
+      registrationSubtotalCents: 30000,
+      discountCents: 2000,
+      totalDueCents: 28000,
+    });
+    expect(response.body.receipt.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        lineType: "registration",
+        description: "Registration - Sarah Camper",
+        unitPriceCents: 8000,
+        originalUnitPriceCents: 10000,
+        discountCents: 2000,
+        lineTotalCents: 8000,
+      }),
+    ]));
   });
 
   it("persists an adult self-registration without requiring separate guardian details", async () => {
@@ -225,6 +275,14 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     const response = await request(app).post("/api/public/registration/family").send(input);
     expect(response.status).toBe(201);
 
+    const pending = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: response.body.registrationId },
+      include: { campers: true },
+    });
+    expect(pending.campers).toHaveLength(0);
+    expect((await confirmFamilyRegistrationCash({
+      familyRegistrationId: response.body.registrationId,
+    })).ok).toBe(true);
     const stored = await prisma.familyRegistration.findUniqueOrThrow({
       where: { id: response.body.registrationId },
       include: { campers: true },
@@ -297,6 +355,8 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(stored.merchandiseOrderLines[0]).toMatchObject({
       itemNameSnapshot: "Original Shirt",
       selectedOptionsSnapshot: { option: "Large" },
+      camperId: null,
+      pendingCamperIndex: 0,
       quantity: 2,
       unitPriceCents: 2000,
       lineTotalCents: 4000,
@@ -304,9 +364,17 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(stored.receiptLineItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ description: "Original Shirt - Large - Taylor Camper", lineTotalCents: 4000 }),
     ]));
+    expect((await confirmFamilyRegistrationCash({
+      familyRegistrationId: response.body.registrationId,
+    })).ok).toBe(true);
+    const confirmedLine = await prisma.merchandiseOrderLine.findFirstOrThrow({
+      where: { familyRegistrationId: response.body.registrationId },
+    });
+    expect(confirmedLine.camperId).not.toBeNull();
+    expect(confirmedLine.pendingCamperIndex).toBeNull();
   });
 
-  it("rolls back the whole family when work fails after nested camper creation", async () => {
+  it("rolls back the whole pending family draft when later work fails", async () => {
     await selectActiveYear();
     await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
     const input = validFamilySubmission();
@@ -328,6 +396,12 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
       request(app).post("/api/public/registration/family").send(second),
     ]);
     expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    expect(await prisma.camper.count({ where: { campYearId } })).toBe(0);
+    const pending = await prisma.familyRegistration.findFirstOrThrow({
+      where: { campYearId, state: "pending_payment" },
+    });
+    expect(pending.pendingCamperCount).toBe(1);
+    expect((await confirmFamilyRegistrationCash({ familyRegistrationId: pending.id })).ok).toBe(true);
     expect(await prisma.camper.count({ where: { campYearId } })).toBe(1);
   });
 });

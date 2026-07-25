@@ -12,11 +12,12 @@ import {
   markCheckoutSessionUnsuccessful,
   type StripeRuntime,
 } from "./lib/stripeCheckout.js";
+import { createPendingFamilyRegistrationSnapshot } from "./lib/pendingFamilyRegistration.js";
+import { validFamilySubmission } from "./familyRegistrationTestData.js";
 
 const {
   CamperPaymentStatus,
   CheckInStatus,
-  ImportSource,
   RegistrationPaymentMethod,
   RegistrationState,
   StripeCheckoutPurpose,
@@ -25,7 +26,7 @@ const {
 
 async function schemaIsReady(): Promise<boolean> {
   try {
-    await prisma.stripeCheckoutSession.findFirst({ select: { purpose: true } });
+    await prisma.familyRegistration.findFirst({ select: { pendingCamperCount: true } });
     return true;
   } catch {
     return false;
@@ -59,6 +60,18 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
         endDate: new Date("2099-07-07T12:00:00Z"),
       },
     });
+    const submission = validFamilySubmission();
+    submission.guardian = {
+      ...submission.guardian,
+      fullName: "Payment Guardian",
+      email: "payment@example.test",
+    };
+    submission.legal.typedName = "Payment Guardian";
+    submission.campers = [0, 1].map((index) => ({
+      ...submission.campers[0]!,
+      firstName: `Pay${index + 1}`,
+      guardianName: "Payment Guardian",
+    }));
     return prisma.familyRegistration.create({
       data: {
         campYearId: camp.id,
@@ -66,24 +79,14 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
         guardianEmail: "payment@example.test",
         guardianPhone: "5555555555",
         state: RegistrationState.pending_payment,
+        pendingSubmissionSnapshot: createPendingFamilyRegistrationSnapshot(
+          submission,
+          [totalDueCents / 2, totalDueCents / 2],
+        ),
+        pendingCamperCount: 2,
         registrationSubtotalCents: totalDueCents,
         totalDueCents,
         expiresAt: new Date(Date.now() + 30 * 60_000),
-        campers: {
-          create: [0, 1].map((index) => ({
-            campYearId: camp.id,
-            firstName: `Pay${index + 1}`,
-            lastName: "Camper",
-            dateOfBirth: new Date("2012-05-04T12:00:00Z"),
-            gender: "female",
-            guardianName: "Payment Guardian",
-            guardianEmail: "payment@example.test",
-            guardianPhone: "5555555555",
-            feeDueCents: totalDueCents / 2,
-            paymentStatus: CamperPaymentStatus.unpaid,
-            importSource: ImportSource.online_registration,
-          })),
-        },
       },
       include: { campers: true },
     });
@@ -102,6 +105,7 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
 
   it("creates one family checkout on the registration origin without fixed payment methods", async () => {
     const registration = await createRegistration();
+    expect(registration.campers).toHaveLength(0);
     const createSession = vi.fn().mockResolvedValue({
       id: "cs_family_create",
       url: "https://checkout.stripe.test/family",
@@ -119,6 +123,7 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
     expect(await prisma.stripeCheckoutSession.count({
       where: { familyRegistrationId: registration.id, purpose: StripeCheckoutPurpose.family_registration },
     })).toBe(1);
+    expect(await prisma.camper.count({ where: { familyRegistrationId: registration.id } })).toBe(0);
   });
 
   it("completes from verified server data idempotently without check-in side effects", async () => {
@@ -156,6 +161,7 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       amountPaidCents: 33000,
     });
     expect(stored.campers.every((camper) => camper.paymentStatus === CamperPaymentStatus.paid_stripe)).toBe(true);
+    expect(stored.campers).toHaveLength(2);
     expect(stored.campers.every((camper) => camper.checkInStatus === CheckInStatus.not_checked_in)).toBe(true);
     expect(stored.stripeCheckoutSessions[0]).toMatchObject({
       status: StripeCheckoutStatus.completed,
@@ -310,7 +316,10 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
     const replay = await confirmFamilyRegistrationCash({ familyRegistrationId: registration.id });
     expect(first.ok).toBe(true);
     expect(replay.ok).toBe(true);
-    const stored = await prisma.familyRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    const stored = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: registration.id },
+      include: { campers: true },
+    });
     expect(stored).toMatchObject({
       state: RegistrationState.confirmed,
       paymentMethod: RegistrationPaymentMethod.cash,
@@ -318,6 +327,7 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       totalDueCents: 33000,
       amountPaidCents: 0,
     });
+    expect(stored.campers).toHaveLength(2);
     expect(await prisma.emailDeliveryAttempt.findFirst({
       where: { familyRegistrationId: registration.id },
     })).toMatchObject({

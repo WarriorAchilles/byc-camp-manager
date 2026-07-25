@@ -166,6 +166,7 @@ The parent adds one or more campers. For each camper, collect at least the field
 - Parent selects payment method:
   - **Pay now via Stripe** - Processes the payment immediately (registration fee + merch). Registration is confirmed upon successful payment.
   - **Pay at camp with cash** - Registration is confirmed but marked as unpaid. The confirmation screen and email must **clearly restate the total amount that will be due in cash at check-in** so the parent knows exactly how much to bring.
+- Reaching this review/payment screen saves only a temporary registration draft and capacity reservation. It must not create camper/person records or expose campers in admin management until Stripe payment succeeds or the parent explicitly selects pay at camp.
 - After successful submission, a confirmation page is displayed that repeats the full pricing breakdown and payment status.
 
 #### Post-Registration

@@ -1,4 +1,4 @@
-import prismaClientPkg, { type Prisma } from "@prisma/client";
+import prismaClientPkg, { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { loadEnv } from "../config/env.js";
@@ -6,6 +6,10 @@ import { prisma } from "../db.js";
 import { runCamperCheckInInTransaction } from "./camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "./checkInConfirmationMail.js";
 import { writeOpsLog } from "./opsLog.js";
+import {
+  materializePendingFamilyCampers,
+  parsePendingFamilyRegistrationSnapshot,
+} from "./pendingFamilyRegistration.js";
 import { dispatchFamilyRegistrationConfirmation } from "./registrationConfirmationMail.js";
 
 const {
@@ -326,8 +330,12 @@ async function applyCompletedFamilyCheckoutInTransaction(
   ) {
     return { completed: false };
   }
-  await tx.familyRegistration.update({
-    where: { id: sessionRow.familyRegistrationId },
+  const claimed = await tx.familyRegistration.updateMany({
+    where: {
+      id: sessionRow.familyRegistrationId,
+      state: RegistrationState.pending_payment,
+      paymentMethod: RegistrationPaymentMethod.stripe,
+    },
     data: {
       state: RegistrationState.confirmed,
       paymentStatus: CamperPaymentStatus.paid_stripe,
@@ -336,20 +344,21 @@ async function applyCompletedFamilyCheckoutInTransaction(
       expiresAt: null,
     },
   });
-  await tx.camper.updateMany({
-    where: { familyRegistrationId: sessionRow.familyRegistrationId },
-    data: { paymentStatus: CamperPaymentStatus.paid_stripe },
-  });
-  const campers = await tx.camper.findMany({
-    where: { familyRegistrationId: sessionRow.familyRegistrationId },
-    select: { id: true, feeDueCents: true },
-  });
-  for (const camper of campers) {
-    await tx.camper.update({
-      where: { id: camper.id },
-      data: { feePaidCents: camper.feeDueCents ?? 0 },
-    });
+  if (claimed.count !== 1) {
+    return { completed: false };
   }
+  const campers = await materializePendingFamilyCampers(tx, {
+    familyRegistrationId: sessionRow.familyRegistrationId,
+    paymentStatus: CamperPaymentStatus.paid_stripe,
+    markFeesPaid: true,
+  });
+  await tx.familyRegistration.update({
+    where: { id: sessionRow.familyRegistrationId },
+    data: {
+      pendingSubmissionSnapshot: Prisma.DbNull,
+      pendingCamperCount: 0,
+    },
+  });
   await tx.stripeCheckoutSession.update({
     where: { id: sessionRow.id },
     data: {
@@ -526,8 +535,18 @@ export async function createFamilyRegistrationCheckoutSession(input: {
       });
       return { ok: false, status: 409, error: "no_balance_due" };
     }
+    const pendingRegistration = registration.campers.length === 0
+      ? parsePendingFamilyRegistrationSnapshot(registration.pendingSubmissionSnapshot)
+      : null;
+    const registrationLines = pendingRegistration
+      ? pendingRegistration.submission.campers.map((camper, index) => ({
+        firstName: camper.firstName,
+        lastName: camper.lastName,
+        feeDueCents: pendingRegistration.camperFees[index] ?? 0,
+      }))
+      : registration.campers;
     const lineItems = [
-      ...registration.campers
+      ...registrationLines
         .filter((camper) => (camper.feeDueCents ?? 0) > 0)
         .map((camper) => ({
           quantity: 1,
@@ -638,6 +657,18 @@ export async function confirmFamilyRegistrationCash(input: { familyRegistrationI
     if (updated.count !== 1) {
       return { ok: false as const, status: 409, error: "payment_action_in_progress" };
     }
+    await materializePendingFamilyCampers(tx, {
+      familyRegistrationId: registration.id,
+      paymentStatus: CamperPaymentStatus.unpaid,
+      markFeesPaid: false,
+    });
+    await tx.familyRegistration.update({
+      where: { id: registration.id },
+      data: {
+        pendingSubmissionSnapshot: Prisma.DbNull,
+        pendingCamperCount: 0,
+      },
+    });
     const confirmed = await tx.familyRegistration.findUniqueOrThrow({ where: { id: registration.id } });
     return { ok: true as const, registration: confirmed };
   });

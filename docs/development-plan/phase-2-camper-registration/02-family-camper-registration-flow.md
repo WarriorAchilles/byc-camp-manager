@@ -33,7 +33,7 @@ Implement the public family registration form through parent information, repeat
 - [ ] Add medical release display and legal signature capture with timestamp and IP address persistence.
 - [ ] Present an adult-specific authorization for self-registration without parent/legal-guardian assertions, and require its version to match the selected registration type.
 - [ ] Snapshot the exact medical release version or rendered text accepted by the signer so later copy changes do not alter the legal record.
-- [ ] Persist the family registration, all campers, legal agreement, and initial price snapshot atomically so a failed submission cannot leave a partial family; do not create individual camper QR tokens.
+- [ ] Persist a temporary family draft, legal agreement, initial price snapshot, and capacity reservation atomically; create the actual camper records only when Stripe payment succeeds or pay-at-camp is explicitly selected, and do not create individual camper QR tokens.
 - [ ] Enforce camper capacity inside the same transaction with concurrency-safe semantics; do not rely on a separate count followed by inserts.
 - [ ] Apply the Step 00 registration state and capacity-reservation rules so abandoned or pending-payment submissions cannot permanently consume capacity.
 - [ ] Add a client-generated submission idempotency key or equivalent replay protection so double-clicks and safe retries cannot create duplicate families.
@@ -61,5 +61,5 @@ Implement the public family registration form through parent information, repeat
 - [ ] An adult camper can register themselves without entering parent/guardian information or signing a parent/legal-guardian assertion.
 - [ ] No required legacy camper field is omitted from the captured data.
 - [ ] Medical release signature data is stored with each relevant family registration.
-- [ ] Submitted campers are available to Phase 1 management workflows.
+- [ ] Confirmed campers are available to Phase 1 management workflows; payment-page drafts are not exposed as people.
 - [ ] Family creation is atomic, concurrency-safe at capacity, and idempotent under client retries.

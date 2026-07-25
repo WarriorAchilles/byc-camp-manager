@@ -97,7 +97,14 @@ router.get("/", async (req: AuthedRequest, res) => {
     return;
   }
   const campers = await prisma.camper.findMany({
-    where: { campYearId, archivedAt: null },
+    where: {
+      campYearId,
+      archivedAt: null,
+      OR: [
+        { familyRegistrationId: null },
+        { familyRegistration: { state: "confirmed" } },
+      ],
+    },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
   res.json({ campers });
