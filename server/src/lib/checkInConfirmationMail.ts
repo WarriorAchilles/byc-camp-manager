@@ -1,5 +1,7 @@
-import nodemailer from "nodemailer";
-import type { Transporter } from "nodemailer";
+import {
+  deliverEmail,
+  escapeHtml,
+} from "./emailDelivery.js";
 
 export type CheckInMailPayload = {
   to: string;
@@ -39,95 +41,19 @@ export function buildCheckInConfirmationContent(payload: CheckInMailPayload): {
   return { subject, text, html };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-type MailEnv = {
-  transport: "smtp" | "log";
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpUser?: string;
-  smtpPass?: string;
-  emailFrom?: string;
-};
-
-export function readMailEnvFromProcess(): MailEnv {
-  const transportRaw = (process.env.EMAIL_TRANSPORT ?? "log").toLowerCase();
-  const transport = transportRaw === "smtp" ? "smtp" : "log";
-  const smtpPortRaw = process.env.SMTP_PORT;
-  return {
-    transport,
-    smtpHost: process.env.SMTP_HOST?.trim() || undefined,
-    smtpPort: smtpPortRaw ? Number.parseInt(smtpPortRaw, 10) : undefined,
-    smtpUser: process.env.SMTP_USER?.trim() || undefined,
-    smtpPass: process.env.SMTP_PASS?.trim() || undefined,
-    emailFrom: process.env.EMAIL_FROM?.trim() || undefined,
-  };
-}
-
-function createSmtpTransport(mail: MailEnv): Transporter | null {
-  if (
-    !mail.smtpHost ||
-    !mail.smtpPort ||
-    mail.smtpUser === undefined ||
-    mail.smtpPass === undefined ||
-    !mail.emailFrom
-  ) {
-    return null;
-  }
-  return nodemailer.createTransport({
-    host: mail.smtpHost,
-    port: mail.smtpPort,
-    secure: mail.smtpPort === 465,
-    auth: { user: mail.smtpUser, pass: mail.smtpPass },
-  });
-}
-
 export type SendCheckInMailResult =
   | { status: "sent" }
-  | { status: "skipped_log"; logLine: string }
+  | { status: "skipped_log" }
   | { status: "skipped_missing_recipient" }
   | { status: "skipped_missing_smtp_config" }
-  | { status: "failed"; message: string };
+  | { status: "failed"; errorCode: string };
 
 /** Sends check-in confirmation; never throws — callers rely on this for graceful degradation. */
 export async function sendCheckInConfirmationMail(payload: CheckInMailPayload): Promise<SendCheckInMailResult> {
-  if (!payload.to.trim()) {
-    return { status: "skipped_missing_recipient" };
-  }
-
-  const mail = readMailEnvFromProcess();
-  const { subject, text, html } = buildCheckInConfirmationContent(payload);
-
-  if (mail.transport === "log") {
-    const logLine = `[email log] to=${payload.to} subject=${JSON.stringify(subject)} body=${JSON.stringify(text)}`;
-    console.info(logLine);
-    return { status: "skipped_log", logLine };
-  }
-
-  const transport = createSmtpTransport(mail);
-  if (!transport || !mail.emailFrom) {
-    console.warn("[email] SMTP transport selected but host/port/user/pass/from are incomplete; skipping send");
-    return { status: "skipped_missing_smtp_config" };
-  }
-
-  try {
-    await transport.sendMail({
-      from: mail.emailFrom,
-      to: payload.to,
-      subject,
-      text,
-      html,
-    });
-    return { status: "sent" };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[email] check-in confirmation send failed:", message);
-    return { status: "failed", message };
-  }
+  const result = await deliverEmail({
+    to: payload.to,
+    templateKey: "check_in_confirmation",
+    content: buildCheckInConfirmationContent(payload),
+  });
+  return result.status === "sent" ? { status: "sent" } : result;
 }

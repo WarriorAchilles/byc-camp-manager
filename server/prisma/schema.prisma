@@ -77,6 +77,7 @@ enum MerchandiseOwnership {
 enum EmailDeliveryStatus {
   pending
   sent
+  skipped
   failed
 }
 
@@ -390,22 +391,26 @@ model MerchandiseOrderLine {
 }
 
 model EmailDeliveryAttempt {
-  id                   String              @id @default(uuid())
-  familyRegistrationId String?             @map("family_registration_id")
-  templateKey          String              @map("template_key")
-  recipientEmail       String              @map("recipient_email")
-  status               EmailDeliveryStatus @default(pending)
-  attemptNumber        Int                 @default(1) @map("attempt_number")
-  providerMessageId    String?             @map("provider_message_id")
-  errorCode            String?             @map("error_code")
-  errorMessage         String?             @map("error_message")
-  attemptedAt          DateTime            @default(now()) @map("attempted_at")
-  sentAt               DateTime?           @map("sent_at")
-  createdAt            DateTime            @default(now()) @map("created_at")
+  id                             String              @id @default(uuid())
+  familyRegistrationId           String?             @map("family_registration_id")
+  workerRegistrationSubmissionId String?             @map("worker_registration_submission_id")
+  idempotencyKey                 String?             @unique @map("idempotency_key")
+  templateKey                    String              @map("template_key")
+  recipientEmail                 String              @map("recipient_email")
+  status                         EmailDeliveryStatus @default(pending)
+  attemptNumber                  Int                 @default(1) @map("attempt_number")
+  providerMessageId              String?             @map("provider_message_id")
+  errorCode                      String?             @map("error_code")
+  errorMessage                   String?             @map("error_message")
+  attemptedAt                    DateTime            @default(now()) @map("attempted_at")
+  sentAt                         DateTime?           @map("sent_at")
+  createdAt                      DateTime            @default(now()) @map("created_at")
 
-  familyRegistration FamilyRegistration? @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+  familyRegistration           FamilyRegistration?           @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+  workerRegistrationSubmission WorkerRegistrationSubmission? @relation(fields: [workerRegistrationSubmissionId], references: [id], onDelete: Cascade)
 
   @@index([familyRegistrationId, status])
+  @@index([workerRegistrationSubmissionId, status])
   @@index([recipientEmail, attemptedAt])
   @@map("email_delivery_attempts")
 }
@@ -513,9 +518,10 @@ model WorkerRegistrationSubmission {
   createdAt             DateTime                           @default(now()) @map("created_at")
   updatedAt             DateTime                           @updatedAt @map("updated_at")
 
-  campYear       CampYear                  @relation(fields: [campYearId], references: [id], onDelete: Cascade)
-  resolvedWorker Worker?                   @relation("WorkerRegistrationResolution", fields: [resolvedWorkerId], references: [id], onDelete: SetNull)
-  likelyMatches  WorkerRegistrationMatch[]
+  campYear              CampYear                  @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  resolvedWorker        Worker?                   @relation("WorkerRegistrationResolution", fields: [resolvedWorkerId], references: [id], onDelete: SetNull)
+  likelyMatches         WorkerRegistrationMatch[]
+  emailDeliveryAttempts EmailDeliveryAttempt[]
 
   @@index([campYearId, status, submittedAt])
   @@index([campYearId, email])

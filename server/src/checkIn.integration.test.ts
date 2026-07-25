@@ -291,7 +291,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
     expect(second.body.checkInCompletedThisRequest).toBe(false);
     expect(second.body.checkInConfirmationEmail).toBeNull();
 
-    expect(logSpy.mock.calls.some((c) => String(c[0]).includes("guard-checkin@example.com"))).toBe(true);
+    const emailLogs = logSpy.mock.calls.flat().join("\n");
+    expect(emailLogs).toContain("check_in_confirmation");
+    expect(emailLogs).toContain("skipped_log");
+    expect(emailLogs).not.toContain("guard-checkin@example.com");
+    expect(emailLogs).not.toContain("Mail Test");
   });
 
   it("undoes camper check-in, clears the timestamp, and updates the summary", async () => {

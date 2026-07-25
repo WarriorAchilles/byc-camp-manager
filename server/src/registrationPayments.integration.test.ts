@@ -37,12 +37,14 @@ const integrationReady = await schemaIsReady();
 describe.skipIf(!integrationReady)("family registration payments", () => {
   beforeEach(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.camper.deleteMany({});
     await prisma.campYear.deleteMany({});
   });
 
   afterAll(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.camper.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.$disconnect();
@@ -159,6 +161,16 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       status: StripeCheckoutStatus.completed,
       paymentIntentId: "pi_family_paid",
     });
+    const attempts = await prisma.emailDeliveryAttempt.findMany({
+      where: { familyRegistrationId: registration.id },
+    });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      templateKey: "family_registration_confirmation",
+      status: "skipped",
+      attemptNumber: 1,
+      providerMessageId: null,
+    });
   });
 
   it("verifies and replays the same signed webhook without duplicate payment or check-in email effects", async () => {
@@ -245,7 +257,13 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       });
       expect(stored.campers.every((camper) => camper.checkInStatus === CheckInStatus.not_checked_in)).toBe(true);
       expect(stored.stripeCheckoutSessions).toHaveLength(1);
-      expect(infoSpy.mock.calls.some((call) => String(call[0]).includes("[email log]"))).toBe(false);
+      expect(await prisma.emailDeliveryAttempt.count({
+        where: { familyRegistrationId: registration.id },
+      })).toBe(1);
+      const logs = infoSpy.mock.calls.flat().join("\n");
+      expect(logs).toContain("family_registration_confirmation");
+      expect(logs).toContain("duplicate_suppressed");
+      expect(logs).not.toContain("payment@example.test");
     } finally {
       infoSpy.mockRestore();
       if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
@@ -299,6 +317,13 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       paymentStatus: CamperPaymentStatus.unpaid,
       totalDueCents: 33000,
       amountPaidCents: 0,
+    });
+    expect(await prisma.emailDeliveryAttempt.findFirst({
+      where: { familyRegistrationId: registration.id },
+    })).toMatchObject({
+      templateKey: "family_registration_confirmation",
+      status: "skipped",
+      attemptNumber: 1,
     });
     const checkout = await createFamilyRegistrationCheckoutSession({
       familyRegistrationId: registration.id,

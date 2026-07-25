@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { readMailEnvFromProcess } from "../lib/checkInConfirmationMail.js";
+import { readMailEnvFromProcess } from "../lib/emailDelivery.js";
 
 export const healthRouter = Router();
 
@@ -25,7 +25,7 @@ healthRouter.get("/ready", async (_req, res) => {
   if (mail.transport === "log") {
     checks.email = {
       ok: true,
-      detail: "EMAIL_TRANSPORT=log — messages are written to stdout only (no outbound SMTP).",
+      detail: "EMAIL_TRANSPORT=log — safe metadata is written to stdout (no outbound SMTP).",
     };
   } else {
     const smtpConfigured = Boolean(

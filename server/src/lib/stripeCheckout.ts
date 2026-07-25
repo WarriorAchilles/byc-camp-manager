@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { runCamperCheckInInTransaction } from "./camperCheckInTx.js";
 import { sendCheckInConfirmationMail } from "./checkInConfirmationMail.js";
 import { writeOpsLog } from "./opsLog.js";
+import { dispatchFamilyRegistrationConfirmation } from "./registrationConfirmationMail.js";
 
 const {
   CamperPaymentStatus,
@@ -267,7 +268,12 @@ async function applyCompletedSelfCheckInCheckoutInTransaction(
 async function applyCompletedFamilyCheckoutInTransaction(
   tx: Db,
   input: { session: Stripe.Checkout.Session; now: Date },
-): Promise<{ completed: boolean; campYearId?: string; camperIds?: string[] }> {
+): Promise<{
+  completed: boolean;
+  campYearId?: string;
+  camperIds?: string[];
+  familyRegistrationId?: string;
+}> {
   const sessionRow = await tx.stripeCheckoutSession.findFirst({
     where: {
       stripeSessionId: input.session.id,
@@ -284,6 +290,7 @@ async function applyCompletedFamilyCheckoutInTransaction(
       completed: true,
       campYearId: sessionRow.campYearId,
       camperIds: campers.map((camper) => camper.id),
+      familyRegistrationId: sessionRow.familyRegistrationId,
     };
   }
   const paidAmount = input.session.amount_total;
@@ -355,12 +362,18 @@ async function applyCompletedFamilyCheckoutInTransaction(
     completed: true,
     campYearId: sessionRow.campYearId,
     camperIds: campers.map((camper) => camper.id),
+    familyRegistrationId: sessionRow.familyRegistrationId,
   };
 }
 
 export async function completeCheckoutSessionIfPaid(
   session: Stripe.Checkout.Session,
-): Promise<{ completed: boolean; campYearId?: string; camperIds?: string[] }> {
+): Promise<{
+  completed: boolean;
+  campYearId?: string;
+  camperIds?: string[];
+  familyRegistrationId?: string;
+}> {
   if (session.payment_status !== "paid") {
     return { completed: false };
   }
@@ -379,6 +392,9 @@ export async function completeCheckoutSessionIfPaid(
         campYearId: result.campYearId,
         stripeSessionId: session.id,
       });
+      if (result.familyRegistrationId) {
+        await dispatchFamilyRegistrationConfirmation(result.familyRegistrationId);
+      }
     }
     return result;
   }
@@ -588,7 +604,7 @@ export async function createFamilyRegistrationCheckoutSession(input: {
 
 export async function confirmFamilyRegistrationCash(input: { familyRegistrationId: string; now?: Date }) {
   const now = input.now ?? new Date();
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const registration = await tx.familyRegistration.findUnique({ where: { id: input.familyRegistrationId } });
     if (!registration) return { ok: false as const, status: 404, error: "registration_not_found" };
     if (
@@ -625,6 +641,10 @@ export async function confirmFamilyRegistrationCash(input: { familyRegistrationI
     const confirmed = await tx.familyRegistration.findUniqueOrThrow({ where: { id: registration.id } });
     return { ok: true as const, registration: confirmed };
   });
+  if (result.ok) {
+    await dispatchFamilyRegistrationConfirmation(result.registration.id);
+  }
+  return result;
 }
 
 export async function markCheckoutSessionUnsuccessful(

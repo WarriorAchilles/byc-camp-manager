@@ -1,7 +1,7 @@
 import prismaClientPkg from "@prisma/client";
 import type { Express } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { SETTINGS_ROW_ID } from "./lib/activeCampYearSetting.js";
@@ -32,6 +32,7 @@ describe.skipIf(!integrationReady)("public worker registration API", () => {
 
   beforeEach(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.workerRegistrationMatch.deleteMany({});
     await prisma.workerRegistrationSubmission.deleteMany({});
     await prisma.worker.deleteMany({});
@@ -65,6 +66,7 @@ describe.skipIf(!integrationReady)("public worker registration API", () => {
 
   afterAll(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.workerRegistrationMatch.deleteMany({});
     await prisma.workerRegistrationSubmission.deleteMany({});
     await prisma.worker.deleteMany({});
@@ -87,6 +89,7 @@ describe.skipIf(!integrationReady)("public worker registration API", () => {
 
   it("creates an operational worker with public provenance and no payment record", async () => {
     const input = validWorkerSubmission();
+    const logSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const response = await request(app)
       .post("/api/public/registration/worker")
       .set("X-Forwarded-For", "192.0.2.55")
@@ -113,6 +116,21 @@ describe.skipIf(!integrationReady)("public worker registration API", () => {
     });
     expect(worker.publicSubmittedAt).not.toBeNull();
     expect(worker.publicSubmissionIp).toBeTruthy();
+    expect(response.body).not.toHaveProperty("providerMessageId");
+    const emailAttempt = await prisma.emailDeliveryAttempt.findUniqueOrThrow({
+      where: { idempotencyKey: `worker_registration_confirmation:${submission.id}` },
+    });
+    expect(emailAttempt).toMatchObject({
+      workerRegistrationSubmissionId: submission.id,
+      familyRegistrationId: null,
+      templateKey: "worker_registration_confirmation",
+      status: "skipped",
+      attemptNumber: 1,
+      providerMessageId: null,
+    });
+    const emailLogs = logSpy.mock.calls.flat().join("\n");
+    expect(emailLogs).not.toContain(input.email);
+    expect(emailLogs).not.toContain(input.faithServingResponse);
     expect(await prisma.familyRegistration.count({ where: { campYearId } })).toBe(0);
     expect(await prisma.stripeCheckoutSession.count({ where: { campYearId } })).toBe(0);
   });
@@ -131,6 +149,9 @@ describe.skipIf(!integrationReady)("public worker registration API", () => {
     expect(await prisma.worker.count({ where: { campYearId } })).toBe(1);
     expect(await prisma.workerRegistrationSubmission.count({
       where: { submissionKey: input.submissionKey },
+    })).toBe(1);
+    expect(await prisma.emailDeliveryAttempt.count({
+      where: { workerRegistrationSubmissionId: first.body.registrationId },
     })).toBe(1);
   });
 

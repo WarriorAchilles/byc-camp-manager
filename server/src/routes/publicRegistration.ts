@@ -56,6 +56,9 @@ import {
   leaderSubmissionSchema,
   type LeaderSubmission,
 } from "../lib/leaderRegistration.js";
+import {
+  dispatchWorkerRegistrationConfirmation,
+} from "../lib/registrationConfirmationMail.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
@@ -807,6 +810,7 @@ publicRegistrationRouter.post("/worker", submissionLimit, async (req, res, next)
       req.ip || req.socket.remoteAddress || "unknown",
       new Date(),
     );
+    await dispatchWorkerRegistrationConfirmation(result.submission.id);
     res.status(result.replayed ? 200 : 201).json({
       registrationId: result.submission.id,
       status: "received",

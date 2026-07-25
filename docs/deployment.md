@@ -6,7 +6,7 @@ This document describes how to run, build, migrate, deploy, back up, and observe
 
 - **Web UI**: React SPA (`client`), built to static files under `client/dist`.
 - **API**: Node.js + Express (`server`), Prisma ORM, PostgreSQL.
-- **Email**: Nodemailer (`server/src/lib/checkInConfirmationMail.ts`) — log-only by default, or SMTP (e.g. Amazon SES SMTP, SendGrid).
+- **Email**: one shared Nodemailer delivery service (`server/src/lib/emailDelivery.ts`) for check-in and registration confirmations. Real delivery uses the SendGrid SMTP relay; tests/CI use a non-network, metadata-only log transport.
 
 Further product context: `docs/specs.md`.
 
@@ -26,11 +26,20 @@ Further product context: `docs/specs.md`.
 | `CLIENT_DIST_PATH` | usually unset (Vite proxies `/api`) | optional path to `client/dist` | e.g. `/app/client/dist` | When set to an existing directory, the API also serves the SPA and `index.html` fallback for client routes |
 | `STRIPE_SECRET_KEY` | test restricted key (`rk_test_...`) preferred | test/staging restricted key | live restricted key (`rk_live_...`) preferred | Server-only Stripe API key; never expose to client code or logs |
 | `STRIPE_WEBHOOK_SECRET` | from `stripe listen` | staging webhook signing secret | production webhook signing secret | Required to verify `checkout.session.completed` webhook events |
-| `EMAIL_TRANSPORT` | `log` (default) | `smtp` or `log` | `smtp` for real mail | `log` writes message content to stdout — **do not use for parent-facing mail in prod** |
-| `EMAIL_FROM` | n/a if `log` | verified sender | same | Required when `EMAIL_TRANSPORT=smtp` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | n/a if `log` | provider values | same | Required together for SMTP |
+| `EMAIL_TRANSPORT` | `log` (default) | `smtp` | `smtp` | `smtp` sends all check-in, family-registration, and worker-registration confirmations; `log` performs no network send and records safe metadata/status only |
+| `EMAIL_FROM` | n/a if `log` | SendGrid-verified sender | same | Required for `smtp`; must use a verified single sender or authenticated domain |
+| `SMTP_HOST` | n/a if `log` | `smtp.sendgrid.net` | same | Shared by every transactional email type |
+| `SMTP_PORT` | n/a if `log` | `587` | same | STARTTLS; use `465` only for intentionally configured implicit TLS |
+| `SMTP_USER` | n/a if `log` | `apikey` | same | SendGrid requires this literal username |
+| `SMTP_PASS` | n/a if `log` | secret store | same | SendGrid API key restricted to **Mail Send**; never commit or log it |
 
 Never commit real `.env` files. Use your AWS account secret store, CI OIDC, or platform env configuration (see Human Tasks in step 07 of the development plan).
+
+### SendGrid transactional email
+
+The same SMTP settings deliver camper check-in confirmations and family/worker registration confirmations. Configure sender authentication in SendGrid, create a production-specific API key with only **Mail Send** permission, and store `SMTP_PASS` in the deployment secret store. Delivery results and the Nodemailer provider message identifier (when supplied) are recorded in `email_delivery_attempts` for registration emails; the public registration API never returns that identifier.
+
+`EMAIL_TRANSPORT=log` is intended for automated tests and CI. It does not connect to SendGrid and logs only the template key, transport, and status. Recipient addresses, subjects, bodies, medical/legal data, and submitted worker responses must not be written to application logs.
 
 ### Stripe Checkout for self check-in
 
@@ -97,7 +106,7 @@ When `CLIENT_DIST_PATH` is set, `GET /health.json` is served by Express static f
 
 ## Application operations logging
 
-Structured JSON lines are written to stdout for operational events (auth, CSV imports, fee CSV import, dorm assignment, check-in, roster/report data loads, check-in confirmation mail outcomes). **Medical free-text, dietary fields, and guardian email addresses are not included** in these lines — roster responses still contain operational fields for authorized admins; logs only record metadata (IDs, counts, filters, mail send status).
+Structured JSON lines are written to stdout for operational events (auth, CSV imports, fee CSV import, dorm assignment, check-in, roster/report data loads, and transactional email outcomes). **Recipient addresses, email subjects/bodies, medical or legal data, dietary fields, and worker response copies are not included** in these lines — roster responses still contain operational fields for authorized admins; logs only record safe metadata (IDs, counts, filters, template keys, and mail status).
 
 ## Database backups and restore
 
