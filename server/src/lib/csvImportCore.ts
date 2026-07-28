@@ -25,6 +25,8 @@ export const CAMPER_COLUMN_KEYS = [
   "physicalLimitations",
   "medicalNotes",
   "dietaryRestrictions",
+  "churchName",
+  "pastorName",
   "feeDue",
   "feePaid",
   "checkInDate",
@@ -47,6 +49,8 @@ export const WORKER_COLUMN_KEYS = [
   "stateOrProvince",
   "postalCode",
   "country",
+  "churchName",
+  "pastorName",
   "taskPreferences",
   "tShirtSize",
 ] as const;
@@ -61,6 +65,8 @@ export const DORM_LEADER_COLUMN_KEYS = [
   "gender",
   "cellPhone",
   "altPhone",
+  "churchName",
+  "pastorName",
   "roleLabel",
 ] as const;
 
@@ -170,6 +176,8 @@ function suggestCamperMap(headers: string[]): Record<CamperColumnKey, string | n
     physicalLimitations: pick(["list any physical limitations", "physical limitations"]),
     medicalNotes: pick(["allergies", "medical info", "medical notes", "health"]),
     dietaryRestrictions: pick(["dietary"]),
+    churchName: pick(["church presently attending", "church name", "church"]),
+    pastorName: pick(["pastor full name", "pastor name", "pastor"]),
     feeDue: pick(["fees due", "fee due", "amount due", "balance due", "total due"]),
     feePaid: pick(["fees paid", "fee paid", "amount paid", "paid"]),
     checkInDate: pick(["check in date", "check-in date", "checked in date", "checked-in date"]),
@@ -199,6 +207,8 @@ function suggestWorkerMap(headers: string[]): Record<WorkerColumnKey, string | n
     stateOrProvince: pick(["state or province", "state/province"]),
     postalCode: pick(["zip code", "postal"]),
     country: pick(["country (usa", "country"]),
+    churchName: pick(["church presently attending", "church name", "church"]),
+    pastorName: pick(["pastor full name", "pastor name", "pastor"]),
     taskPreferences: pick([
       "there are a variety of positions",
       "preferred tasks",
@@ -224,6 +234,8 @@ function suggestDormLeaderMap(headers: string[]): Record<DormLeaderColumnKey, st
     gender: pick(["gender"]),
     cellPhone: pick(["cell number"]),
     altPhone: pick(["alt. number", "alternate"]),
+    churchName: pick(["church presently attending", "church name", "church"]),
+    pastorName: pick(["pastor full name", "pastor name", "pastor"]),
     roleLabel: pick([
       "which age group would you prefer to work with",
       "which age group would you prefer",
@@ -489,6 +501,8 @@ export type CamperImportPayload = {
   emergencyContactPhone: string | null;
   medicalNotes: string | null;
   dietaryRestrictions: string | null;
+  churchName: string | null;
+  pastorName: string | null;
   feeDueCents: number | null;
   feePaidCents: number | null;
   checkedInAt: string | null;
@@ -508,6 +522,8 @@ export type WorkerImportPayload = {
   stateOrProvince: string;
   postalCode: string;
   country: string;
+  churchName: string | null;
+  pastorName: string | null;
   taskPreferenceFirst: string | null;
   taskPreferenceSecond: string | null;
   taskPreferenceThird: string | null;
@@ -520,6 +536,8 @@ export type DormLeaderImportPayload = {
   gender: "male" | "female";
   email: string;
   phone: string;
+  churchName: string | null;
+  pastorName: string | null;
   roleLabel: string | null;
 };
 
@@ -716,6 +734,8 @@ export function buildCamperImportPreview(
         })(),
         medicalNotes: medicalCombined.text?.trim() || null,
         dietaryRestrictions: dietaryRaw.trim() || null,
+        churchName: take("churchName").trim() || null,
+        pastorName: take("pastorName").trim() || null,
         feeDueCents,
         feePaidCents,
         checkedInAt,
@@ -770,6 +790,8 @@ export function buildWorkerImportPreview(
     const state = take("stateOrProvince");
     const zip = take("postalCode");
     const country = take("country");
+    const churchName = take("churchName");
+    const pastorName = take("pastorName");
     const tasksRaw = take("taskPreferences");
     const shirt = take("tShirtSize");
 
@@ -846,6 +868,8 @@ export function buildWorkerImportPreview(
         stateOrProvince: state.trim(),
         postalCode: zip.trim(),
         country: country.trim(),
+        churchName: churchName.trim() || null,
+        pastorName: pastorName.trim() || null,
         taskPreferenceFirst: taskFirst,
         taskPreferenceSecond: taskSecond,
         taskPreferenceThird: taskThird,
@@ -892,6 +916,8 @@ export function buildDormLeaderImportPreview(
     const genderRaw = take("gender");
     const cellRaw = take("cellPhone");
     const altRaw = take("altPhone");
+    const churchName = take("churchName");
+    const pastorName = take("pastorName");
     const roleLabelRaw = take("roleLabel");
 
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -932,6 +958,8 @@ export function buildDormLeaderImportPreview(
         gender: genderResult.value,
         email: email.trim().toLowerCase(),
         phone: phoneResult.value,
+        churchName: churchName.trim() || null,
+        pastorName: pastorName.trim() || null,
         roleLabel: roleLabelRaw.trim() || null,
       });
     }

@@ -82,6 +82,7 @@ export const workerSubmissionSchema = z.object({
   faithServingResponse: requiredText(4_000),
   churchName: requiredText(200),
   pastorName: requiredText(200),
+  selectedChurchId: z.string().uuid().optional().nullable(),
   pastorPhone: digits,
   taskPreferences: z.tuple([
     z.enum(WORKER_TASK_OPTIONS),

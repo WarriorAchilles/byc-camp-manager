@@ -32,6 +32,9 @@ type CamperCheckIn = {
   medicalNotes: string | null;
   dietaryRestrictions: string | null;
   paymentStatus: string;
+  remainingBalanceCents: number;
+  balanceState: "unpaid" | "partially_paid" | "paid";
+  paymentRequired: boolean;
   checkInStatus: string;
   checkedInAt: string | null;
   dormAssignment: string | null;
@@ -711,7 +714,7 @@ export function CheckInPage(): React.ReactElement {
               ) : null}
             </div>
           )}
-          {selectedCamper.paymentStatus === "unpaid" ? (
+          {selectedCamper.paymentRequired ? (
             <fieldset className="check-in-cash-fieldset">
               <legend className="field-label">Cash payment at check-in</legend>
               <label className="check-inline payment-checkbox-button">
@@ -764,14 +767,14 @@ export function CheckInPage(): React.ReactElement {
               disabled={
                 busy ||
                 (selectedCamper.checkInStatus === "checked_in" &&
-                  (selectedCamper.paymentStatus !== "unpaid" || (!markPaidCamper && !markPaidFamily)))
+                  (!selectedCamper.paymentRequired || (!markPaidCamper && !markPaidFamily)))
               }
               onClick={() => void confirmCamperCheckIn()}
             >
               {markPaidFamily
                 ? "Check all campers in and record cash payment"
                 : selectedCamper.checkInStatus === "checked_in" &&
-                    selectedCamper.paymentStatus === "unpaid" &&
+                    selectedCamper.paymentRequired &&
                     markPaidCamper
                   ? "Record cash payment"
                 : selectedCamper.checkInStatus === "checked_in"

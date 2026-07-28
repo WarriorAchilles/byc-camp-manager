@@ -5,6 +5,7 @@ import {
   type Address,
   type CamperDraft,
 } from "./familyRegistrationCamper";
+import { ChurchCombobox } from "./ChurchCombobox";
 
 type FormOptions = {
   genders: string[];
@@ -85,6 +86,7 @@ const emptyCamper = (): CamperDraft => ({
   receivedHolyGhost: null,
   churchName: "",
   pastorName: "",
+  selectedChurchId: null,
   tShirtIntent: "",
   medicalNotes: "",
   allergies: "",
@@ -403,8 +405,33 @@ export function FamilyRegistrationForm(): React.ReactElement {
               <div className="registration-grid">
                 <YesNoField label="Does this camper identify as a Christian?" value={camper.identifiesAsChristian} onChange={(value) => updateCamper(index, "identifiesAsChristian", value)} />
                 <YesNoField label="Received the gift of the Holy Ghost since believing?" value={camper.receivedHolyGhost} onChange={(value) => updateCamper(index, "receivedHolyGhost", value)} />
-                <label>Church presently attending<input required value={camper.churchName} onChange={(event) => updateCamper(index, "churchName", event.target.value)} /></label>
-                <label>Pastor full name<input required value={camper.pastorName} onChange={(event) => updateCamper(index, "pastorName", event.target.value)} /></label>
+                <ChurchCombobox
+                  churchName={camper.churchName}
+                  pastorName={camper.pastorName}
+                  selectedChurchId={camper.selectedChurchId ?? null}
+                  onChange={(value) => setCampers((current) => current.map((entry, camperIndex) =>
+                    camperIndex === index ? { ...entry, ...value } : entry))}
+                />
+                {index > 0 ? (
+                  <button
+                    className="btn secondary"
+                    type="button"
+                    onClick={() => {
+                      const previous = campers[index - 1]!;
+                      setCampers((current) => current.map((entry, camperIndex) =>
+                        camperIndex === index
+                          ? {
+                              ...entry,
+                              churchName: previous.churchName,
+                              pastorName: previous.pastorName,
+                              selectedChurchId: previous.selectedChurchId ?? null,
+                            }
+                          : entry));
+                    }}
+                  >
+                    Use the same church as the previous camper
+                  </button>
+                ) : null}
                 <label>Emergency contact name<input required value={camper.emergencyContactName} onChange={(event) => updateCamper(index, "emergencyContactName", event.target.value)} /></label>
                 <label>Emergency contact phone<input required inputMode="numeric" minLength={10} maxLength={15} value={camper.emergencyContactPhone} onChange={(event) => updateCamper(index, "emergencyContactPhone", digitsOnly(event.target.value))} /></label>
               </div>

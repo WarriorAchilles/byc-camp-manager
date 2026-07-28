@@ -5,10 +5,11 @@ import { prisma } from "../db.js";
 import { campYearIdFromParams } from "../lib/campYearParams.js";
 import { CAMPER_FEE_COLUMN_KEYS, runCamperFeeImportPreview } from "../lib/camperFeeCsv.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { syncFamilyRegistrationBalance } from "../lib/paymentBalances.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const { AdminRole } = prismaClientPkg;
+const { AdminRole, CamperPaymentStatus } = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 
@@ -126,18 +127,32 @@ router.post("/commit", async (req: AuthedRequest, res) => {
   const skippedInvalidRows = skipInvalidRows ? rowsWithErrors.length : 0;
 
   try {
-    await prisma.$transaction(
-      preview.payloads.map((payload) =>
-        prisma.camper.update({
+    await prisma.$transaction(async (tx) => {
+      const familyStatuses = new Map<string, typeof CamperPaymentStatus.paid_cash | typeof CamperPaymentStatus.paid_stripe>();
+      for (const payload of preview.payloads) {
+        const updated = await tx.camper.update({
           where: { id: payload.camperId, campYearId },
           data: {
             feeDueCents: payload.feeDueCents,
             feePaidCents: payload.feePaidCents,
             paymentStatus: payload.paymentStatus,
           },
-        }),
-      ),
-    );
+          select: { familyRegistrationId: true },
+        });
+        if (updated.familyRegistrationId && payload.paymentStatus !== CamperPaymentStatus.unpaid) {
+          const current = familyStatuses.get(updated.familyRegistrationId);
+          familyStatuses.set(
+            updated.familyRegistrationId,
+            payload.paymentStatus === CamperPaymentStatus.paid_stripe
+              ? CamperPaymentStatus.paid_stripe
+              : current ?? CamperPaymentStatus.paid_cash,
+          );
+        }
+      }
+      for (const [familyRegistrationId, status] of familyStatuses) {
+        await syncFamilyRegistrationBalance(tx, familyRegistrationId, status);
+      }
+    });
     writeOpsLog("camper_fee_csv_import_committed", {
       actorAdminUserId: req.adminUser?.id,
       campYearId,

@@ -311,6 +311,15 @@ Each successful submission creates a **Dorm Leader** record with online-registra
 - During check-in, camp admins can mark the family registration as **Paid (Cash)**.
 - The system should display unpaid registrations prominently so admins can collect payment.
 
+### Offline Church Payments
+
+- Admins may record an in-person church **check** or **cash** payment and allocate it to selected campers at that church for one camp year.
+- Church payments apply only to camper registration-fee balances. They never pay family merchandise and never create Stripe objects.
+- Checks require a check/reference number. Every payment records its tender, amount, received date, entering admin, idempotency key, camper allocations, and any later void reason/actor.
+- Allocations must be positive, may not exceed a camper's numeric remaining registration-fee balance, and must equal the amount received. Unallocated overpayments are blocked.
+- Payment eligibility and the displayed `unpaid` / `partially paid` / `paid` state are derived from `feeDueCents - feePaidCents`; the payment ledger retains the source.
+- Voids preserve the original ledger row and reverse allocations transactionally. A payment with a later dependent allocation must be voided in reverse order.
+
 ### Multi-Child Discounts and Early / Late Pricing
 
 Legacy 2026 camper materials use a **June 10** cutover for the first-two-sibling rate (see [Camper fields (legacy parity)](#camper-fields-legacy-parity)). The app should support configurable **early** and **late** base rates for the 1st–2nd child tier, plus a separate rate for the **3rd+** child tier (unchanged across cutover in current practice).
@@ -366,6 +375,17 @@ The system tracks three categories of people:
 | **Dorm Leaders** | Adults assigned to lead specific dorms. Registered via the **leader registration** form, and/or entered via admin interface or CSV. |
 
 Workers and dorm leaders share a similar data profile (name, gender, contact info) but are distinguished by their role. Workers are assigned only to **worker dorms** (dorms whose purpose is worker housing). Dorm leaders are assigned to **camper dorms**. The system treats camper dorms and worker dorms as distinct types so assignments and rules stay correct. Workers and dorm leaders do not pay a camp registration fee.
+
+### Church Directory and Cleanup
+
+- Churches are global first-class records shared by camp years. Their exact identity is the conservatively normalized pair of church name and pastor name; identical church names with different pastors remain separate.
+- Public camper, worker, and leader forms suggest canonical churches while the registrant types. The church field remains editable, and free typing never requires an "add church" action.
+- A complete free-typed pair is silently reused or created only when the attendee is confirmed. Pending/abandoned family drafts and unresolved duplicate worker submissions do not create attendee mappings.
+- Original submitted church and pastor text remains on the person record. Canonical display comes from the related church.
+- Admins can review incomplete mappings and likely duplicates, rename a canonical identity, remap selected attendees, and merge records after an affected-record preview.
+- Fuzzy similarity is an explainable review signal only. It never merges or remaps data automatically.
+- Merged churches remain redirect records, and prior approved identities remain aliases so future registration/import values resolve to the survivor.
+- Rename, remap, and merge mutations record actor, timestamp, source/target, and affected record identifiers in the audit log.
 
 ---
 
@@ -474,7 +494,8 @@ All reports should be viewable on screen and available as **printable / PDF-expo
 The following are proposed reports. **Camp admins should review and confirm which are needed:**
 
 - **Registration Summary** - Total registrations, breakdown by age group, gender, payment status; include **worker registration** counts and optional breakdown by preferred tasks.
-- **Financial Summary** - Total revenue collected (Stripe vs. cash), outstanding unpaid registrations, discount amounts applied.
+- **Financial Summary** - Total revenue collected (Stripe, direct cash, church check, and church cash), church payment/allocation count, voided church amount, outstanding numeric camper registration-fee balances, and discount amounts applied.
+- Church payment exports include canonical church/pastor, tender, reference, received date, camper allocation, and void status; admin-only notes are omitted.
 - **Medical Summary** - All campers with allergies, medications, or special medical needs, grouped by dorm. Useful for camp nurse / medical staff.
 - **Dietary Needs Report** - All campers with dietary restrictions, for kitchen staff.
 - **Check-In Status Report** - Real-time list of who has and hasn't checked in, filterable by dorm.
@@ -561,6 +582,17 @@ If worker bulk import is supported, columns should map to worker registration fi
 ---
 
 ## 12. Data Model Overview
+
+### Church
+
+- Permanent UUID, canonical and normalized church/pastor names, optional merge redirect, review timestamp, and timestamps.
+- Alias identities resolve one normalized pair to one active canonical church.
+- Campers, workers, worker registration submissions, and dorm leaders retain submitted name snapshots plus an optional canonical `churchId`.
+
+### Church Payment
+
+- Church, camp year, `check`/`cash` tender, amount, received date, reference, optional notes, entering admin, idempotency key, created timestamp, and reversible void metadata.
+- One or more unique camper allocations contain positive applied registration-fee amounts. Payment and allocations are an immutable audit ledger rather than Stripe records.
 
 This section outlines the core data entities. Exact schema will be defined during development.
 
@@ -688,3 +720,4 @@ These features are **not in scope** for the initial build but are noted for pote
 - **SMS Notifications** - Text message alerts for check-in confirmation or camp announcements.
 - **Volunteer Management** - Extended application, approval, and credentialing workflow beyond self-service worker registration and admin edits.
 - **Waitlist** - If camp reaches the configured maximum camper count, allow parents to join a waitlist with automatic notification when spots open.
+Camper, worker, and dorm-leader imports may map church and pastor columns. Preview shows the submitted pair and whether commit will reuse an exact canonical identity, silently create a new identity, or retain an incomplete pair as unmapped. Import commit uses the same conservative resolver as public registration and admin entry; it never performs hidden fuzzy mapping.

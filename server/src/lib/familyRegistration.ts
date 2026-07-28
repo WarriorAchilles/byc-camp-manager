@@ -80,6 +80,7 @@ const camperSchema = z.object({
   receivedHolyGhost: z.boolean(),
   churchName: requiredText(200),
   pastorName: requiredText(200),
+  selectedChurchId: z.string().uuid().optional().nullable(),
   tShirtIntent: z.enum(CAMPER_T_SHIRT_SIZES),
   medicalNotes: optionalText(4_000),
   allergies: optionalText(4_000),

@@ -21,6 +21,7 @@ export type CamperDraft = {
   receivedHolyGhost: boolean | null;
   churchName: string;
   pastorName: string;
+  selectedChurchId?: string | null;
   tShirtIntent: string;
   medicalNotes: string;
   allergies: string;

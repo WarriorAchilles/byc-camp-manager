@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { resolveChurchPair } from "../lib/churchIdentity.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -40,6 +41,9 @@ const workerBody = {
   taskPreferenceSecond: z.string().nullable().optional(),
   taskPreferenceThird: z.string().nullable().optional(),
   tShirtSize: z.string().nullable().optional(),
+  churchName: z.string().nullable().optional(),
+  pastorName: z.string().nullable().optional(),
+  canonicalChurchId: z.string().uuid().nullable().optional(),
   dormId: z.string().uuid().nullable().optional(),
 };
 
@@ -106,6 +110,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   const workers = await prisma.worker.findMany({
     where: { campYearId, archivedAt: null },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    include: { church: { select: { id: true, name: true, pastorName: true } } },
   });
   const pendingRegistrationReviews = await prisma.workerRegistrationSubmission.findMany({
     where: {
@@ -144,7 +149,17 @@ router.get("/", async (req: AuthedRequest, res) => {
       },
     },
   });
-  res.json({ workers, pendingRegistrationReviews });
+  res.json({
+    workers: workers.map((worker) => ({
+      ...worker,
+      submittedChurchName: worker.churchName,
+      submittedPastorName: worker.pastorName,
+      churchName: worker.church?.name ?? worker.churchName,
+      pastorName: worker.church?.pastorName ?? worker.pastorName,
+      churchMappingStatus: worker.churchId ? "mapped" : "unmapped",
+    })),
+    pendingRegistrationReviews,
+  });
 });
 
 router.post(
@@ -232,6 +247,12 @@ router.post(
         },
       });
       if (claimed.count === 0) return null;
+      const church = await resolveChurchPair(tx, {
+        churchName: submission.churchName,
+        pastorName: submission.pastorName,
+        selectedChurchId: submission.churchId,
+        createIfMissing: true,
+      });
       const worker = await tx.worker.create({
         data: {
           campYearId,
@@ -250,6 +271,7 @@ router.post(
           faithServingResponse: submission.faithServingResponse,
           churchName: submission.churchName,
           pastorName: submission.pastorName,
+          churchId: church?.id ?? null,
           pastorPhone: submission.pastorPhone,
           taskPreferenceFirst: submission.taskPreferenceFirst,
           taskPreferenceSecond: submission.taskPreferenceSecond,
@@ -314,8 +336,14 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
     ? new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`)
     : null;
 
-  const created = await prisma.worker.create({
-    data: {
+  const created = await prisma.$transaction(async (tx) => {
+    const church = await resolveChurchPair(tx, {
+      churchName: parsed.data.churchName,
+      pastorName: parsed.data.pastorName,
+      selectedChurchId: parsed.data.canonicalChurchId,
+      createIfMissing: true,
+    });
+    return tx.worker.create({ data: {
       campYearId,
       email: parsed.data.email.trim().toLowerCase(),
       firstName: parsed.data.firstName.trim(),
@@ -333,9 +361,12 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       taskPreferenceSecond: parsed.data.taskPreferenceSecond?.trim() ?? null,
       taskPreferenceThird: parsed.data.taskPreferenceThird?.trim() ?? null,
       tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
+      churchName: parsed.data.churchName?.trim() ?? null,
+      pastorName: parsed.data.pastorName?.trim() ?? null,
+      churchId: church?.id ?? null,
       dormId: parsed.data.dormId ?? null,
       importSource: ImportSource.admin_entry,
-    },
+    } });
   });
   res.status(201).json(created);
 });
@@ -352,12 +383,20 @@ router.get("/:workerId", async (req: AuthedRequest, res) => {
   }
   const worker = await prisma.worker.findFirst({
     where: { id: workerId, campYearId },
+    include: { church: { select: { id: true, name: true, pastorName: true } } },
   });
   if (!worker) {
     res.status(404).json({ error: "Worker not found" });
     return;
   }
-  res.json(worker);
+  res.json({
+    ...worker,
+    submittedChurchName: worker.churchName,
+    submittedPastorName: worker.pastorName,
+    churchName: worker.church?.name ?? worker.churchName,
+    pastorName: worker.church?.pastorName ?? worker.pastorName,
+    churchMappingStatus: worker.churchId ? "mapped" : "unmapped",
+  });
 });
 
 router.patch("/:workerId", async (req: AuthedRequest, res) => {
@@ -442,6 +481,17 @@ router.patch("/:workerId", async (req: AuthedRequest, res) => {
   }
   if (partial.tShirtSize !== undefined) {
     data.tShirtSize = partial.tShirtSize?.trim() ?? null;
+  }
+  if (partial.churchName !== undefined) {
+    data.churchName = partial.churchName?.trim() ?? null;
+  }
+  if (partial.pastorName !== undefined) {
+    data.pastorName = partial.pastorName?.trim() ?? null;
+  }
+  if (partial.canonicalChurchId !== undefined) {
+    data.church = partial.canonicalChurchId
+      ? { connect: { id: partial.canonicalChurchId } }
+      : { disconnect: true };
   }
   if (partial.dormId !== undefined) {
     data.dorm = partial.dormId ? { connect: { id: partial.dormId } } : { disconnect: true };
@@ -528,6 +578,9 @@ router.post(
           gender: parsed.data.gender ?? worker.gender,
           email: parsed.data.email?.trim().toLowerCase() ?? worker.email,
           phone: parsed.data.phone?.trim() ?? worker.cellPhone,
+          churchName: worker.churchName,
+          pastorName: worker.pastorName,
+          churchId: worker.churchId,
           roleLabel: parsed.data.roleLabel?.trim() ?? null,
           assignedCamperDormId: targetDormId,
           checkInStatus: worker.checkInStatus,

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiJson, type ApiHttpError } from "../api";
+import { ChurchCombobox } from "./ChurchCombobox";
 
 type LeaderFormOptions = {
   genders: Array<"male" | "female">;
@@ -27,6 +28,7 @@ type LeaderDraft = {
   faithServingResponse: string;
   churchName: string;
   pastorName: string;
+  selectedChurchId: string | null;
   pastorPhone: string;
   ageGroupPreference: string;
   tShirtSize: string;
@@ -49,6 +51,7 @@ const emptyDraft = (): LeaderDraft => ({
   faithServingResponse: "",
   churchName: "",
   pastorName: "",
+  selectedChurchId: null,
   pastorPhone: "",
   ageGroupPreference: "",
   tShirtSize: "",
@@ -247,16 +250,12 @@ export function LeaderRegistrationForm(): React.ReactElement {
             onChange={(event) => update("faithServingResponse", event.target.value)} />
         </label>
         <div className="registration-grid">
-          <label>
-            Church presently attending
-            <input required maxLength={200} value={draft.churchName}
-              onChange={(event) => update("churchName", event.target.value)} />
-          </label>
-          <label>
-            Pastor name
-            <input required maxLength={200} value={draft.pastorName}
-              onChange={(event) => update("pastorName", event.target.value)} />
-          </label>
+          <ChurchCombobox
+            churchName={draft.churchName}
+            pastorName={draft.pastorName}
+            selectedChurchId={draft.selectedChurchId}
+            onChange={(value) => setDraft((current) => ({ ...current, ...value }))}
+          />
           <label>
             Pastor phone number (digits only)
             <input required type="tel" inputMode="numeric" minLength={10} maxLength={15}

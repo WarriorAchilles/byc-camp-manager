@@ -18,6 +18,12 @@ type PreviewRow = {
   errors: string[];
   warnings: string[];
   rawSubset: Record<string, string>;
+  churchResolution?: {
+    status: "exact_match" | "will_create" | "incomplete_unmapped";
+    churchId: string | null;
+    churchName: string | null;
+    pastorName: string | null;
+  };
 };
 
 type PreviewResponse = {
@@ -67,6 +73,8 @@ const FIELD_LABELS: Record<string, string> = {
   physicalLimitations: "Physical limitations (merged into medical notes)",
   medicalNotes: "Medical / allergies (combined field)",
   dietaryRestrictions: "Dietary restrictions",
+  churchName: "Church name",
+  pastorName: "Pastor name",
   paymentStatus: "Payment status",
   email: "Email",
   cellPhone: "Cell phone",
@@ -648,6 +656,15 @@ export function ImportsPage(): ReactElement {
                         {row.warnings.length > 0 ? (
                           <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                             {row.warnings.join(" ")}
+                          </div>
+                        ) : null}
+                        {row.churchResolution ? (
+                          <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                            Church: {row.churchResolution.status === "exact_match"
+                              ? `reuse ${row.churchResolution.churchName} - ${row.churchResolution.pastorName}`
+                              : row.churchResolution.status === "will_create"
+                                ? `create ${row.churchResolution.churchName} - ${row.churchResolution.pastorName}`
+                                : "incomplete pair; keep unmapped for cleanup"}
                           </div>
                         ) : null}
                       </td>

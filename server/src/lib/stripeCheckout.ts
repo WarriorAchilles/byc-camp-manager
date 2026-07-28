@@ -102,8 +102,7 @@ export async function createSelfCheckInCheckoutSession(input: {
     .map((camper) => ({ camper, amountCents: remainingBalanceCents(camper) }))
     .map(({ camper, amountCents }) => ({
       camper,
-      amountCents:
-        camper.paymentStatus === CamperPaymentStatus.unpaid && amountCents > 0 ? amountCents : 0,
+      amountCents: amountCents > 0 ? amountCents : 0,
     }));
   const payableCampers = campersWithBalances.filter(({ amountCents }) => amountCents > 0);
 

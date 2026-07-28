@@ -5,6 +5,7 @@ import cors from "cors";
 import express from "express";
 import { loadEnv } from "./config/env.js";
 import { adminCampYearsRouter } from "./routes/adminCampYears.js";
+import { adminChurchesRouter } from "./routes/adminChurches.js";
 import { adminSettingsRouter } from "./routes/adminSettings.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { authRouter } from "./routes/auth.js";
@@ -49,6 +50,7 @@ export function createApp(): express.Express {
   app.use("/api/admin/users", adminUsersRouter);
   app.use("/api/admin/settings", adminSettingsRouter);
   app.use("/api/admin/camp-years", adminCampYearsRouter);
+  app.use("/api/admin/churches", adminChurchesRouter);
 
   const clientDistPath = process.env.CLIENT_DIST_PATH?.trim();
   if (clientDistPath && existsSync(clientDistPath)) {

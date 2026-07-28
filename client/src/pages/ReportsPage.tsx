@@ -71,7 +71,25 @@ type CamperListRow = {
   dateOfBirth: string;
   checkInStatus: string;
   dormId: string | null;
+  churchName: string | null;
+  pastorName: string | null;
 };
+
+type ChurchFinancialSummary = {
+  totals: {
+    checkCents: number;
+    cashCents: number;
+    paymentCount: number;
+    allocatedCents: number;
+    voidedCents: number;
+    outstandingRegistrationFeeCents: number;
+  };
+  exportRows: Array<Record<string, string | number | null>>;
+};
+
+function money(cents: number): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100);
+}
 
 type DormLeaderListRow = {
   id: string;
@@ -193,7 +211,7 @@ export function ReportsPage(): React.ReactElement {
   const { user } = useAuth();
   const superAdmin = user?.role === "super_admin";
 
-  const [reportKind, setReportKind] = useState<"dorm" | "checkin">("dorm");
+  const [reportKind, setReportKind] = useState<"dorm" | "checkin" | "financial">("dorm");
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
   const [campYearId, setCampYearId] = useState("");
   const [campYearStartIso, setCampYearStartIso] = useState<string | null>(null);
@@ -220,6 +238,7 @@ export function ReportsPage(): React.ReactElement {
   const [checkInBracketFilter, setCheckInBracketFilter] = useState("");
   const [pizzaReportOpen, setPizzaReportOpen] = useState(false);
   const [pizzaFactorsByDormId, setPizzaFactorsByDormId] = useState<Record<string, number>>({});
+  const [financialSummary, setFinancialSummary] = useState<ChurchFinancialSummary | null>(null);
 
   const loadCampYears = useCallback(async () => {
     const data = await apiJson<{
@@ -365,6 +384,33 @@ export function ReportsPage(): React.ReactElement {
   useEffect(() => {
     void loadCheckInData();
   }, [loadCheckInData]);
+
+  useEffect(() => {
+    if (!campYearId) {
+      setFinancialSummary(null);
+      return;
+    }
+    void apiJson<ChurchFinancialSummary>(
+      `/api/admin/churches/financial-summary?campYearId=${encodeURIComponent(campYearId)}`,
+    ).then(setFinancialSummary).catch(() => setFinancialSummary(null));
+  }, [campYearId]);
+
+  const exportChurchPayments = (): void => {
+    if (!financialSummary?.exportRows.length) return;
+    const headers = Object.keys(financialSummary.exportRows[0]!);
+    const escape = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+    const csv = [
+      headers.map(escape).join(","),
+      ...financialSummary.exportRows.map((row) =>
+        headers.map((header) => escape(row[header])).join(",")),
+    ].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `church-payments-${campYearId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const camperDormCheckInSummaries = useMemo(() => {
     const bracketById = new Map(brackets.map((bracket) => [bracket.id, bracket]));
@@ -572,6 +618,15 @@ export function ReportsPage(): React.ReactElement {
             >
               Camper check-in (all dorms)
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={reportKind === "financial"}
+              className={`btn secondary${reportKind === "financial" ? " active" : ""}`}
+              onClick={() => setReportKind("financial")}
+            >
+              Financial summary
+            </button>
           </div>
         </div>
       </div>
@@ -738,6 +793,27 @@ export function ReportsPage(): React.ReactElement {
         </div>
       ) : null}
 
+      {reportKind === "financial" ? (
+        <section className="card">
+          <h2 className="reports-card-title">Church-funded registration fees</h2>
+          {!financialSummary ? <p className="muted">Financial summary is unavailable.</p> : (
+            <>
+              <dl className="check-in-summary-grid">
+                <div><dt>Church checks</dt><dd>{money(financialSummary.totals.checkCents)}</dd></div>
+                <div><dt>Church cash</dt><dd>{money(financialSummary.totals.cashCents)}</dd></div>
+                <div><dt>Payment count</dt><dd>{financialSummary.totals.paymentCount}</dd></div>
+                <div><dt>Allocated</dt><dd>{money(financialSummary.totals.allocatedCents)}</dd></div>
+                <div><dt>Voided</dt><dd>{money(financialSummary.totals.voidedCents)}</dd></div>
+                <div><dt>Outstanding camper fees</dt><dd>{money(financialSummary.totals.outstandingRegistrationFeeCents)}</dd></div>
+              </dl>
+              <button className="btn secondary" type="button" disabled={financialSummary.exportRows.length === 0} onClick={exportChurchPayments}>
+                Export church payments and allocations
+              </button>
+            </>
+          )}
+        </section>
+      ) : null}
+
       {reportKind === "dorm" ? (
         <>
           <div className="card print-hidden">
@@ -859,6 +935,7 @@ export function ReportsPage(): React.ReactElement {
                       <th>Age</th>
                       <th>Gender</th>
                       <th>Check-in</th>
+                      <th>Church</th>
                       <th>Parent / guardian</th>
                       <th>Phone</th>
                       <th>Medical notes</th>
@@ -1018,6 +1095,7 @@ export function ReportsPage(): React.ReactElement {
                         <td>{row.age}</td>
                         <td>{genderLabel(row.gender)}</td>
                         <td>{checkInLabel(row.checkInStatus)}</td>
+                        <td>{row.churchName ? `${row.churchName} - ${row.pastorName ?? "Pastor not provided"}` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>

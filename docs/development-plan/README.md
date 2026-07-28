@@ -2,7 +2,9 @@
 
 Source spec: `docs/specs.md`
 
-This plan is split into two independently useful phases. Phase 1 builds the protected camp operations system so camp staff can manage imported or manually entered data before public registration is available. Phase 2 adds public camper, worker, and leader registration, payment collection, and registration-time notifications.
+This plan is split into three independently useful phases. Phase 1 builds the protected camp operations system so camp staff can manage imported or manually entered data before public registration is available. Phase 2 adds public camper, worker, and leader registration, payment collection, and registration-time notifications.
+
+Phase 3 adds a shared church directory populated automatically by registrations and imports, public church-name suggestions, admin cleanup/merge tools, and offline church check/cash payments allocated to selected camper registration fees.
 
 ## Recommended Execution Order
 
@@ -27,6 +29,10 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 7. `phase-2-camper-registration/05-registration-confirmation-emails.md`
 8. `phase-2-camper-registration/06-phase-2-release-verification.md`
 
+### Phase 3: Church Directory and Offline Payments
+
+1. `phase-3-church-directory-and-offline-payments.md`
+
 ## Global Assumptions
 
 - The first production milestone prioritizes camp operations over public registration, matching the spec note that registration may not be used in the first year.
@@ -35,6 +41,8 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - Public family, worker, and leader registration are deployed on a registration subdomain that is separate from the admin/check-in origin. Both portions share the same API and database, but browser routes, generated URLs, CORS/host rules, cookies, Stripe redirects, and the posted self-check-in QR destination must respect the correct origin.
 - The exact Node.js, React, database, and deployment scaffolding should follow the repository's conventions if an application exists by the time each step is executed.
 - Future wish-list items are explicitly deferred unless a later product decision moves them into scope.
+- Church records are global across camp years and are created automatically from exact normalized church-name/pastor-name pairs. Public forms suggest existing canonical records but always allow free typing and silently create a new pair at attendee confirmation.
+- Church-funded camper fees are recorded only as admin-entered check or cash payments with explicit camper allocations. They do not use Stripe and do not include family merchandise.
 
 ## Unresolved Product Questions
 
@@ -116,3 +124,11 @@ This plan is split into two independently useful phases. Phase 1 builds the prot
 - [ ] `Camp Configuration` - Covered in Phase 1 step 2, Phase 2 step 1, and Phase 2 step 3.
 - [ ] `Admin User` - Covered in Phase 1 step 1.
 - [ ] `13. Future / Wish-List Items` - Covered in Phase 1 step 7 and Phase 2 step 6 as deferred scope.
+
+## Phase 3 Feature Coverage
+
+- [ ] Automatic church creation and exact normalized church-name/pastor-name identity - Covered in Phase 3 steps 1-3.
+- [ ] Public church autocomplete with uninterrupted free typing and silent creation - Covered in Phase 3 step 2.
+- [ ] Admin church cleanup, remapping, aliases, and non-destructive merges - Covered in Phase 3 step 4.
+- [ ] Offline church check/cash payments with per-camper inclusion, exclusion, and allocations - Covered in Phase 3 step 5.
+- [ ] Church-aware balance, check-in, reporting, permissions, and release verification - Covered in Phase 3 step 6.

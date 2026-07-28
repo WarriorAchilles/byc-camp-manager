@@ -59,6 +59,7 @@ import {
 import {
   dispatchWorkerRegistrationConfirmation,
 } from "../lib/registrationConfirmationMail.js";
+import { resolveChurchPair, suggestChurches } from "../lib/churchIdentity.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
@@ -66,6 +67,21 @@ const { ImportSource, RegistrationState, WorkerRegistrationSubmissionStatus } = 
 
 export const publicRegistrationRouter = Router();
 publicRegistrationRouter.use(availabilityLimit);
+
+publicRegistrationRouter.get("/church-suggestions", async (req, res, next) => {
+  const parsed = z.string().trim().min(2).max(100).safeParse(req.query.q);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Query must contain 2 to 100 characters" });
+    return;
+  }
+  try {
+    const churches = await suggestChurches(prisma, parsed.data, 8);
+    res.setHeader("Cache-Control", "public, max-age=30");
+    res.json({ churches });
+  } catch (error) {
+    next(error);
+  }
+});
 
 async function sendAvailability(flow: RegistrationFlow, res: Response): Promise<void> {
   const now = new Date();
@@ -594,6 +610,7 @@ function workerPersistenceData(
   campYearId: string,
   submittedAt: Date,
   requestIp: string,
+  churchId: string | null,
 ) {
   return {
     campYearId,
@@ -612,6 +629,7 @@ function workerPersistenceData(
     faithServingResponse: input.faithServingResponse,
     churchName: input.churchName,
     pastorName: input.pastorName,
+    churchId,
     pastorPhone: input.pastorPhone,
     taskPreferenceFirst: input.taskPreferences[0],
     taskPreferenceSecond: input.taskPreferences[1],
@@ -744,13 +762,20 @@ export async function persistWorkerSubmission(
           return { submission, replayed: false };
         }
 
+        const church = await resolveChurchPair(tx, {
+          churchName: input.churchName,
+          pastorName: input.pastorName,
+          selectedChurchId: input.selectedChurchId,
+          createIfMissing: true,
+        });
         const worker = await tx.worker.create({
-          data: workerPersistenceData(input, camp.id, now, requestIp),
+          data: workerPersistenceData(input, camp.id, now, requestIp, church?.id ?? null),
           select: { id: true },
         });
         const submission = await tx.workerRegistrationSubmission.create({
           data: {
             ...submissionData,
+            churchId: church?.id ?? null,
             status: WorkerRegistrationSubmissionStatus.created,
             resolvedWorkerId: worker.id,
             resolvedAt: now,
@@ -832,6 +857,7 @@ function leaderPersistenceData(
   campYearId: string,
   submittedAt: Date,
   requestIp: string,
+  churchId: string | null,
 ) {
   return {
     campYearId,
@@ -851,6 +877,7 @@ function leaderPersistenceData(
     faithServingResponse: input.faithServingResponse,
     churchName: input.churchName,
     pastorName: input.pastorName,
+    churchId,
     pastorPhone: input.pastorPhone,
     roleLabel: input.ageGroupPreference,
     tShirtSize: input.tShirtSize || null,
@@ -921,8 +948,14 @@ export async function persistLeaderSubmission(
           throw new SubmissionError(409, "leader_already_registered");
         }
 
+        const church = await resolveChurchPair(tx, {
+          churchName: input.churchName,
+          pastorName: input.pastorName,
+          selectedChurchId: input.selectedChurchId,
+          createIfMissing: true,
+        });
         const leader = await tx.dormLeader.create({
-          data: leaderPersistenceData(input, camp.id, now, requestIp),
+          data: leaderPersistenceData(input, camp.id, now, requestIp, church?.id ?? null),
           select: { id: true, publicSubmissionDigest: true },
         });
         return { leader, replayed: false };

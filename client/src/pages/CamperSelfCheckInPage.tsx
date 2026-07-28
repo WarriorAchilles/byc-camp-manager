@@ -54,6 +54,7 @@ type PaymentOptionsResponse = {
     checkInStatus: string;
     dormAssignment: string | null;
     remainingBalanceCents: number;
+    paymentRequired: boolean;
     onlinePaymentAvailable: boolean;
   };
 };
@@ -300,7 +301,7 @@ export function CamperSelfCheckInPage(): ReactElement {
         ),
       );
       const campers = paymentOptions.map((paymentOption) => paymentOption.camper);
-      const needsPayment = campers.some((camper) => camper.paymentStatus === "unpaid");
+      const needsPayment = campers.some((camper) => camper.paymentRequired);
       if (!needsPayment) {
         await checkInSelected(false);
         return;

@@ -11,10 +11,11 @@ import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { camperWhereForNameTokens, nameSearchTokens } from "../lib/camperNameSearch.js";
 import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { hasOutstandingRegistrationFee } from "../lib/paymentBalances.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const { AdminRole, CamperPaymentStatus, CheckInStatus } = prismaClientPkg;
+const { AdminRole, CheckInStatus } = prismaClientPkg;
 
 const router = Router({ mergeParams: true });
 
@@ -44,7 +45,7 @@ router.get("/summary", async (req: AuthedRequest, res) => {
     workersCheckedIn,
     dormLeadersRegistered,
     dormLeadersCheckedIn,
-    unpaidCampers,
+    camperBalances,
   ] = await Promise.all([
     prisma.camper.count({ where: baseCampers }),
     prisma.camper.count({ where: { ...baseCampers, checkInStatus: CheckInStatus.checked_in } }),
@@ -52,8 +53,9 @@ router.get("/summary", async (req: AuthedRequest, res) => {
     prisma.worker.count({ where: { ...baseWorkers, checkInStatus: CheckInStatus.checked_in } }),
     prisma.dormLeader.count({ where: baseLeaders }),
     prisma.dormLeader.count({ where: { ...baseLeaders, checkInStatus: CheckInStatus.checked_in } }),
-    prisma.camper.count({
-      where: { ...baseCampers, paymentStatus: CamperPaymentStatus.unpaid },
+    prisma.camper.findMany({
+      where: baseCampers,
+      select: { feeDueCents: true, feePaidCents: true, paymentStatus: true },
     }),
   ]);
 
@@ -64,7 +66,8 @@ router.get("/summary", async (req: AuthedRequest, res) => {
     workersCheckedIn,
     dormLeadersRegistered,
     dormLeadersCheckedIn,
-    unpaidCampersRemaining: unpaidCampers,
+    unpaidCampersRemaining: camperBalances.filter((camper) =>
+      hasOutstandingRegistrationFee(camper)).length,
   });
 });
 

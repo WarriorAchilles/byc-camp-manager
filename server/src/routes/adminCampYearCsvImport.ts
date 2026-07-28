@@ -11,8 +11,11 @@ import {
   WORKER_COLUMN_KEYS,
   type CamperImportPayload,
   type CsvImportKind,
+  type DormLeaderImportPayload,
+  type WorkerImportPayload,
 } from "../lib/csvImportCore.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { normalizedChurchPair, resolveChurchPair } from "../lib/churchIdentity.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -68,6 +71,34 @@ router.post("/preview", async (req: AuthedRequest, res) => {
     parsed.data.csvText,
     parsed.data.columnMap,
   );
+  let payloadIndex = 0;
+  const previewRows = [];
+  for (const row of preview.previewRows) {
+    if (row.errors.length > 0) {
+      previewRows.push(row);
+      continue;
+    }
+    const payload = preview.payloads[payloadIndex++] as {
+      churchName?: string | null;
+      pastorName?: string | null;
+    };
+    const identity = {
+      churchName: payload.churchName ?? null,
+      pastorName: payload.pastorName ?? null,
+    };
+    const normalized = normalizedChurchPair(identity);
+    const exact = normalized
+      ? await resolveChurchPair(prisma, { ...identity, createIfMissing: false })
+      : null;
+    previewRows.push({
+      ...row,
+      churchResolution: normalized
+        ? exact
+          ? { status: "exact_match", churchId: exact.id, churchName: exact.name, pastorName: exact.pastorName }
+          : { status: "will_create", churchId: null, churchName: payload.churchName, pastorName: payload.pastorName }
+        : { status: "incomplete_unmapped", churchId: null, churchName: payload.churchName ?? null, pastorName: payload.pastorName ?? null },
+    });
+  }
 
   const currentCamperCount =
     parsed.data.kind === "camper"
@@ -91,7 +122,7 @@ router.post("/preview", async (req: AuthedRequest, res) => {
     suggestedColumnMap: preview.suggestedColumnMap,
     columnMap: preview.columnMap,
     mapError: preview.mapError,
-    previewRows: preview.previewRows,
+    previewRows,
     validRowCount: preview.validRowCount,
     invalidRowCount: preview.invalidRowCount,
     rowWarningsFlat: preview.rowWarningsFlat,
@@ -189,6 +220,7 @@ router.post("/commit", async (req: AuthedRequest, res) => {
         );
         const out: { id: string; firstName: string; lastName: string }[] = [];
         for (const row of payloads) {
+          const church = await resolveChurchPair(tx, { ...row, createIfMissing: true });
           const dob = new Date(`${row.dateOfBirth}T12:00:00.000Z`);
           const checkedInAt = row.checkedInAt
             ? new Date(`${row.checkedInAt}T12:00:00.000Z`)
@@ -223,6 +255,9 @@ router.post("/commit", async (req: AuthedRequest, res) => {
               emergencyContactPhone: row.emergencyContactPhone,
               medicalNotes: row.medicalNotes,
               dietaryRestrictions: row.dietaryRestrictions,
+              churchName: row.churchName,
+              pastorName: row.pastorName,
+              churchId: church?.id ?? null,
               feeDueCents: row.feeDueCents,
               feePaidCents: row.feePaidCents,
               paymentStatus: payment,
@@ -258,29 +293,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
   }
 
   if (parsed.data.kind === "worker") {
-    const payloads = preview.payloads as Array<{
-      email: string;
-      firstName: string;
-      lastName: string;
-      dateOfBirth: string | null;
-      gender: "male" | "female";
-      cellPhone: string;
-      altPhone: string | null;
-      streetAddress: string;
-      city: string;
-      stateOrProvince: string;
-      postalCode: string;
-      country: string;
-      taskPreferenceFirst: string | null;
-      taskPreferenceSecond: string | null;
-      taskPreferenceThird: string | null;
-      tShirtSize: string | null;
-    }>;
+    const payloads = preview.payloads as WorkerImportPayload[];
 
     try {
       const created = await prisma.$transaction(async (tx) => {
         const out: { id: string; email: string; firstName: string; lastName: string }[] = [];
         for (const row of payloads) {
+          const church = await resolveChurchPair(tx, { ...row, createIfMissing: true });
           const dob = row.dateOfBirth
             ? new Date(`${row.dateOfBirth}T12:00:00.000Z`)
             : null;
@@ -299,6 +318,9 @@ router.post("/commit", async (req: AuthedRequest, res) => {
               stateOrProvince: row.stateOrProvince,
               postalCode: row.postalCode,
               country: row.country,
+              churchName: row.churchName,
+              pastorName: row.pastorName,
+              churchId: church?.id ?? null,
               taskPreferenceFirst: row.taskPreferenceFirst,
               taskPreferenceSecond: row.taskPreferenceSecond,
               taskPreferenceThird: row.taskPreferenceThird,
@@ -331,19 +353,13 @@ router.post("/commit", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const payloads = preview.payloads as Array<{
-    firstName: string;
-    lastName: string;
-    gender: "male" | "female";
-    email: string;
-    phone: string;
-    roleLabel: string | null;
-  }>;
+  const payloads = preview.payloads as DormLeaderImportPayload[];
 
   try {
     const created = await prisma.$transaction(async (tx) => {
       const out: { id: string; email: string; firstName: string; lastName: string }[] = [];
       for (const row of payloads) {
+        const church = await resolveChurchPair(tx, { ...row, createIfMissing: true });
         const leader = await tx.dormLeader.create({
           data: {
             campYearId,
@@ -352,6 +368,9 @@ router.post("/commit", async (req: AuthedRequest, res) => {
             gender: row.gender === "male" ? Gender.male : Gender.female,
             email: row.email,
             phone: row.phone,
+            churchName: row.churchName,
+            pastorName: row.pastorName,
+            churchId: church?.id ?? null,
             roleLabel: row.roleLabel,
             assignedCamperDormId: null,
             importSource: ImportSource.csv_import,

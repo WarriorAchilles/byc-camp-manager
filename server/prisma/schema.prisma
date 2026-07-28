@@ -27,6 +27,8 @@ enum CamperPaymentStatus {
   unpaid
   paid_stripe
   paid_cash
+  paid_church_check
+  paid_church_cash
 }
 
 enum CheckInStatus {
@@ -99,6 +101,11 @@ enum DormGenderDesignation {
   co_ed
 }
 
+enum ChurchPaymentTender {
+  check
+  cash
+}
+
 model AdminUser {
   id           String    @id @default(uuid())
   username     String    @unique
@@ -111,6 +118,9 @@ model AdminUser {
 
   createdBy     AdminUser?  @relation("AdminCreatedBy", fields: [createdById], references: [id])
   createdAdmins AdminUser[] @relation("AdminCreatedBy")
+  churchPaymentsEntered ChurchPayment[] @relation("ChurchPaymentEnteredBy")
+  churchPaymentsVoided  ChurchPayment[] @relation("ChurchPaymentVoidedBy")
+  churchAuditLogs       ChurchAuditLog[]
 
   @@map("admin_users")
 }
@@ -180,9 +190,76 @@ model CampYear {
   workers                       Worker[]
   workerRegistrationSubmissions WorkerRegistrationSubmission[]
   dormLeaders                   DormLeader[]
+  churchPayments                ChurchPayment[]
   appSettingsAsActiveCampYear   AppSettings?
 
   @@map("camp_years")
+}
+
+model Church {
+  id                   String    @id @default(uuid())
+  name                 String
+  normalizedName       String    @map("normalized_name")
+  pastorName           String    @map("pastor_name")
+  normalizedPastorName String    @map("normalized_pastor_name")
+  mergedIntoChurchId   String?   @map("merged_into_church_id")
+  reviewedAt           DateTime? @map("reviewed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  mergedIntoChurch Church?  @relation("ChurchMerges", fields: [mergedIntoChurchId], references: [id], onDelete: Restrict)
+  mergedChurches   Church[] @relation("ChurchMerges")
+  aliases          ChurchAlias[]
+  campers          Camper[]
+  workers          Worker[]
+  workerRegistrationSubmissions WorkerRegistrationSubmission[]
+  dormLeaders      DormLeader[]
+  payments         ChurchPayment[]
+  auditLogsAsSource ChurchAuditLog[] @relation("ChurchAuditSource")
+  auditLogsAsTarget ChurchAuditLog[] @relation("ChurchAuditTarget")
+
+  @@unique([normalizedName, normalizedPastorName])
+  @@index([name])
+  @@index([pastorName])
+  @@index([mergedIntoChurchId])
+  @@map("churches")
+}
+
+model ChurchAlias {
+  id                   String   @id @default(uuid())
+  churchId             String   @map("church_id")
+  name                 String
+  normalizedName       String   @map("normalized_name")
+  pastorName           String   @map("pastor_name")
+  normalizedPastorName String   @map("normalized_pastor_name")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Restrict)
+
+  @@unique([normalizedName, normalizedPastorName])
+  @@index([churchId])
+  @@index([name])
+  @@map("church_aliases")
+}
+
+model ChurchAuditLog {
+  id                String   @id @default(uuid())
+  actorAdminUserId  String   @map("actor_admin_user_id")
+  action            String
+  sourceChurchId    String?  @map("source_church_id")
+  targetChurchId    String?  @map("target_church_id")
+  affectedRecordIds Json     @map("affected_record_ids")
+  details           Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  actor        AdminUser @relation(fields: [actorAdminUserId], references: [id], onDelete: Restrict)
+  sourceChurch Church?   @relation("ChurchAuditSource", fields: [sourceChurchId], references: [id], onDelete: SetNull)
+  targetChurch Church?   @relation("ChurchAuditTarget", fields: [targetChurchId], references: [id], onDelete: SetNull)
+
+  @@index([actorAdminUserId, createdAt])
+  @@index([sourceChurchId])
+  @@index([targetChurchId])
+  @@map("church_audit_logs")
 }
 
 model AgeGroupBracket {
@@ -246,6 +323,7 @@ model Camper {
   receivedHolyGhost     Boolean?            @map("received_holy_ghost")
   churchName            String?             @map("church_name")
   pastorName            String?             @map("pastor_name")
+  churchId              String?             @map("church_id")
   tShirtIntent          String?             @map("t_shirt_intent")
   allergies             String?             @db.Text
   medications           String?             @db.Text
@@ -273,8 +351,11 @@ model Camper {
   dorm                   Dorm?                   @relation(fields: [dormId], references: [id], onDelete: SetNull)
   stripeCheckoutSessions StripeCheckoutSession[]
   merchandiseOrderLines  MerchandiseOrderLine[]
+  church                  Church?                  @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  churchPaymentAllocations ChurchPaymentAllocation[]
 
   @@index([campYearId])
+  @@index([churchId, campYearId])
   @@map("campers")
 }
 
@@ -444,6 +525,48 @@ model StripeCheckoutSession {
   @@map("stripe_checkout_sessions")
 }
 
+model ChurchPayment {
+  id                    String              @id @default(uuid())
+  churchId              String              @map("church_id")
+  campYearId            String              @map("camp_year_id")
+  tender                ChurchPaymentTender
+  amountReceivedCents   Int                 @map("amount_received_cents")
+  receivedDate          DateTime            @map("received_date") @db.Date
+  referenceNumber       String?             @map("reference_number")
+  notes                 String?             @db.Text
+  enteredByAdminUserId  String              @map("entered_by_admin_user_id")
+  idempotencyKey        String              @unique @map("idempotency_key")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  voidedAt              DateTime?           @map("voided_at")
+  voidedByAdminUserId   String?             @map("voided_by_admin_user_id")
+  voidReason            String?             @map("void_reason") @db.Text
+
+  church         Church                    @relation(fields: [churchId], references: [id], onDelete: Restrict)
+  campYear       CampYear                  @relation(fields: [campYearId], references: [id], onDelete: Restrict)
+  enteredBy      AdminUser                 @relation("ChurchPaymentEnteredBy", fields: [enteredByAdminUserId], references: [id], onDelete: Restrict)
+  voidedBy       AdminUser?                @relation("ChurchPaymentVoidedBy", fields: [voidedByAdminUserId], references: [id], onDelete: Restrict)
+  allocations    ChurchPaymentAllocation[]
+
+  @@index([churchId, campYearId, receivedDate])
+  @@index([campYearId, tender, voidedAt])
+  @@map("church_payments")
+}
+
+model ChurchPaymentAllocation {
+  id                 String   @id @default(uuid())
+  churchPaymentId    String   @map("church_payment_id")
+  camperId           String   @map("camper_id")
+  appliedAmountCents Int      @map("applied_amount_cents")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  churchPayment ChurchPayment @relation(fields: [churchPaymentId], references: [id], onDelete: Restrict)
+  camper        Camper        @relation(fields: [camperId], references: [id], onDelete: Restrict)
+
+  @@unique([churchPaymentId, camperId])
+  @@index([camperId, createdAt])
+  @@map("church_payment_allocations")
+}
+
 model Worker {
   id                   String        @id @default(uuid())
   campYearId           String        @map("camp_year_id")
@@ -466,6 +589,7 @@ model Worker {
   faithServingResponse String?       @map("faith_serving_response") @db.Text
   churchName           String?       @map("church_name")
   pastorName           String?       @map("pastor_name")
+  churchId             String?       @map("church_id")
   pastorPhone          String?       @map("pastor_phone")
   publicSubmittedAt    DateTime?     @map("public_submitted_at")
   publicSubmissionIp   String?       @map("public_submission_ip")
@@ -481,9 +605,11 @@ model Worker {
   dorm                            Dorm?                          @relation(fields: [dormId], references: [id], onDelete: SetNull)
   resolvedRegistrationSubmissions WorkerRegistrationSubmission[] @relation("WorkerRegistrationResolution")
   registrationMatches             WorkerRegistrationMatch[]
+  church                          Church?                         @relation(fields: [churchId], references: [id], onDelete: SetNull)
 
   @@index([campYearId])
   @@index([campYearId, email])
+  @@index([churchId, campYearId])
   @@map("workers")
 }
 
@@ -508,6 +634,7 @@ model WorkerRegistrationSubmission {
   faithServingResponse  String                             @map("faith_serving_response") @db.Text
   churchName            String                             @map("church_name")
   pastorName            String                             @map("pastor_name")
+  churchId              String?                            @map("church_id")
   pastorPhone           String                             @map("pastor_phone")
   taskPreferenceFirst   String                             @map("task_preference_first")
   taskPreferenceSecond  String                             @map("task_preference_second")
@@ -525,9 +652,11 @@ model WorkerRegistrationSubmission {
   resolvedWorker        Worker?                   @relation("WorkerRegistrationResolution", fields: [resolvedWorkerId], references: [id], onDelete: SetNull)
   likelyMatches         WorkerRegistrationMatch[]
   emailDeliveryAttempts EmailDeliveryAttempt[]
+  church                Church?                    @relation(fields: [churchId], references: [id], onDelete: SetNull)
 
   @@index([campYearId, status, submittedAt])
   @@index([campYearId, email])
+  @@index([churchId, campYearId])
   @@map("worker_registration_submissions")
 }
 
@@ -564,6 +693,7 @@ model DormLeader {
   faithServingResponse   String?       @map("faith_serving_response") @db.Text
   churchName             String?       @map("church_name")
   pastorName             String?       @map("pastor_name")
+  churchId               String?       @map("church_id")
   pastorPhone            String?       @map("pastor_phone")
   roleLabel              String?       @map("role_label")
   tShirtSize             String?       @map("t_shirt_size")
@@ -581,8 +711,10 @@ model DormLeader {
 
   campYear           CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
   assignedCamperDorm Dorm?    @relation(fields: [assignedCamperDormId], references: [id], onDelete: SetNull)
+  church            Church?  @relation(fields: [churchId], references: [id], onDelete: SetNull)
 
   @@index([campYearId])
   @@index([campYearId, email])
+  @@index([churchId, campYearId])
   @@map("dorm_leaders")
 }

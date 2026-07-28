@@ -42,6 +42,7 @@ export const leaderSubmissionSchema = z.object({
   faithServingResponse: requiredText(4_000),
   churchName: requiredText(200),
   pastorName: requiredText(200),
+  selectedChurchId: z.string().uuid().optional().nullable(),
   pastorPhone: digits,
   ageGroupPreference: requiredText(100),
   tShirtSize: z.enum(LEADER_T_SHIRT_SIZES).optional().nullable(),

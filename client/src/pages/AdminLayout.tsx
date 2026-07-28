@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { to: "/admin/people", label: "People", placeholder: false },
   { to: "/admin/imports", label: "Imports", placeholder: false },
   { to: "/admin/dorms", label: "Dorms", placeholder: false },
+  { to: "/admin/churches", label: "Churches", placeholder: false },
   { to: "/admin/reports", label: "Reports", placeholder: false },
   { to: "/admin/users", label: "Admin users", placeholder: false },
 ];
@@ -27,6 +28,7 @@ const campAdminNavPaths = new Set<string>([
   "/admin/random-campers",
   "/admin/people",
   "/admin/dorms",
+  "/admin/churches",
   "/admin/reports",
 ]);
 

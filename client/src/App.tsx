@@ -13,6 +13,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { SelfCheckInQrPage } from "./pages/SelfCheckInQrPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 import { PublicRegistrationPage } from "./pages/PublicRegistrationPage";
+import { ChurchDirectoryPage } from "./pages/ChurchDirectoryPage";
 import { resolveBrowserSurface } from "./publicSurface";
 
 function FullPageAuthLoading(): React.ReactElement {
@@ -102,6 +103,7 @@ export function App(): React.ReactElement {
           />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="dorms" element={<DormsPage />} />
+          <Route path="churches" element={<ChurchDirectoryPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="users" element={<UsersAdminPage />} />
         </Route>

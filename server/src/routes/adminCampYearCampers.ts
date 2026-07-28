@@ -5,6 +5,8 @@ import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { evaluateCamperCapacity } from "../lib/camperCapacity.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { resolveChurchPair } from "../lib/churchIdentity.js";
+import { syncFamilyRegistrationBalance } from "../lib/paymentBalances.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -37,6 +39,9 @@ const camperFields = {
   emergencyContactPhone: z.string().nullable().optional(),
   medicalNotes: z.string().nullable().optional(),
   dietaryRestrictions: z.string().nullable().optional(),
+  churchName: z.string().nullable().optional(),
+  pastorName: z.string().nullable().optional(),
+  canonicalChurchId: z.string().uuid().nullable().optional(),
   paymentStatus: z.nativeEnum(CamperPaymentStatus),
   feeDueCents: z.number().int().nonnegative().optional(),
   feePaidCents: z.number().int().nonnegative().optional(),
@@ -106,8 +111,16 @@ router.get("/", async (req: AuthedRequest, res) => {
       ],
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    include: { church: { select: { id: true, name: true, pastorName: true } } },
   });
-  res.json({ campers });
+  res.json({ campers: campers.map((camper) => ({
+    ...camper,
+    submittedChurchName: camper.churchName,
+    submittedPastorName: camper.pastorName,
+    churchName: camper.church?.name ?? camper.churchName,
+    pastorName: camper.church?.pastorName ?? camper.pastorName,
+    churchMappingStatus: camper.churchId ? "mapped" : "unmapped",
+  })) });
 });
 
 router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
@@ -148,8 +161,14 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
   }
 
   const dob = new Date(`${parsed.data.dateOfBirth}T12:00:00.000Z`);
-  const created = await prisma.camper.create({
-    data: {
+  const created = await prisma.$transaction(async (tx) => {
+    const church = await resolveChurchPair(tx, {
+      churchName: parsed.data.churchName,
+      pastorName: parsed.data.pastorName,
+      selectedChurchId: parsed.data.canonicalChurchId,
+      createIfMissing: true,
+    });
+    return tx.camper.create({ data: {
       campYearId,
       firstName: parsed.data.firstName.trim(),
       lastName: parsed.data.lastName.trim(),
@@ -169,13 +188,16 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       emergencyContactPhone: parsed.data.emergencyContactPhone?.trim() ?? null,
       medicalNotes: parsed.data.medicalNotes?.trim() ?? null,
       dietaryRestrictions: parsed.data.dietaryRestrictions?.trim() ?? null,
+      churchName: parsed.data.churchName?.trim() ?? null,
+      pastorName: parsed.data.pastorName?.trim() ?? null,
+      churchId: church?.id ?? null,
       paymentStatus: parsed.data.paymentStatus,
       feeDueCents: parsed.data.feeDueCents,
       feePaidCents: parsed.data.feePaidCents,
       dormId: parsed.data.dormId ?? null,
       medicalReleaseSigned: parsed.data.medicalReleaseSigned ?? false,
       importSource: ImportSource.admin_entry,
-    },
+    } });
   });
   res.status(201).json(created);
 });
@@ -225,6 +247,12 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
   const created = await prisma.$transaction(async (tx) => {
     const out: { id: string; firstName: string; lastName: string }[] = [];
     for (const row of rows) {
+      const church = await resolveChurchPair(tx, {
+        churchName: row.churchName,
+        pastorName: row.pastorName,
+        selectedChurchId: row.canonicalChurchId,
+        createIfMissing: true,
+      });
       const dob = new Date(`${row.dateOfBirth}T12:00:00.000Z`);
       const camper = await tx.camper.create({
         data: {
@@ -247,6 +275,9 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
           emergencyContactPhone: row.emergencyContactPhone?.trim() ?? null,
           medicalNotes: row.medicalNotes?.trim() ?? null,
           dietaryRestrictions: row.dietaryRestrictions?.trim() ?? null,
+          churchName: row.churchName?.trim() ?? null,
+          pastorName: row.pastorName?.trim() ?? null,
+          churchId: church?.id ?? null,
           paymentStatus: row.paymentStatus,
           feeDueCents: row.feeDueCents,
           feePaidCents: row.feePaidCents,
@@ -376,6 +407,17 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
   if (partial.dietaryRestrictions !== undefined) {
     data.dietaryRestrictions = partial.dietaryRestrictions?.trim() ?? null;
   }
+  if (partial.churchName !== undefined) {
+    data.churchName = partial.churchName?.trim() ?? null;
+  }
+  if (partial.pastorName !== undefined) {
+    data.pastorName = partial.pastorName?.trim() ?? null;
+  }
+  if (partial.canonicalChurchId !== undefined) {
+    data.church = partial.canonicalChurchId
+      ? { connect: { id: partial.canonicalChurchId } }
+      : { disconnect: true };
+  }
   if (partial.paymentStatus !== undefined) {
     data.paymentStatus = partial.paymentStatus;
     if (transitioningToPaid) {
@@ -405,9 +447,27 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
       data.checkedInAt = null;
     }
   }
-  const updated = await prisma.camper.update({
-    where: { id: camperId as string },
-    data,
+  const updated = await prisma.$transaction(async (tx) => {
+    const camper = await tx.camper.update({
+      where: { id: camperId as string },
+      data,
+    });
+    if (camper.familyRegistrationId && (
+      partial.paymentStatus !== undefined
+      || partial.feeDueCents !== undefined
+      || partial.feePaidCents !== undefined
+    )) {
+      await syncFamilyRegistrationBalance(
+        tx,
+        camper.familyRegistrationId,
+        partial.paymentStatus === CamperPaymentStatus.paid_stripe
+          ? CamperPaymentStatus.paid_stripe
+          : partial.paymentStatus === CamperPaymentStatus.paid_cash
+            ? CamperPaymentStatus.paid_cash
+            : undefined,
+      );
+    }
+    return camper;
   });
   res.json(updated);
 });

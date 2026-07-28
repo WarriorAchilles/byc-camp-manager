@@ -12,6 +12,7 @@ import { sendCheckInConfirmationMail } from "../lib/checkInConfirmationMail.js";
 import { writeOpsLog } from "../lib/opsLog.js";
 import { parseSelfCheckInTokenParam } from "../lib/qrToken.js";
 import { pathParam } from "../lib/campYearParams.js";
+import { hasOutstandingRegistrationFee } from "../lib/paymentBalances.js";
 import {
   createSelfCheckInCheckoutSession,
   getStripeRuntime,
@@ -21,7 +22,7 @@ import {
 } from "../lib/stripeCheckout.js";
 import prismaClientPkg from "@prisma/client";
 
-const { CamperPaymentStatus, CheckInStatus } = prismaClientPkg;
+const { CheckInStatus } = prismaClientPkg;
 
 const router = Router();
 
@@ -267,7 +268,8 @@ router.get("/:token/campers/:camperId/payment-options", async (req, res) => {
       checkInStatus: camper.checkInStatus,
       dormAssignment: camper.dorm?.name ?? null,
       remainingBalanceCents: remaining,
-      onlinePaymentAvailable: camper.paymentStatus === CamperPaymentStatus.unpaid && remaining > 0,
+      paymentRequired: hasOutstandingRegistrationFee(camper),
+      onlinePaymentAvailable: remaining > 0,
     },
   });
 });
@@ -301,7 +303,7 @@ router.post("/:token/campers/:camperId/check-in", async (req, res) => {
   }
   const remaining = remainingBalanceCents(currentCamper);
   if (
-    currentCamper.paymentStatus === CamperPaymentStatus.unpaid &&
+    hasOutstandingRegistrationFee(currentCamper) &&
     !parsed.data.manualPaymentAccepted
   ) {
     res.status(409).json({
@@ -415,17 +417,13 @@ router.post("/:token/check-in", async (req, res) => {
     return;
   }
 
-  const unpaidCamper = currentCampers.find(
-    (camper) => camper.paymentStatus === CamperPaymentStatus.unpaid,
-  );
+  const unpaidCamper = currentCampers.find((camper) => hasOutstandingRegistrationFee(camper));
   if (unpaidCamper && !parsed.data.manualPaymentAccepted) {
     res.status(409).json({
       error: "payment_required",
       remainingBalanceCents: currentCampers.reduce(
         (sum, camper) =>
-          camper.paymentStatus === CamperPaymentStatus.unpaid
-            ? sum + remainingBalanceCents(camper)
-            : sum,
+          sum + remainingBalanceCents(camper),
         0,
       ),
     });

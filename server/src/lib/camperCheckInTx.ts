@@ -1,5 +1,11 @@
 import prismaClientPkg, { type Prisma } from "@prisma/client";
 import { autoAssignCamperDormIfUnassigned } from "./checkInDormAssignment.js";
+import {
+  amountBalanceState,
+  hasOutstandingRegistrationFee,
+  remainingRegistrationFeeCents,
+  syncFamilyRegistrationBalance,
+} from "./paymentBalances.js";
 
 const { CamperPaymentStatus, CheckInStatus } = prismaClientPkg;
 
@@ -19,6 +25,8 @@ export const camperCheckInSelect = {
   medicalNotes: true,
   dietaryRestrictions: true,
   paymentStatus: true,
+  feeDueCents: true,
+  feePaidCents: true,
   checkInStatus: true,
   checkedInAt: true,
   dorm: {
@@ -56,6 +64,11 @@ export function serializeCamperCheckIn(camper: CamperCheckInRow) {
     medicalNotes: camper.medicalNotes,
     dietaryRestrictions: camper.dietaryRestrictions,
     paymentStatus: camper.paymentStatus,
+    remainingBalanceCents: remainingRegistrationFeeCents(camper),
+    balanceState: camper.feeDueCents === null && camper.paymentStatus === CamperPaymentStatus.unpaid
+      ? "unpaid"
+      : amountBalanceState(camper),
+    paymentRequired: hasOutstandingRegistrationFee(camper),
     checkInStatus: camper.checkInStatus,
     checkedInAt: camper.checkedInAt?.toISOString() ?? null,
     dormAssignment,
@@ -102,20 +115,46 @@ export async function runCamperCheckInInTransaction(
   let dormAutoAssigned = false;
 
   if (input.payments.markPaidCashForGuardianFamily && existing.guardianEmail.trim()) {
-    await tx.camper.updateMany({
+    const familyCampers = await tx.camper.findMany({
       where: {
         campYearId: input.campYearId,
         archivedAt: null,
         guardianEmail: existing.guardianEmail,
-        paymentStatus: CamperPaymentStatus.unpaid,
       },
-      data: { paymentStatus: CamperPaymentStatus.paid_cash },
+      select: { id: true, feeDueCents: true, feePaidCents: true, familyRegistrationId: true },
     });
+    const familyRegistrationIds = new Set<string>();
+    for (const camper of familyCampers) {
+      if (!hasOutstandingRegistrationFee(camper)) continue;
+      await tx.camper.update({
+        where: { id: camper.id },
+        data: {
+          paymentStatus: CamperPaymentStatus.paid_cash,
+          feePaidCents: camper.feeDueCents ?? camper.feePaidCents ?? 0,
+        },
+      });
+      if (camper.familyRegistrationId) familyRegistrationIds.add(camper.familyRegistrationId);
+    }
+    for (const familyRegistrationId of familyRegistrationIds) {
+      await syncFamilyRegistrationBalance(tx, familyRegistrationId);
+    }
   } else if (input.payments.markPaidCashForCamper || input.payments.markPaidCashForGuardianFamily) {
-    await tx.camper.updateMany({
-      where: { id: input.camperId, paymentStatus: CamperPaymentStatus.unpaid },
-      data: { paymentStatus: CamperPaymentStatus.paid_cash },
-    });
+    if (hasOutstandingRegistrationFee(existing)) {
+      await tx.camper.update({
+        where: { id: input.camperId },
+        data: {
+          paymentStatus: CamperPaymentStatus.paid_cash,
+          feePaidCents: existing.feeDueCents ?? existing.feePaidCents ?? 0,
+        },
+      });
+      const familyRegistrationId = await tx.camper.findUnique({
+        where: { id: input.camperId },
+        select: { familyRegistrationId: true },
+      });
+      if (familyRegistrationId?.familyRegistrationId) {
+        await syncFamilyRegistrationBalance(tx, familyRegistrationId.familyRegistrationId);
+      }
+    }
   }
 
   if (!wasCheckedIn) {

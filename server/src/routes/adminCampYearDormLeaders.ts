@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { writeOpsLog } from "../lib/opsLog.js";
+import { resolveChurchPair } from "../lib/churchIdentity.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
@@ -33,6 +34,7 @@ const leaderBody = {
   faithServingResponse: z.string().nullable().optional(),
   churchName: z.string().nullable().optional(),
   pastorName: z.string().nullable().optional(),
+  canonicalChurchId: z.string().uuid().nullable().optional(),
   pastorPhone: z.string().nullable().optional(),
   roleLabel: z.string().nullable().optional(),
   tShirtSize: z.string().nullable().optional(),
@@ -128,9 +130,17 @@ router.get("/", async (req: AuthedRequest, res) => {
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     include: {
       assignedCamperDorm: { select: { id: true, name: true } },
+      church: { select: { id: true, name: true, pastorName: true } },
     },
   });
-  res.json({ dormLeaders });
+  res.json({ dormLeaders: dormLeaders.map((leader) => ({
+    ...leader,
+    submittedChurchName: leader.churchName,
+    submittedPastorName: leader.pastorName,
+    churchName: leader.church?.name ?? leader.churchName,
+    pastorName: leader.church?.pastorName ?? leader.pastorName,
+    churchMappingStatus: leader.churchId ? "mapped" : "unmapped",
+  })) });
 });
 
 router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, res) => {
@@ -155,8 +165,14 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
     return;
   }
 
-  const created = await prisma.dormLeader.create({
-    data: {
+  const created = await prisma.$transaction(async (tx) => {
+    const church = await resolveChurchPair(tx, {
+      churchName: parsed.data.churchName,
+      pastorName: parsed.data.pastorName,
+      selectedChurchId: parsed.data.canonicalChurchId,
+      createIfMissing: true,
+    });
+    return tx.dormLeader.create({ data: {
       campYearId,
       firstName: parsed.data.firstName.trim(),
       lastName: parsed.data.lastName.trim(),
@@ -176,12 +192,13 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
       faithServingResponse: parsed.data.faithServingResponse?.trim() ?? null,
       churchName: parsed.data.churchName?.trim() ?? null,
       pastorName: parsed.data.pastorName?.trim() ?? null,
+      churchId: church?.id ?? null,
       pastorPhone: parsed.data.pastorPhone?.trim() ?? null,
       roleLabel: parsed.data.roleLabel?.trim() ?? null,
       tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
       assignedCamperDormId: parsed.data.assignedCamperDormId ?? null,
       importSource: ImportSource.admin_entry,
-    },
+    } });
   });
   res.status(201).json(created);
 });
@@ -198,12 +215,20 @@ router.get("/:dormLeaderId", async (req: AuthedRequest, res) => {
   }
   const leader = await prisma.dormLeader.findFirst({
     where: { id: dormLeaderId, campYearId },
+    include: { church: { select: { id: true, name: true, pastorName: true } } },
   });
   if (!leader) {
     res.status(404).json({ error: "Dorm leader not found" });
     return;
   }
-  res.json(leader);
+  res.json({
+    ...leader,
+    submittedChurchName: leader.churchName,
+    submittedPastorName: leader.pastorName,
+    churchName: leader.church?.name ?? leader.churchName,
+    pastorName: leader.church?.pastorName ?? leader.pastorName,
+    churchMappingStatus: leader.churchId ? "mapped" : "unmapped",
+  });
 });
 
 router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
@@ -293,6 +318,11 @@ router.patch("/:dormLeaderId", async (req: AuthedRequest, res) => {
   }
   if (partial.pastorName !== undefined) {
     data.pastorName = partial.pastorName?.trim() ?? null;
+  }
+  if (partial.canonicalChurchId !== undefined) {
+    data.church = partial.canonicalChurchId
+      ? { connect: { id: partial.canonicalChurchId } }
+      : { disconnect: true };
   }
   if (partial.pastorPhone !== undefined) {
     data.pastorPhone = partial.pastorPhone?.trim() ?? null;
@@ -387,6 +417,9 @@ router.post(
           taskPreferenceSecond: parsed.data.taskPreferenceSecond?.trim() ?? null,
           taskPreferenceThird: parsed.data.taskPreferenceThird?.trim() ?? null,
           tShirtSize: parsed.data.tShirtSize?.trim() ?? null,
+          churchName: leader.churchName,
+          pastorName: leader.pastorName,
+          churchId: leader.churchId,
           dormId: parsed.data.dormId ?? null,
           checkInStatus: leader.checkInStatus,
           checkedInAt: leader.checkedInAt,

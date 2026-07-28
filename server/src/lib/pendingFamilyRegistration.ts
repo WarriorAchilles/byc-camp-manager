@@ -4,6 +4,7 @@ import {
   familySubmissionSchema,
   type FamilySubmission,
 } from "./familyRegistration.js";
+import { resolveChurchPair } from "./churchIdentity.js";
 
 const { ImportSource, MerchandiseOwnership } = prismaClientPkg;
 
@@ -83,6 +84,12 @@ export async function materializePendingFamilyCampers(
       ? snapshot.submission.guardian.address
       : camper.address!;
     const feeDueCents = snapshot.camperFees[index]!;
+    const church = await resolveChurchPair(tx, {
+      churchName: camper.churchName,
+      pastorName: camper.pastorName,
+      selectedChurchId: camper.selectedChurchId,
+      createIfMissing: true,
+    });
     const stored = await tx.camper.create({
       data: {
         familyRegistrationId: registration.id,
@@ -105,6 +112,7 @@ export async function materializePendingFamilyCampers(
         receivedHolyGhost: camper.receivedHolyGhost,
         churchName: camper.churchName,
         pastorName: camper.pastorName,
+        churchId: church?.id ?? null,
         tShirtIntent: camper.tShirtIntent,
         medicalNotes: camper.medicalNotes || null,
         allergies: camper.allergies || null,
