@@ -9,6 +9,7 @@ import {
   createAdditionalCamper,
   type CamperDraft,
 } from "./familyRegistrationCamper";
+import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
 describe("family registration campers", () => {
   it("copies shared details from the first camper and resets camper-specific fields", () => {
@@ -67,6 +68,13 @@ describe("family registration campers", () => {
 });
 
 describe("family registration payment summary", () => {
+  it("offers a return to the registration start after confirmation", () => {
+    const html = renderToStaticMarkup(<RegistrationHomeLink />);
+
+    expect(html).toContain('href="/register/family"');
+    expect(html).toContain("Register another person");
+  });
+
   it("renders the exact cash amount due after cash-at-camp confirmation", () => {
     const html = renderToStaticMarkup(<CashConfirmation totalDueCents={51000} />);
 

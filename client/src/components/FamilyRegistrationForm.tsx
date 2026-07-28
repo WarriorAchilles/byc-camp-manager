@@ -6,6 +6,7 @@ import {
   type CamperDraft,
 } from "./familyRegistrationCamper";
 import { ChurchCombobox } from "./ChurchCombobox";
+import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
 type FormOptions = {
   genders: string[];
@@ -319,6 +320,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
           </fieldset>
         )}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {confirmed ? <RegistrationHomeLink /> : null}
       </div>
     );
   }

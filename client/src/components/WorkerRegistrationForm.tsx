@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiJson, type ApiHttpError } from "../api";
 import { ChurchCombobox } from "./ChurchCombobox";
+import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
 type ConfirmationGuidance = {
   testimony: string;
@@ -91,6 +92,7 @@ export function WorkerRegistrationConfirmation({
         <p>{guidance.arrival}</p>
         <p>{guidance.payment}</p>
       </section>
+      <RegistrationHomeLink />
     </div>
   );
 }

@@ -22,5 +22,7 @@ describe("worker registration confirmation", () => {
     expect(html).toContain("same camp rules as campers");
     expect(html).toContain("self-check-in QR code");
     expect(html).toContain("do not pay camp tuition");
+    expect(html).toContain('href="/register/family"');
+    expect(html).toContain("Register another person");
   });
 });

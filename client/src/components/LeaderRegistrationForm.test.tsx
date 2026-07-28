@@ -10,5 +10,7 @@ describe("leader registration confirmation", () => {
     expect(html).toContain("Leader registration received");
     expect(html).toContain("leader-registration-reference");
     expect(html).toContain("available to camp staff");
+    expect(html).toContain('href="/register/family"');
+    expect(html).toContain("Register another person");
   });
 });

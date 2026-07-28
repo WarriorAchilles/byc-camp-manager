@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiJson, type ApiHttpError } from "../api";
 import { ChurchCombobox } from "./ChurchCombobox";
+import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
 type LeaderFormOptions = {
   genders: Array<"male" | "female">;
@@ -73,6 +74,7 @@ export function LeaderRegistrationConfirmation({
         <strong>Registration reference:</strong> {registrationId}
       </p>
       <p>Your answers were saved and are available to camp staff.</p>
+      <RegistrationHomeLink />
     </div>
   );
 }
