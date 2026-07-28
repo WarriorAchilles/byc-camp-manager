@@ -5,6 +5,10 @@ import {
   type Address,
   type CamperDraft,
 } from "./familyRegistrationCamper";
+import {
+  registrationProgressLabels,
+  type RegistrationType,
+} from "./familyRegistrationProgress";
 import { ChurchCombobox } from "./ChurchCombobox";
 import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
@@ -61,8 +65,6 @@ export type RegistrationReceipt = {
   lineItems?: ReceiptLine[];
   receiptLineItems?: ReceiptLine[];
 };
-
-type RegistrationType = "self" | "family";
 
 const emptyAddress = (): Address => ({
   streetAddress: "",
@@ -353,9 +355,8 @@ export function FamilyRegistrationForm(): React.ReactElement {
 
   const selfRegistration = registrationType === "self";
   const agreement = selfRegistration ? options.adultMedicalAgreement : options.medicalAgreement;
-  const progressLabels = selfRegistration
-    ? ["Your contact information", "Camper information", "Medical authorization", "Merchandise", "Payment"]
-    : ["Parent or guardian", "Campers", "Medical authorization", "Merchandise", "Payment"];
+  const hasMerchandise = options.merchandiseItems.length > 0;
+  const progressLabels = registrationProgressLabels(registrationType, hasMerchandise);
 
   return (
     <div className="family-registration-form">
@@ -452,7 +453,15 @@ export function FamilyRegistrationForm(): React.ReactElement {
       ) : null}
 
       {step === 3 ? (
-        <form onSubmit={(event) => { event.preventDefault(); setStep(4); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (hasMerchandise) {
+            setStep(4);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          } else {
+            void submit();
+          }
+        }}>
           <fieldset className="registration-fieldset">
             <legend>Emergency medical authorization</legend>
             <div className="agreement-copy"><p>{agreement.text}</p><p><strong>Covered camper(s):</strong> {campers.map((camper) => `${camper.firstName} ${camper.lastName}`).join(", ")}</p></div>
@@ -461,15 +470,14 @@ export function FamilyRegistrationForm(): React.ReactElement {
             <p className="registration-fine-print">The accepted agreement text, typed name, date and time, and request IP address will be stored with this registration.</p>
           </fieldset>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(2)}>Back</button><button className="btn" type="submit">Continue to merchandise</button></div>
+          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(2)}>Back</button><button className="btn" type="submit" disabled={submitting}>{hasMerchandise ? "Continue to merchandise" : submitting ? "Calculating and saving…" : "Review total and choose payment"}</button></div>
         </form>
       ) : null}
 
-      {step === 4 ? (
+      {hasMerchandise && step === 4 ? (
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <fieldset className="registration-fieldset">
             <legend>Optional merchandise pre-order</legend>
-            {options.merchandiseItems.length === 0 ? <p>No merchandise is currently available for pre-order. You can continue to payment.</p> : null}
             <div className="merchandise-grid">
               {options.merchandiseItems.flatMap((item) => {
                 const ownerIndexes = item.ownership === "family" ? [null] : campers.map((_, index) => index);

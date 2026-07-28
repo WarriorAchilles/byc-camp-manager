@@ -10,6 +10,7 @@ import {
   type CamperDraft,
 } from "./familyRegistrationCamper";
 import { RegistrationHomeLink } from "./RegistrationHomeLink";
+import { registrationProgressLabels } from "./familyRegistrationProgress";
 
 describe("family registration campers", () => {
   it("copies shared details from the first camper and resets camper-specific fields", () => {
@@ -106,5 +107,26 @@ describe("family registration payment summary", () => {
     expect(html).toContain("Merchandise subtotal");
     expect(html).toContain("$40.00");
     expect(html).toContain("$205.00");
+  });
+});
+
+describe("family registration progress", () => {
+  it("omits merchandise when the active catalog is empty", () => {
+    expect(registrationProgressLabels("family", false)).toEqual([
+      "Parent or guardian",
+      "Campers",
+      "Medical authorization",
+      "Payment",
+    ]);
+  });
+
+  it("includes merchandise when an active item is available", () => {
+    expect(registrationProgressLabels("self", true)).toEqual([
+      "Your contact information",
+      "Camper information",
+      "Medical authorization",
+      "Merchandise",
+      "Payment",
+    ]);
   });
 });
