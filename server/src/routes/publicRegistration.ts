@@ -1,5 +1,5 @@
 import prismaClientPkg, { Prisma } from "@prisma/client";
-import { Router, type Response } from "express";
+import { raw, Router, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
@@ -60,9 +60,15 @@ import {
   dispatchWorkerRegistrationConfirmation,
 } from "../lib/registrationConfirmationMail.js";
 import { resolveChurchPair, suggestChurches } from "../lib/churchIdentity.js";
+import {
+  CAMPER_PHOTO_MAX_BYTES,
+  hasExpectedImageSignature,
+  isCamperPhotoContentType,
+} from "../lib/camperPhoto.js";
 
 const availabilityLimit = createPublicRateLimit({ limit: 120, windowMs: 60_000 });
 const submissionLimit = createPublicRateLimit({ limit: 10, windowMs: 60_000 });
+const photoUploadLimit = createPublicRateLimit({ limit: 24, windowMs: 60_000 });
 const { ImportSource, RegistrationState, WorkerRegistrationSubmissionStatus } = prismaClientPkg;
 
 export const publicRegistrationRouter = Router();
@@ -207,6 +213,80 @@ publicRegistrationRouter.get("/family", async (_req, res, next) => {
   try { await sendAvailability("family", res); } catch (error) { next(error); }
 });
 
+const photoSubmissionKeySchema = z.string().uuid();
+
+publicRegistrationRouter.post(
+  "/family/photos",
+  photoUploadLimit,
+  raw({ type: () => true, limit: CAMPER_PHOTO_MAX_BYTES }),
+  async (req, res, next) => {
+    const submissionKey = photoSubmissionKeySchema.safeParse(req.query.submission_key);
+    const contentType = (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
+    if (!submissionKey.success) {
+      res.status(400).json({ error: "invalid_submission_key" });
+      return;
+    }
+    if (!isCamperPhotoContentType(contentType)) {
+      res.status(415).json({ error: "unsupported_photo_type" });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ error: "empty_photo" });
+      return;
+    }
+    if (!hasExpectedImageSignature(req.body, contentType)) {
+      res.status(400).json({ error: "invalid_photo" });
+      return;
+    }
+
+    try {
+      const activeCampYearId = await getActiveCampYearId(prisma);
+      const camp = activeCampYearId
+        ? await prisma.campYear.findUnique({
+          where: { id: activeCampYearId },
+          select: {
+            id: true,
+            familyRegistrationEnabled: true,
+            familyRegistrationOpensAt: true,
+            familyRegistrationClosesAt: true,
+          },
+        })
+        : null;
+      const now = new Date();
+      const availability = camp
+        ? resolveRegistrationAvailability({
+          flow: "family",
+          manuallyEnabled: camp.familyRegistrationEnabled,
+          opensAt: camp.familyRegistrationOpensAt,
+          closesAt: camp.familyRegistrationClosesAt,
+        }, now)
+        : "not_configured";
+      if (!camp || availability !== "open") {
+        res.status(409).json({ error: "registration_closed" });
+        return;
+      }
+
+      await prisma.camperPhotoUpload.deleteMany({
+        where: {
+          createdAt: { lt: new Date(now.getTime() - 24 * 60 * 60_000) },
+        },
+      });
+      const upload = await prisma.camperPhotoUpload.create({
+        data: {
+          campYearId: camp.id,
+          submissionKey: submissionKey.data,
+          contentType,
+          data: Uint8Array.from(req.body),
+        },
+        select: { id: true },
+      });
+      res.status(201).json({ photoUploadId: upload.id });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 function isRetryableTransactionError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
 }
@@ -315,6 +395,24 @@ export async function persistFamilySubmission(
           });
         }
 
+        const photoUploadIds = input.campers
+          .map((camper) => camper.photoUploadId)
+          .filter((id): id is string => Boolean(id));
+        if (photoUploadIds.length > 0) {
+          const uploads = await tx.camperPhotoUpload.findMany({
+            where: {
+              id: { in: photoUploadIds },
+              submissionKey: input.submissionKey,
+              campYearId: camp.id,
+              familyRegistrationId: null,
+            },
+            select: { id: true },
+          });
+          if (uploads.length !== photoUploadIds.length) {
+            throw new SubmissionError(400, "invalid_photo_upload");
+          }
+        }
+
         const merchandiseItems = await tx.merchandiseItem.findMany({
           where: { campYearId: camp.id, id: { in: input.merchandiseSelections.map((line) => line.merchandiseItemId) } },
         });
@@ -400,6 +498,20 @@ export async function persistFamilySubmission(
             receiptLineItems: { orderBy: { sortOrder: "asc" } },
           },
         });
+        if (photoUploadIds.length > 0) {
+          const attached = await tx.camperPhotoUpload.updateMany({
+            where: {
+              id: { in: photoUploadIds },
+              submissionKey: input.submissionKey,
+              campYearId: camp.id,
+              familyRegistrationId: null,
+            },
+            data: { familyRegistrationId: registration.id },
+          });
+          if (attached.count !== photoUploadIds.length) {
+            throw new SubmissionError(409, "photo_upload_conflict");
+          }
+        }
         options.afterCreate?.();
         return { registration, replayed: false };
       }, { isolationLevel: "Serializable" });

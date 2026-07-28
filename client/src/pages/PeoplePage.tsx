@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiJson, type ApiHttpError } from "../api";
+import { apiJson, apiUrl, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { PersonEditDialog, type EditablePersonKind } from "../components/PersonEditDialog";
@@ -30,6 +30,7 @@ type CamperRow = {
   importSource: string;
   feeDueCents: number | null;
   feePaidCents: number | null;
+  hasPhoto: boolean;
 };
 
 type WorkerRow = {
@@ -236,6 +237,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [paymentStatusError, setPaymentStatusError] = useState<string | null>(null);
   const [updatingPaymentCamperId, setUpdatingPaymentCamperId] = useState<string | null>(null);
   const [personToEdit, setPersonToEdit] = useState<PersonToEdit | null>(null);
+  const [photoCamper, setPhotoCamper] = useState<CamperRow | null>(null);
   const [workerReviewError, setWorkerReviewError] = useState<string | null>(null);
   const [resolvingWorkerReviewId, setResolvingWorkerReviewId] = useState<string | null>(null);
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
@@ -1212,6 +1214,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
             <table>
               <thead>
                 <tr>
+                  <th>Photo</th>
                   <th>Name</th>
                   <th>Gender</th>
                   <th>Check-in</th>
@@ -1226,6 +1229,24 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               <tbody>
                 {filteredCampers.map((camper) => (
                   <tr key={camper.id}>
+                    <td>
+                      {camper.hasPhoto ? (
+                        <button
+                          type="button"
+                          className="camper-photo-thumbnail-button"
+                          aria-label={`View photo of ${camper.firstName} ${camper.lastName}`}
+                          onClick={() => setPhotoCamper(camper)}
+                        >
+                          <img
+                            className="camper-photo-thumbnail"
+                            src={apiUrl(`/api/admin/camp-years/${campYearId}/campers/${camper.id}/photo`)}
+                            alt=""
+                          />
+                        </button>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
                     <td>
                       {camper.firstName} {camper.lastName}
                     </td>
@@ -1514,6 +1535,36 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         </p>
       ) : null}
         </>
+      ) : null}
+
+      {photoCamper ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPhotoCamper(null);
+          }}
+        >
+          <div
+            className="card stack modal-card camper-photo-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camper-photo-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="camper-photo-title" style={{ marginTop: 0 }}>
+              {photoCamper.firstName} {photoCamper.lastName}
+            </h2>
+            <img
+              className="camper-photo-full"
+              src={apiUrl(`/api/admin/camp-years/${campYearId}/campers/${photoCamper.id}/photo`)}
+              alt={`${photoCamper.firstName} ${photoCamper.lastName}`}
+            />
+            <button className="btn secondary" type="button" onClick={() => setPhotoCamper(null)}>
+              Close
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {personToDelete ? (

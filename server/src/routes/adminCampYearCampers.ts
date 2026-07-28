@@ -111,10 +111,14 @@ router.get("/", async (req: AuthedRequest, res) => {
       ],
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    include: { church: { select: { id: true, name: true, pastorName: true } } },
+    include: {
+      church: { select: { id: true, name: true, pastorName: true } },
+      photo: { select: { camperId: true } },
+    },
   });
-  res.json({ campers: campers.map((camper) => ({
+  res.json({ campers: campers.map(({ photo, ...camper }) => ({
     ...camper,
+    hasPhoto: photo !== null,
     submittedChurchName: camper.churchName,
     submittedPastorName: camper.pastorName,
     churchName: camper.church?.name ?? camper.churchName,
@@ -293,6 +297,43 @@ router.post("/import", requireRole(AdminRole.super_admin), async (req: AuthedReq
   });
 
   res.status(201).json({ imported: created.length, campers: created });
+});
+
+router.get("/:camperId/photo", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+  const photo = await prisma.camperPhoto.findFirst({
+    where: {
+      camperId,
+      camper: {
+        campYearId,
+        archivedAt: null,
+        OR: [
+          { familyRegistrationId: null },
+          { familyRegistration: { state: "confirmed" } },
+        ],
+      },
+    },
+    select: { contentType: true, data: true, updatedAt: true },
+  });
+  if (!photo) {
+    res.status(404).json({ error: "Camper photo not found" });
+    return;
+  }
+  res.setHeader("Content-Type", photo.contentType);
+  res.setHeader("Content-Length", String(photo.data.byteLength));
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Last-Modified", photo.updatedAt.toUTCString());
+  res.send(Buffer.from(photo.data));
 });
 
 router.get("/:camperId", async (req: AuthedRequest, res) => {

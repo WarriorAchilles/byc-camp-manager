@@ -90,6 +90,19 @@ export async function materializePendingFamilyCampers(
       selectedChurchId: camper.selectedChurchId,
       createIfMissing: true,
     });
+    const photoUpload = camper.photoUploadId
+      ? await tx.camperPhotoUpload.findFirst({
+        where: {
+          id: camper.photoUploadId,
+          familyRegistrationId: registration.id,
+          campYearId: registration.campYearId,
+        },
+        select: { contentType: true, data: true },
+      })
+      : null;
+    if (camper.photoUploadId && !photoUpload) {
+      throw new Error("Pending camper photo upload is missing");
+    }
     const stored = await tx.camper.create({
       data: {
         familyRegistrationId: registration.id,
@@ -130,6 +143,15 @@ export async function materializePendingFamilyCampers(
       select: { id: true },
     });
     created.push(stored);
+    if (photoUpload) {
+      await tx.camperPhoto.create({
+        data: {
+          camperId: stored.id,
+          contentType: photoUpload.contentType,
+          data: photoUpload.data,
+        },
+      });
+    }
 
     await tx.merchandiseOrderLine.updateMany({
       where: {
@@ -154,6 +176,10 @@ export async function materializePendingFamilyCampers(
   if (unassignedMerchandise > 0) {
     throw new Error("Pending camper merchandise could not be assigned");
   }
+
+  await tx.camperPhotoUpload.deleteMany({
+    where: { familyRegistrationId: registration.id },
+  });
 
   return created;
 }

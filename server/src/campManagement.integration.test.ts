@@ -22,6 +22,7 @@ let campSchemaReady = false;
 if (integrationDbReady) {
   try {
     await prisma.camper.findFirst({ take: 1 });
+    await prisma.camperPhoto.findFirst({ take: 1 });
     campSchemaReady = true;
   } catch {
     campSchemaReady = false;
@@ -256,6 +257,40 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(listed.status).toBe(200);
     expect(listed.body.campers).toHaveLength(0);
     expect(await prisma.camper.count({ where: { familyRegistrationId: registration.id } })).toBe(1);
+  });
+
+  it("lets authenticated camp admins list and view private camper photos", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${signAuthToken({ sub: superAdmin.id, role: superAdmin.role })}`)
+      .send(camperPayload());
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    await prisma.camperPhoto.create({
+      data: {
+        camperId: created.body.id,
+        contentType: "image/jpeg",
+        data: Uint8Array.from(jpeg),
+      },
+    });
+    const photoPath = `/api/admin/camp-years/${campYearId}/campers/${created.body.id}/photo`;
+
+    expect((await request(app).get(photoPath)).status).toBe(401);
+    const token = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(listed.body.campers[0]).toMatchObject({ id: created.body.id, hasPhoto: true });
+
+    const photo = await request(app)
+      .get(photoPath)
+      .set("Authorization", `Bearer ${token}`)
+      .buffer(true);
+    expect(photo.status).toBe(200);
+    expect(photo.headers["content-type"]).toContain("image/jpeg");
+    expect(photo.headers["x-content-type-options"]).toBe("nosniff");
+    expect(photo.body).toEqual(jpeg);
   });
 
   it("allows only super admins to delete workers and dorm leaders", async () => {

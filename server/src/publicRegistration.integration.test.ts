@@ -13,6 +13,7 @@ import { confirmFamilyRegistrationCash } from "./lib/stripeCheckout.js";
 async function schemaIsReady(): Promise<boolean> {
   try {
     await prisma.familyRegistration.findFirst({ select: { pendingCamperCount: true } });
+    await prisma.camperPhotoUpload.findFirst({ select: { id: true } });
     return true;
   } catch {
     return false;
@@ -97,6 +98,42 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(response.body.stateOrProvinceOptions).toContain("IN");
     expect(response.body.tShirtSizes).toContain("Adult M");
     expect(response.body.merchandiseItems).toEqual([]);
+  });
+
+  it("keeps an uploaded camper photo temporary until the registration is confirmed", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({
+      where: { id: campYearId },
+      data: { camperCapacity: 10 },
+    });
+    const input = validFamilySubmission();
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const uploaded = await request(app)
+      .post(`/api/public/registration/family/photos?submission_key=${input.submissionKey}`)
+      .set("Content-Type", "image/jpeg")
+      .send(jpeg);
+
+    expect(uploaded.status).toBe(201);
+    input.campers[0]!.photoUploadId = uploaded.body.photoUploadId;
+    const submitted = await request(app).post("/api/public/registration/family").send(input);
+    expect(submitted.status).toBe(201);
+    expect(await prisma.camperPhoto.count()).toBe(0);
+    expect(await prisma.camperPhotoUpload.count({
+      where: { familyRegistrationId: submitted.body.registrationId },
+    })).toBe(1);
+
+    expect((await confirmFamilyRegistrationCash({
+      familyRegistrationId: submitted.body.registrationId,
+    })).ok).toBe(true);
+    const camper = await prisma.camper.findFirstOrThrow({
+      where: { familyRegistrationId: submitted.body.registrationId },
+      include: { photo: true },
+    });
+    expect(camper.photo?.contentType).toBe("image/jpeg");
+    expect(Buffer.from(camper.photo!.data)).toEqual(jpeg);
+    expect(await prisma.camperPhotoUpload.count({
+      where: { familyRegistrationId: submitted.body.registrationId },
+    })).toBe(0);
   });
 
   it("uses server time for future and elapsed windows", async () => {

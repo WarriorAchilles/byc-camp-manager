@@ -1,5 +1,9 @@
 const apiBase = import.meta.env.VITE_API_URL ?? "";
 
+export function apiUrl(path: string): string {
+  return `${apiBase}${path}`;
+}
+
 export type ApiHttpError = Error & {
   status: number;
   body: unknown;
@@ -9,7 +13,7 @@ export async function apiJson<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     credentials: "include",
     headers: {

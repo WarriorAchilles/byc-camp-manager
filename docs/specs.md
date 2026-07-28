@@ -129,6 +129,7 @@ The parent adds one or more campers. For each camper, collect at least the field
 
 - Legal first name, last name, optional middle name or initial
 - Date of birth, gender
+- Optional recent camper photo (JPEG, PNG, or WebP, up to 5 MB) so authenticated camp admins can recognize the camper
 - Mailing address (street, city, state/province/territory, zip, country) — legacy form asks that multi-camper addresses stay **congruent**; the app should allow one shared address with optional per-camper override if needed
 - Camper cell number (digits only, optional if not applicable)
 - Parent/guardian name and phone (required on legacy form; may default from Step 1)
@@ -567,6 +568,7 @@ The CSV should map to the camper data model. At minimum:
 - Camper last name
 - Date of birth
 - Gender
+- Optional camper photo (private; visible only to authenticated camp admins)
 - Parent/guardian name
 - Parent/guardian email
 - Parent/guardian phone

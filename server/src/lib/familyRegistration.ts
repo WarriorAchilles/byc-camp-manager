@@ -89,6 +89,7 @@ const camperSchema = z.object({
   emergencyContactName: requiredText(200),
   emergencyContactPhone: digits,
   specialNeeds: optionalText(4_000),
+  photoUploadId: z.string().uuid().optional().nullable(),
 }).strict().superRefine((camper, ctx) => {
   if (!camper.useFamilyAddress && !camper.address) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["address"], message: "Camper address is required" });
@@ -122,6 +123,17 @@ export const familySubmissionSchema = z.object({
     agreementVersion: z.enum([MEDICAL_AGREEMENT_VERSION, ADULT_MEDICAL_AGREEMENT_VERSION]),
   }).strict(),
 }).strict().superRefine((submission, ctx) => {
+  const photoUploadIds = submission.campers
+    .map((camper) => camper.photoUploadId)
+    .filter((id): id is string => Boolean(id));
+  if (new Set(photoUploadIds).size !== photoUploadIds.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["campers"],
+      message: "Each camper photo upload may only be used once",
+    });
+  }
+
   const expectedAgreementVersion = submission.registrationType === "self"
     ? ADULT_MEDICAL_AGREEMENT_VERSION
     : MEDICAL_AGREEMENT_VERSION;

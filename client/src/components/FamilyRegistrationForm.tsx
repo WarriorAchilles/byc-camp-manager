@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { apiJson, type ApiHttpError } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { apiJson, apiUrl, type ApiHttpError } from "../api";
 import {
   createAdditionalCamper,
   type Address,
@@ -41,6 +41,15 @@ type MerchandiseItem = {
 };
 
 type MerchandiseSelectionDraft = { quantity: number; selectedOption: string };
+
+type CamperPhotoDraft = {
+  file: File;
+  previewUrl: string;
+  uploadId: string | null;
+};
+
+const CAMPER_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const CAMPER_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export type ReceiptLine = {
   id?: string;
@@ -125,6 +134,23 @@ function merchandiseSelectionKey(itemId: string, camperIndex: number | null): st
   return `${itemId}:${camperIndex ?? "family"}`;
 }
 
+async function uploadCamperPhoto(file: File, submissionKey: string): Promise<string> {
+  const response = await fetch(
+    apiUrl(`/api/public/registration/family/photos?submission_key=${encodeURIComponent(submissionKey)}`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": file.type },
+      body: file,
+    },
+  );
+  const body = await response.json().catch(() => null) as { photoUploadId?: string } | null;
+  if (!response.ok || !body?.photoUploadId) {
+    throw new Error(response.status === 413 ? "photo_too_large" : "photo_upload_failed");
+  }
+  return body.photoUploadId;
+}
+
 export function FamilyRegistrationForm(): React.ReactElement {
   const [step, setStep] = useState(1);
   const [registrationType, setRegistrationType] = useState<RegistrationType | null>(null);
@@ -138,6 +164,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
     address: emptyAddress(),
   });
   const [campers, setCampers] = useState<CamperDraft[]>([emptyCamper()]);
+  const [camperPhotos, setCamperPhotos] = useState<Array<CamperPhotoDraft | null>>([null]);
   const [typedName, setTypedName] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [submissionKey] = useState(() => crypto.randomUUID());
@@ -148,11 +175,18 @@ export function FamilyRegistrationForm(): React.ReactElement {
   const [receipt, setReceipt] = useState<RegistrationReceipt | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [redirectState, setRedirectState] = useState<"success" | "cancel" | null>(null);
+  const photoPreviewUrls = useRef(new Set<string>());
 
   useEffect(() => {
     void apiJson<FormOptions>("/api/public/registration/family/form-options")
       .then((value) => { setOptions(value); setOptionsError(false); })
       .catch(() => setOptionsError(true));
+  }, []);
+
+  useEffect(() => () => {
+    for (const previewUrl of photoPreviewUrls.current) {
+      URL.revokeObjectURL(previewUrl);
+    }
   }, []);
 
   useEffect(() => {
@@ -183,6 +217,39 @@ export function FamilyRegistrationForm(): React.ReactElement {
         : camper));
   };
 
+  const selectCamperPhoto = (index: number, file: File | undefined): void => {
+    if (!file) return;
+    setError("");
+    if (!CAMPER_PHOTO_TYPES.has(file.type)) {
+      setError("Camper photos must be JPEG, PNG, or WebP images.");
+      return;
+    }
+    if (file.size > CAMPER_PHOTO_MAX_BYTES) {
+      setError("Camper photos must be 5 MB or smaller.");
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    photoPreviewUrls.current.add(previewUrl);
+    setCamperPhotos((current) => current.map((photo, camperIndex) => {
+      if (camperIndex !== index) return photo;
+      if (photo) {
+        URL.revokeObjectURL(photo.previewUrl);
+        photoPreviewUrls.current.delete(photo.previewUrl);
+      }
+      return { file, previewUrl, uploadId: null };
+    }));
+  };
+
+  const removeCamperAt = (index: number): void => {
+    const photo = camperPhotos[index];
+    if (photo) {
+      URL.revokeObjectURL(photo.previewUrl);
+      photoPreviewUrls.current.delete(photo.previewUrl);
+    }
+    setCampers((current) => current.filter((_, camperIndex) => camperIndex !== index));
+    setCamperPhotos((current) => current.filter((_, camperIndex) => camperIndex !== index));
+  };
+
   const continueFromContact = (): void => {
     setCampers((current) => current.map((camper) => ({
       ...camper,
@@ -205,6 +272,14 @@ export function FamilyRegistrationForm(): React.ReactElement {
     setSubmitting(true);
     setError("");
     try {
+      const photoUploadIds = await Promise.all(camperPhotos.map(async (photo) => {
+        if (!photo) return null;
+        return photo.uploadId ?? uploadCamperPhoto(photo.file, submissionKey);
+      }));
+      setCamperPhotos((current) => current.map((photo, index) =>
+        photo && photoUploadIds[index]
+          ? { ...photo, uploadId: photoUploadIds[index] }
+          : photo));
       const selectedMerchandise = options.merchandiseItems.flatMap((item) => {
         const ownerIndexes = item.ownership === "family" ? [null] : campers.map((_, index) => index);
         return ownerIndexes.flatMap((camperIndex) => {
@@ -224,13 +299,14 @@ export function FamilyRegistrationForm(): React.ReactElement {
           submissionKey,
           registrationType,
           guardian: registrationContact,
-          campers: campers.map((camper) => ({
+          campers: campers.map((camper, index) => ({
             ...camper,
             useFamilyAddress: registrationType === "self" ? true : camper.useFamilyAddress,
             address: registrationType === "self" || camper.useFamilyAddress ? null : camper.address,
             camperCellPhone: camper.camperCellPhone || null,
             guardianName: registrationType === "self" ? selfName : camper.guardianName,
             guardianPhone: registrationType === "self" ? guardian.phone : camper.guardianPhone,
+            photoUploadId: photoUploadIds[index],
           })),
           merchandiseSelections: selectedMerchandise,
           legal: {
@@ -244,6 +320,14 @@ export function FamilyRegistrationForm(): React.ReactElement {
       setReceipt(result.receipt);
       setStep(5);
     } catch (caught) {
+      if (caught instanceof Error && caught.message === "photo_too_large") {
+        setError("A camper photo is larger than 5 MB. Choose a smaller image and try again.");
+        return;
+      }
+      if (caught instanceof Error && caught.message === "photo_upload_failed") {
+        setError("We could not upload a camper photo. Check the image and try again.");
+        return;
+      }
       const apiError = caught as ApiHttpError;
       const body = apiError.body as { error?: string; fields?: Array<{ message: string }> } | null;
       if (body?.error === "capacity_reached") setError("Camper capacity was reached before this registration could be saved.");
@@ -389,7 +473,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
           {campers.map((camper, index) => (
             <fieldset className="registration-fieldset camper-entry" key={index}>
               <legend>{selfRegistration ? "Your camper information" : `Camper ${index + 1}`}</legend>
-              {campers.length > 1 ? <button className="btn secondary camper-remove" type="button" onClick={() => setCampers((current) => current.filter((_, camperIndex) => camperIndex !== index))}>Remove camper</button> : null}
+              {campers.length > 1 ? <button className="btn secondary camper-remove" type="button" onClick={() => removeCamperAt(index)}>Remove camper</button> : null}
               <div className="registration-grid registration-grid-three">
                 <label>Legal first name<input required value={camper.firstName} onChange={(event) => updateCamper(index, "firstName", event.target.value)} /></label>
                 <label>Middle name or initial<input value={camper.middleName} onChange={(event) => updateCamper(index, "middleName", event.target.value)} /></label>
@@ -400,6 +484,49 @@ export function FamilyRegistrationForm(): React.ReactElement {
                 {!selfRegistration ? <label>Parent/guardian name<input required value={camper.guardianName} onChange={(event) => updateCamper(index, "guardianName", event.target.value)} /></label> : null}
                 {!selfRegistration ? <label>Parent/guardian phone<input required inputMode="numeric" minLength={10} maxLength={15} value={camper.guardianPhone} onChange={(event) => updateCamper(index, "guardianPhone", digitsOnly(event.target.value))} /></label> : null}
                 <label>T-shirt size intent<select required value={camper.tShirtIntent} onChange={(event) => updateCamper(index, "tShirtIntent", event.target.value)}><option value="">Select one</option>{options.tShirtSizes.map((size) => <option key={size}>{size}</option>)}</select></label>
+              </div>
+              <div className="camper-photo-field">
+                <div>
+                  <strong>Camper photo (optional)</strong>
+                  <p className="registration-fine-print">
+                    Add a clear, recent picture so camp admins can recognize this camper. JPEG, PNG,
+                    or WebP; 5 MB maximum.
+                  </p>
+                  <label className="camper-photo-picker">
+                    Choose photo
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        selectCamperPhoto(index, event.currentTarget.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                {camperPhotos[index] ? (
+                  <div className="camper-photo-preview">
+                    <img
+                      src={camperPhotos[index]!.previewUrl}
+                      alt={`Preview for ${camperLegalName(camper) || `camper ${index + 1}`}`}
+                    />
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      onClick={() => {
+                        const photo = camperPhotos[index];
+                        if (photo) {
+                          URL.revokeObjectURL(photo.previewUrl);
+                          photoPreviewUrls.current.delete(photo.previewUrl);
+                        }
+                        setCamperPhotos((current) => current.map((entry, camperIndex) =>
+                          camperIndex === index ? null : entry));
+                      }}
+                    >
+                      Remove photo
+                    </button>
+                  </div>
+                ) : null}
               </div>
               {selfRegistration
                 ? <p className="registration-fine-print">Your contact mailing address will be used for this camper record.</p>
@@ -447,7 +574,11 @@ export function FamilyRegistrationForm(): React.ReactElement {
               </div>
             </fieldset>
           ))}
-          {!selfRegistration ? <button className="btn secondary add-camper" type="button" onClick={() => setCampers((current) => [...current, createAdditionalCamper(current[0]!)])}>Add another camper</button> : null}
+          {!selfRegistration ? <button className="btn secondary add-camper" type="button" onClick={() => {
+            setCampers((current) => [...current, createAdditionalCamper(current[0]!)]);
+            setCamperPhotos((current) => [...current, null]);
+          }}>Add another camper</button> : null}
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(1)}>Back</button><button className="btn" type="submit">Continue to authorization</button></div>
         </form>
       ) : null}

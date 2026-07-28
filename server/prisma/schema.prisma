@@ -185,6 +185,7 @@ model CampYear {
   ageGroupBrackets              AgeGroupBracket[]
   dorms                         Dorm[]
   campers                       Camper[]
+  camperPhotoUploads            CamperPhotoUpload[]
   familyRegistrations           FamilyRegistration[]
   merchandiseItems              MerchandiseItem[]
   workers                       Worker[]
@@ -353,6 +354,7 @@ model Camper {
   merchandiseOrderLines  MerchandiseOrderLine[]
   church                  Church?                  @relation(fields: [churchId], references: [id], onDelete: SetNull)
   churchPaymentAllocations ChurchPaymentAllocation[]
+  photo                  CamperPhoto?
 
   @@index([campYearId])
   @@index([churchId, campYearId])
@@ -403,11 +405,47 @@ model FamilyRegistration {
   merchandiseOrderLines  MerchandiseOrderLine[]
   stripeCheckoutSessions StripeCheckoutSession[]
   emailDeliveryAttempts  EmailDeliveryAttempt[]
+  camperPhotoUploads     CamperPhotoUpload[]
 
   @@index([campYearId, state])
   @@index([campYearId, guardianEmail])
   @@index([paymentStatus])
   @@map("family_registrations")
+}
+
+model CamperPhoto {
+  camperId    String   @id @map("camper_id")
+  contentType String   @map("content_type")
+  data        Bytes
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  camper Camper @relation(fields: [camperId], references: [id], onDelete: Cascade)
+
+  @@map("camper_photos")
+}
+
+/**
+ * Short-lived photo bytes uploaded before a family registration draft exists.
+ * The upload is attached to the pending registration and moved to CamperPhoto
+ * only when cash is selected or Stripe payment succeeds.
+ */
+model CamperPhotoUpload {
+  id                   String   @id @default(uuid())
+  campYearId           String   @map("camp_year_id")
+  familyRegistrationId String?  @map("family_registration_id")
+  submissionKey        String   @map("submission_key")
+  contentType          String   @map("content_type")
+  data                 Bytes
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  campYear           CampYear            @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  familyRegistration FamilyRegistration? @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
+
+  @@index([submissionKey, campYearId])
+  @@index([familyRegistrationId])
+  @@index([createdAt])
+  @@map("camper_photo_uploads")
 }
 
 model RegistrationReceiptLineItem {
