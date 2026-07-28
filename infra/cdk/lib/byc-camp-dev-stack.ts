@@ -12,6 +12,7 @@ import * as rds from "aws-cdk-lib/aws-rds";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as customResources from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
+import { SeasonalOperations } from "./seasonal-operations";
 
 export class BycCampDevStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -56,7 +57,7 @@ export class BycCampDevStack extends cdk.Stack {
         passwordLength: 48,
         requireEachIncludedType: true,
       },
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     const prismaDatabaseUrlSecret = new secretsmanager.Secret(this, "PrismaDatabaseUrl", {
@@ -64,7 +65,7 @@ export class BycCampDevStack extends cdk.Stack {
       secretStringValue: cdk.SecretValue.unsafePlainText(
         "postgresql://sync:sync@127.0.0.1:5432/sync?schema=public&sslmode=require",
       ),
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     const database = new rds.DatabaseInstance(this, "Database", {
@@ -79,11 +80,17 @@ export class BycCampDevStack extends cdk.Stack {
       allocatedStorage: 20,
       maxAllocatedStorage: 100,
       storageType: rds.StorageType.GP3,
+      backupRetention: cdk.Duration.days(7),
+      preferredBackupWindow: "05:00-05:30",
+      preferredMaintenanceWindow: "sun:06:00-sun:06:30",
+      deleteAutomatedBackups: false,
       publiclyAccessible: false,
       securityGroups: [dbSecurityGroup],
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      deletionProtection: false,
+      removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
+      deletionProtection: true,
     });
+    const generatedDatabaseSecret = database.node.findChild("Secret") as cdk.Resource;
+    generatedDatabaseSecret.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
 
     const databaseUrlSyncLogGroup = new logs.LogGroup(this, "DatabaseUrlSyncLogs", {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -252,7 +259,6 @@ export class BycCampDevStack extends cdk.Stack {
     const service = new ecs.FargateService(this, "Service", {
       cluster,
       taskDefinition,
-      desiredCount: 1,
       assignPublicIp: true,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       securityGroups: [ecsSecurityGroup],
@@ -285,12 +291,26 @@ export class BycCampDevStack extends cdk.Stack {
       }),
     );
 
+    const closedSeasonPage = [
+      "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">",
+      "<title>Believer's Youth Camp</title></head><body>",
+      "<main><h1>Registration is closed for the season</h1>",
+      "<p>The BYC registration and administration system is currently offline. ",
+      "Please check back when the next registration season opens.</p></main></body></html>",
+    ].join("");
+    const closedSeasonAction = elbv2.ListenerAction.fixedResponse(503, {
+      contentType: "text/html",
+      messageBody: closedSeasonPage,
+    });
+
+    let applicationListener: elbv2.ApplicationListener;
     if (certificate) {
-      loadBalancer.addListener("HttpsListener", {
+      applicationListener = loadBalancer.addListener("HttpsListener", {
         port: 443,
         open: false,
         certificates: [certificate],
-        defaultTargetGroups: [targetGroup],
+        defaultAction: closedSeasonAction,
       });
 
       loadBalancer.addListener("HttpListener", {
@@ -303,12 +323,46 @@ export class BycCampDevStack extends cdk.Stack {
         }),
       });
     } else {
-      loadBalancer.addListener("HttpListener", {
+      applicationListener = loadBalancer.addListener("HttpListener", {
         port: 80,
         open: false,
-        defaultTargetGroups: [targetGroup],
+        defaultAction: closedSeasonAction,
       });
     }
+
+    const activeSeasonRule = new elbv2.ApplicationListenerRule(this, "ActiveSeasonRule", {
+      listener: applicationListener,
+      priority: 1,
+      conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+      action: elbv2.ListenerAction.forward([targetGroup]),
+    });
+
+    const opsAlertEmail = this.node.tryGetContext("opsAlertEmail");
+    if (opsAlertEmail === undefined) {
+      throw new Error("opsAlertEmail CDK context is required");
+    }
+    const seasonalOperations = new SeasonalOperations(this, "SeasonalOperations", {
+      database,
+      cluster,
+      service,
+      targetGroup,
+      activeSeasonRule,
+      schedule: {
+        wakeMonthDay: String(
+          this.node.tryGetContext("seasonWakeMonthDay") ?? "02-01",
+        ),
+        hibernateMonthDay: String(
+          this.node.tryGetContext("seasonHibernateMonthDay") ?? "08-01",
+        ),
+        transitionTime: String(
+          this.node.tryGetContext("seasonTransitionTime") ?? "08:00",
+        ),
+        timeZone: String(
+          this.node.tryGetContext("seasonTimeZone") ?? "America/New_York",
+        ),
+        alertEmail: String(opsAlertEmail),
+      },
+    });
 
     new cdk.CfnOutput(this, "LoadBalancerDns", {
       value: loadBalancer.loadBalancerDnsName,
@@ -329,6 +383,30 @@ export class BycCampDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, "RdsSecretArn", { value: database.secret!.secretArn });
     new cdk.CfnOutput(this, "EcrImageUri", {
       value: usePlaceholderImage ? "(placeholder image — set usePlaceholderImage=false for real build)" : imageAsset!.imageUri,
+    });
+    new cdk.CfnOutput(this, "SeasonalControllerStateMachineArn", {
+      value: seasonalOperations.stateMachineArn,
+    });
+    new cdk.CfnOutput(this, "SeasonalModeParameterName", {
+      value: seasonalOperations.stateParameterName,
+    });
+    new cdk.CfnOutput(this, "SeasonalAlertTopicArn", {
+      value: seasonalOperations.alertTopicArn,
+    });
+    new cdk.CfnOutput(this, "SeasonalScheduleDeadLetterQueueUrl", {
+      value: seasonalOperations.deadLetterQueueUrl,
+    });
+    new cdk.CfnOutput(this, "SeasonWakeScheduleName", {
+      value: seasonalOperations.scheduleNames.wake,
+    });
+    new cdk.CfnOutput(this, "SeasonHibernateScheduleName", {
+      value: seasonalOperations.scheduleNames.hibernate,
+    });
+    new cdk.CfnOutput(this, "OffseasonMaintenanceScheduleName", {
+      value: seasonalOperations.scheduleNames.maintenance,
+    });
+    new cdk.CfnOutput(this, "SeasonReconcileScheduleName", {
+      value: seasonalOperations.scheduleNames.reconcile,
     });
 
     new cdk.CfnOutput(this, "MigrateRunTaskHint", {

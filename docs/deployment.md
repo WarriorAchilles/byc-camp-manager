@@ -112,7 +112,7 @@ Structured JSON lines are written to stdout for operational events (auth, CSV im
 
 **Expectations**
 
-- Use your cloud provider’s **automated backups** for the production Postgres instance (e.g. AWS RDS automated backups with a retention window aligned to church/camp policy — confirm with stakeholders; see Human Tasks in step 07).
+- The CDK stack configures **seven days of RDS point-in-time backup retention**. Confirm the live setting after deployment and complete the documented annual snapshot restore drill.
 - For an extra copy before major changes, run a manual **`pg_dump`** from a bastion or CI job with least privilege.
 
 **Example: logical dump (restore anywhere)**
@@ -127,7 +127,7 @@ pg_dump "$DATABASE_URL" --format=custom --file=byc-camp-$(date +%Y%m%d).dump
 pg_restore --clean --if-exists --dbname="$TARGET_DATABASE_URL" byc-camp-YYYYMMDD.dump
 ```
 
-Document who owns backup verification (monthly restore test) in your runbook.
+Document who owns backup verification and the annual restore drill in your runbook.
 
 ## AWS deployment (reference)
 
@@ -145,7 +145,7 @@ The CDK app under [`infra/cdk/`](../infra/cdk/) provisions VPC, RDS PostgreSQL, 
 1. Bootstrap and deploy: see [`infra/cdk/README.md`](../infra/cdk/README.md).
 2. **Migrations and first-admin bootstrap** are not run automatically by the web service: run [`scripts/run-post-deploy.ps1`](../scripts/run-post-deploy.ps1) after each deploy.
 3. Set the required `adminPublicOrigin` and `registrationPublicOrigin` CDK contexts to distinct HTTPS origins.
-4. **Synth without Docker** (CI or quick validation): `cd infra/cdk && npx cdk synth -c usePlaceholderImage=true`.
+4. **Synth without Docker** (CI or quick validation): `cd infra/cdk && npx cdk synth -c usePlaceholderImage=true -c opsAlertEmail=operations@example.org`.
 
 ## Phase 1 smoke test
 

@@ -6,6 +6,10 @@
   },
   "context": {
     "region": "us-east-2",
+    "seasonWakeMonthDay": "02-01",
+    "seasonHibernateMonthDay": "08-01",
+    "seasonTransitionTime": "08:00",
+    "seasonTimeZone": "America/New_York",
     "initialSuperAdminSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:initial-admin-90GKKp",
     "@aws-cdk/aws-ecs:removeDefaultDesiredCount": true,
     "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,

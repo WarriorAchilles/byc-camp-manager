@@ -11,7 +11,7 @@
     "build": "npm run build -w server && npm run build -w client",
     "lint": "npm run lint -w server && npm run lint -w client",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
-    "test": "npm run test -w server && npm run test -w client",
+    "test": "npm run test -w server && npm run test -w client && npm run test -w infra/cdk",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "db:migrate": "npm run db:migrate -w server",
