@@ -4,6 +4,7 @@ import { apiJson } from "../api";
 export type EditablePersonKind = "camper" | "worker" | "dorm_leader";
 
 type DormOption = { id: string; name: string; purpose: string };
+type ChurchOption = { id: string; name: string; pastorName: string };
 
 type Props = {
   campYearId: string;
@@ -11,6 +12,7 @@ type Props = {
   initialKind: EditablePersonKind;
   personName: string;
   dorms: DormOption[];
+  churches: ChurchOption[];
   canChangeType: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -42,6 +44,7 @@ export function PersonEditDialog({
   initialKind,
   personName,
   dorms,
+  churches,
   canChangeType,
   onClose,
   onSaved,
@@ -104,6 +107,7 @@ export function PersonEditDialog({
           faithServingResponse: textValue(row.faithServingResponse),
           churchName: textValue(row.churchName),
           pastorName: textValue(row.pastorName),
+          canonicalChurchId: textValue(row.churchId),
           pastorPhone: textValue(row.pastorPhone),
           roleLabel: textValue(row.roleLabel),
           assignedCamperDormId: textValue(row.assignedCamperDormId),
@@ -181,6 +185,7 @@ export function PersonEditDialog({
           dormId: nullable(value("dormId")),
           medicalReleaseSigned: values.medicalReleaseSigned === true,
           checkInStatus: value("checkInStatus"),
+          canonicalChurchId: nullable(value("canonicalChurchId")),
         };
       } else if (kind === "worker") {
         payload = {
@@ -273,6 +278,8 @@ export function PersonEditDialog({
             {input("feeDue", "Fee due (USD)", false, "number")}
             {input("feePaid", "Fee paid (USD)", false, "number")}
             <label>Dorm<select value={value("dormId")} onChange={(event) => setValue("dormId", event.target.value)}><option value="">Unassigned</option>{dorms.filter((dorm) => dorm.purpose === "camper").map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name}</option>)}</select></label>
+            <label>Canonical church<select value={value("canonicalChurchId")} onChange={(event) => setValue("canonicalChurchId", event.target.value)}><option value="">Unassigned</option>{churches.map((church) => <option key={church.id} value={church.id}>{church.name} - {church.pastorName}</option>)}</select></label>
+            {value("churchName") || value("pastorName") ? <p className="muted">Submitted church details: {value("churchName") || "Church missing"} - {value("pastorName") || "Pastor missing"}</p> : null}
             <label className="row"><input type="checkbox" checked={values.medicalReleaseSigned === true} onChange={(event) => setValue("medicalReleaseSigned", event.target.checked)} /> Medical release signed</label>
             {checkInSelect}
           </> : null}

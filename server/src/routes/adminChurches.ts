@@ -352,6 +352,92 @@ adminChurchesRouter.patch("/:churchId", async (req: AuthedRequest, res, next) =>
   }
 });
 
+adminChurchesRouter.delete("/:churchId", async (req: AuthedRequest, res, next) => {
+  const parsedId = uuid.safeParse(req.params.churchId);
+  if (!parsedId.success || !req.adminUser) {
+    res.status(400).json({ error: "Invalid church id" });
+    return;
+  }
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const church = await tx.church.findUnique({
+        where: { id: parsedId.data },
+        select: {
+          id: true,
+          name: true,
+          pastorName: true,
+          mergedIntoChurchId: true,
+          _count: {
+            select: {
+              campers: true,
+              workers: true,
+              workerRegistrationSubmissions: true,
+              dormLeaders: true,
+              payments: true,
+              mergedChurches: true,
+            },
+          },
+        },
+      });
+      if (!church || church.mergedIntoChurchId) throw new Error("church_not_active");
+      if (church._count.payments > 0) throw new Error("church_has_payments");
+      if (church._count.mergedChurches > 0) throw new Error("church_has_redirects");
+
+      const affected = {
+        campers: church._count.campers,
+        workers: church._count.workers,
+        workerRegistrationSubmissions: church._count.workerRegistrationSubmissions,
+        dormLeaders: church._count.dormLeaders,
+      };
+      await tx.churchAuditLog.create({
+        data: {
+          actorAdminUserId: req.adminUser!.id,
+          action: "delete",
+          sourceChurchId: church.id,
+          affectedRecordIds: affectedJson({ churchIds: [church.id] }),
+          details: affectedJson({
+            church: { name: church.name, pastorName: church.pastorName },
+            unassigned: affected,
+          }),
+        },
+      });
+      await tx.churchAlias.deleteMany({ where: { churchId: church.id } });
+      await tx.church.delete({ where: { id: church.id } });
+      return { church, affected };
+    });
+    writeOpsLog("church_deleted", {
+      actorAdminUserId: req.adminUser.id,
+      churchId: result.church.id,
+      affected: result.affected,
+    });
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof Error && error.message === "church_not_active") {
+      res.status(404).json({ error: "Active church not found" });
+      return;
+    }
+    if (error instanceof Error && error.message === "church_has_payments") {
+      res.status(409).json({
+        error: "Churches with payment history cannot be deleted. Merge this church instead.",
+      });
+      return;
+    }
+    if (error instanceof Error && error.message === "church_has_redirects") {
+      res.status(409).json({
+        error: "This church has merged church redirects and cannot be deleted.",
+      });
+      return;
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      res.status(409).json({
+        error: "This church is still referenced by protected history and cannot be deleted.",
+      });
+      return;
+    }
+    next(error);
+  }
+});
+
 const remapBody = z.object({
   churchId: uuid,
   people: z.array(z.object({ type: personType, id: uuid }).strict()).min(1).max(500),

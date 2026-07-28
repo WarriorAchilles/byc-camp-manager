@@ -383,10 +383,11 @@ Workers and dorm leaders share a similar data profile (name, gender, contact inf
 - Public camper, worker, and leader forms suggest canonical churches while the registrant types. The church field remains editable, and free typing never requires an "add church" action.
 - A complete free-typed pair is silently reused or created only when the attendee is confirmed. Pending/abandoned family drafts and unresolved duplicate worker submissions do not create attendee mappings.
 - Original submitted church and pastor text remains on the person record. Canonical display comes from the related church.
-- Admins can review incomplete mappings and likely duplicates, rename a canonical identity, remap selected attendees, and merge records after an affected-record preview.
+- Admins can review incomplete mappings and likely duplicates, edit a canonical church and pastor name, manually assign or unassign campers, remap selected attendees, and merge records after an affected-record preview.
+- Admins can delete a church that has no payment history or merged redirect records. Deletion preserves each person's submitted church/pastor snapshot and unassigns canonical mappings across camp years.
 - Fuzzy similarity is an explainable review signal only. It never merges or remaps data automatically.
 - Merged churches remain redirect records, and prior approved identities remain aliases so future registration/import values resolve to the survivor.
-- Rename, remap, and merge mutations record actor, timestamp, source/target, and affected record identifiers in the audit log.
+- Edit, delete, remap, and merge mutations record actor, timestamp, source/target, and affected record identifiers in the audit log.
 
 ---
 

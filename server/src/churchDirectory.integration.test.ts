@@ -171,6 +171,64 @@ describe.skipIf(!integrationReady)("church directory and offline payments", () =
     })).toBe(1);
   });
 
+  it("lets camp admins edit churches, assign and unassign campers, and delete churches", async () => {
+    const renamed = await request(app)
+      .patch(`/api/admin/churches/${churchId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: `${TEST_CHURCH_PREFIX}Renamed Baptist Church`,
+        pastorName: "Pastor Janet Doe",
+      });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({
+      name: `${TEST_CHURCH_PREFIX}Renamed Baptist Church`,
+      pastorName: "Pastor Janet Doe",
+    });
+    expect(await prisma.churchAlias.findFirst({
+      where: { churchId, name: `${TEST_CHURCH_PREFIX}First Baptist Church` },
+    })).not.toBeNull();
+
+    const temporaryChurch = await resolveChurchPair(prisma, {
+      churchName: `${TEST_CHURCH_PREFIX}Temporary Church`,
+      pastorName: "Pastor Temporary",
+      createIfMissing: true,
+    });
+    const assigned = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/campers/${camperOneId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ canonicalChurchId: temporaryChurch!.id });
+    expect(assigned.status).toBe(200);
+    expect(assigned.body.churchId).toBe(temporaryChurch!.id);
+
+    const unassigned = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/campers/${camperOneId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ canonicalChurchId: null });
+    expect(unassigned.status).toBe(200);
+    expect(unassigned.body.churchId).toBeNull();
+
+    await prisma.camper.update({
+      where: { id: camperOneId },
+      data: { churchId: temporaryChurch!.id },
+    });
+    const deleted = await request(app)
+      .delete(`/api/admin/churches/${temporaryChurch!.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(deleted.status).toBe(204);
+    expect(await prisma.church.findUnique({ where: { id: temporaryChurch!.id } })).toBeNull();
+    expect(await prisma.camper.findUniqueOrThrow({
+      where: { id: camperOneId },
+      select: { churchId: true, churchName: true, pastorName: true },
+    })).toMatchObject({
+      churchId: null,
+      churchName: `${TEST_CHURCH_PREFIX}FIRST BAPTIST CHURCH`,
+      pastorName: "Rev. Jane Doe",
+    });
+    expect(await prisma.churchAuditLog.count({
+      where: { actorAdminUserId: adminId, action: "delete" },
+    })).toBe(1);
+  });
+
   it("records, replays, reports, and voids an allocated check without paying merchandise", async () => {
     const body = {
       campYearId,
@@ -242,6 +300,12 @@ describe.skipIf(!integrationReady)("church directory and offline payments", () =
     expect((await prisma.churchPayment.findUniqueOrThrow({
       where: { id: first.body.payment.id },
     })).voidReason).toBe("Check returned");
+
+    const deleteWithHistory = await request(app)
+      .delete(`/api/admin/churches/${churchId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(deleteWithHistory.status).toBe(409);
+    expect(deleteWithHistory.body.error).toContain("payment history");
   });
 
   it("blocks unallocated overpayments and audits transactional merges", async () => {

@@ -5,7 +5,7 @@ import { prisma } from "../db.js";
 import { campYearIdFromParams, pathParam } from "../lib/campYearParams.js";
 import { evaluateCamperCapacity } from "../lib/camperCapacity.js";
 import { writeOpsLog } from "../lib/opsLog.js";
-import { resolveChurchPair } from "../lib/churchIdentity.js";
+import { followChurchMerge, resolveChurchPair } from "../lib/churchIdentity.js";
 import { syncFamilyRegistrationBalance } from "../lib/paymentBalances.js";
 import type { AuthedRequest } from "../middleware/auth.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -455,8 +455,15 @@ router.patch("/:camperId", async (req: AuthedRequest, res) => {
     data.pastorName = partial.pastorName?.trim() ?? null;
   }
   if (partial.canonicalChurchId !== undefined) {
-    data.church = partial.canonicalChurchId
-      ? { connect: { id: partial.canonicalChurchId } }
+    const canonicalChurch = partial.canonicalChurchId
+      ? await followChurchMerge(prisma, partial.canonicalChurchId)
+      : null;
+    if (partial.canonicalChurchId && !canonicalChurch) {
+      res.status(400).json({ error: "Church not found" });
+      return;
+    }
+    data.church = canonicalChurch
+      ? { connect: { id: canonicalChurch.id } }
       : { disconnect: true };
   }
   if (partial.paymentStatus !== undefined) {

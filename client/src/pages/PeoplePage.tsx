@@ -31,6 +31,9 @@ type CamperRow = {
   feeDueCents: number | null;
   feePaidCents: number | null;
   hasPhoto: boolean;
+  churchId: string | null;
+  churchName: string | null;
+  pastorName: string | null;
 };
 
 type WorkerRow = {
@@ -89,6 +92,12 @@ type DormOption = {
   id: string;
   name: string;
   purpose: string;
+};
+
+type ChurchOption = {
+  id: string;
+  name: string;
+  pastorName: string;
 };
 
 type CapacityBody = {
@@ -224,6 +233,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [workerRegistrationReviews, setWorkerRegistrationReviews] = useState<WorkerRegistrationReview[]>([]);
   const [dormLeaders, setDormLeaders] = useState<DormLeaderRow[]>([]);
   const [allDorms, setAllDorms] = useState<DormOption[]>([]);
+  const [churches, setChurches] = useState<ChurchOption[]>([]);
   const [ageGroupBrackets, setAgeGroupBrackets] = useState<AgeGroupBracket[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -301,10 +311,11 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
       setWorkerRegistrationReviews([]);
       setDormLeaders([]);
       setAllDorms([]);
+      setChurches([]);
       setAgeGroupBrackets([]);
       return;
     }
-    const [campersRes, workersRes, leadersRes, dormsRes, ageGroupRes] = await Promise.all([
+    const [campersRes, workersRes, leadersRes, dormsRes, ageGroupRes, churchesRes] = await Promise.all([
       apiJson<{ campers: CamperRow[] }>(`/api/admin/camp-years/${yearId}/campers`),
       apiJson<{
         workers: WorkerRow[];
@@ -322,6 +333,9 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
       apiJson<{ ageGroupBrackets: AgeGroupBracket[] }>(
         `/api/admin/camp-years/${yearId}/age-group-brackets`,
       ).catch(() => ({ ageGroupBrackets: [] })),
+      apiJson<{ churches: ChurchOption[] }>(
+        `/api/admin/churches?campYearId=${encodeURIComponent(yearId)}`,
+      ).catch(() => ({ churches: [] })),
     ]);
     setCampers(campersRes.campers);
     setWorkers(workersRes.workers);
@@ -329,6 +343,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
     setDormLeaders(leadersRes.dormLeaders);
     setAllDorms(dormsRes.dorms);
     setAgeGroupBrackets(ageGroupRes.ageGroupBrackets);
+    setChurches(churchesRes.churches);
   };
 
   const resolveWorkerRegistrationReview = async (
@@ -1219,6 +1234,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <th>Gender</th>
                   <th>Check-in</th>
                   <th>Guardian email</th>
+                  <th>Church</th>
                   <th>Fee due</th>
                   <th>Fee paid</th>
                   <th>Payment</th>
@@ -1253,6 +1269,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                     <td>{genderLabel(camper.gender)}</td>
                     <td>{checkInLabel(camper.checkInStatus)}</td>
                     <td>{camper.guardianEmail}</td>
+                    <td>{camper.churchName ? `${camper.churchName} - ${camper.pastorName ?? "Pastor not provided"}` : "Unassigned"}</td>
                     <td>{formatUsdFromCents(camper.feeDueCents)}</td>
                     <td>{formatUsdFromCents(camper.feePaidCents)}</td>
                     <td>{paymentStatusLabel(camper.paymentStatus)}</td>
@@ -1623,6 +1640,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
           initialKind={personToEdit.kind}
           personName={`${personToEdit.firstName} ${personToEdit.lastName}`}
           dorms={allDorms}
+          churches={churches}
           canChangeType={superAdmin}
           onClose={() => setPersonToEdit(null)}
           onSaved={async () => {

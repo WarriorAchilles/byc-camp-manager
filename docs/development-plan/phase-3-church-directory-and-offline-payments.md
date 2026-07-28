@@ -175,7 +175,9 @@ Create a self-maintaining church directory that is populated silently by registr
 - [ ] Generate duplicate suggestions using explainable signals such as exact pastor plus similar church, exact church plus similar pastor, or similarity in both fields.
 - [ ] Display the matching signals and affected attendees before an admin acts. Never auto-merge a suggestion.
 - [ ] Let an authorized admin:
-  - [ ] Rename a canonical church/pastor pair.
+  - [ ] Edit a canonical church/pastor pair.
+  - [ ] Delete a church without payment history or merged redirects, unassigning its canonical person mappings while preserving submitted snapshots.
+  - [ ] Assign or unassign an individual camper from the camper editor.
   - [ ] Remap selected attendees to an existing church.
   - [ ] Merge one or more source churches into a chosen surviving church.
   - [ ] Correct an individual attendee mapping after a merge.
@@ -186,7 +188,7 @@ Create a self-maintaining church directory that is populated silently by registr
   - [ ] Preserve source identity pairs as aliases or redirect identities.
   - [ ] Mark source records as merged rather than deleting them.
   - [ ] Resolve alias collisions explicitly instead of silently choosing a target.
-- [ ] Record actor, timestamp, action, source, target, and affected record IDs in an audit log for rename, remap, and merge actions.
+- [ ] Record actor, timestamp, action, source, target, and affected record IDs in an audit log for edit, delete, remap, and merge actions.
 - [ ] Write safe operational logs without attendee medical, legal, or payment-note contents.
 - [ ] Add confirmation dialogs and prevent duplicate submissions while a cleanup mutation is in progress.
 

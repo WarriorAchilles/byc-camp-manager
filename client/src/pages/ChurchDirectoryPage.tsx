@@ -213,9 +213,31 @@ export function ChurchDirectoryPage(): React.ReactElement {
         method: "PATCH",
         body: JSON.stringify({ name, pastorName }),
       });
-      setNotice("Canonical church identity updated.");
+      setNotice("Church details updated.");
       await refresh();
       setRenameChurch(null);
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteChurch = async (church: Church): Promise<void> => {
+    const confirmed = window.confirm(
+      `Delete ${church.name} - ${church.pastorName}?\n\n`
+      + "Assigned people across all camp years will become unassigned. "
+      + "Churches with payments or merge redirects cannot be deleted.",
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await apiJson(`/api/admin/churches/${church.id}`, { method: "DELETE" });
+      if (selectedChurchId === church.id) setSelectedChurchId("");
+      if (renameChurch?.id === church.id) setRenameChurch(null);
+      setNotice("Church deleted. Previously assigned people are now unassigned.");
+      await loadDirectory(campYearId);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -380,11 +402,12 @@ export function ChurchDirectoryPage(): React.ReactElement {
                 <td>{church.aliases.map((alias) => `${alias.name} - ${alias.pastorName}`).join("; ") || "—"}</td>
                 <td>{church.counts.campers} campers · {church.counts.workers} workers · {church.counts.leaders} leaders</td>
                 <td>{church.counts.payments}</td>
-                <td><button className="btn secondary" disabled={busy} onClick={() => openRename(church)}>Rename</button>{" "}
+                <td><button className="btn secondary" disabled={busy} onClick={() => openRename(church)}>Edit</button>{" "}
                   <button className="btn secondary" disabled={busy} onClick={() => {
                     setError("");
                     setSelectedChurchId(church.id);
-                  }}>Payments</button></td>
+                  }}>Payments</button>{" "}
+                  <button className="btn danger" disabled={busy} onClick={() => void deleteChurch(church)}>Delete</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -457,7 +480,7 @@ export function ChurchDirectoryPage(): React.ReactElement {
             onSubmit={(event) => void rename(event)}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="rename-church-title" style={{ margin: 0 }}>Rename church</h2>
+            <h2 id="rename-church-title" style={{ margin: 0 }}>Edit church details</h2>
             <p style={{ margin: 0 }}>
               The prior church and pastor identity will remain available as an alias.
             </p>

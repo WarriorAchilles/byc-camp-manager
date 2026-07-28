@@ -19,6 +19,7 @@ All routes require an authenticated `super_admin` or `camp_admin`.
 - `GET /api/admin/churches?campYearId={uuid}` — global canonical directory with year-scoped attendee/payment counts.
 - `GET /api/admin/churches/cleanup?campYearId={uuid}` — incomplete mappings, submitted/canonical differences, new records, and explainable likely duplicates.
 - `PATCH /api/admin/churches/:churchId` — rename a canonical pair and retain the old identity as an alias.
+- `DELETE /api/admin/churches/:churchId` — delete a church without payment history or merged redirects and unassign its canonical person mappings.
 - `POST /api/admin/churches/remap` — deliberately remap selected typed person IDs to an active canonical church.
 - `POST /api/admin/churches/merge/preview` — preview source/target identities and affected records.
 - `POST /api/admin/churches/merge` — confirmed transactional merge with redirects, reassignment, and audit.
