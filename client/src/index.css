@@ -1611,6 +1611,18 @@ tbody tr:hover td {
   font-size: 0.9rem;
 }
 
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.table-scroll > .report-table {
+  min-width: 100%;
+}
+
 .report-page-title-row {
   display: none;
 }
@@ -1625,6 +1637,10 @@ tbody tr:hover td {
   padding: 0.45rem 0.55rem;
   text-align: left;
   vertical-align: top;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .report-table th {
@@ -2563,6 +2579,24 @@ tbody tr:hover td {
 
 .payment-form textarea {
   min-height: 44px;
+}
+
+.church-payment-modal {
+  max-width: min(1200px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+}
+
+.church-payment-modal-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.church-payment-modal-header h2 {
+  margin: 0;
+}
+
+.church-payment-modal-header p {
+  margin-bottom: 0;
 }
 
 .report-table td small,

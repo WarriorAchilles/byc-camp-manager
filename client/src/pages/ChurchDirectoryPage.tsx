@@ -91,6 +91,9 @@ export function ChurchDirectoryPage(): React.ReactElement {
   const [remapTarget, setRemapTarget] = useState("");
   const [mergeSource, setMergeSource] = useState("");
   const [mergeTarget, setMergeTarget] = useState("");
+  const [renameChurch, setRenameChurch] = useState<Church | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renamePastorName, setRenamePastorName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -151,9 +154,25 @@ export function ChurchDirectoryPage(): React.ReactElement {
       .catch(() => setError("Church payment details could not be loaded."));
   }, [selectedChurchId, campYearId, loadDetails]);
 
+  useEffect(() => {
+    if (!renameChurch && !selectedChurchId) return;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || busy) return;
+      setRenameChurch(null);
+      setSelectedChurchId("");
+      setError("");
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [busy, renameChurch, selectedChurchId]);
+
   const selectedCombinedBalance = useMemo(() => campers.reduce((sum, camper) =>
     sum + (selectedCamperIds.has(camper.id) ? camper.remainingRegistrationFeeCents : 0), 0),
   [campers, selectedCamperIds]);
+  const selectedChurch = useMemo(
+    () => churches.find((church) => church.id === selectedChurchId) ?? null,
+    [churches, selectedChurchId],
+  );
 
   const explicitAllocationsRequired = amountCents !== selectedCombinedBalance;
 
@@ -174,21 +193,29 @@ export function ChurchDirectoryPage(): React.ReactElement {
     await loadDetails(selectedChurchId, campYearId);
   };
 
-  const rename = async (church: Church): Promise<void> => {
-    const name = window.prompt("Canonical church name", church.name)?.trim();
-    if (!name) return;
-    const pastorName = window.prompt("Canonical pastor name", church.pastorName)?.trim();
-    if (!pastorName) return;
-    if (!window.confirm(`Rename to ${name} - ${pastorName}? The prior identity will remain an alias.`)) return;
+  const openRename = (church: Church): void => {
+    setRenameChurch(church);
+    setRenameName(church.name);
+    setRenamePastorName(church.pastorName);
+    setError("");
+  };
+
+  const rename = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!renameChurch) return;
+    const name = renameName.trim();
+    const pastorName = renamePastorName.trim();
+    if (!name || !pastorName) return;
     setBusy(true);
     setError("");
     try {
-      await apiJson(`/api/admin/churches/${church.id}`, {
+      await apiJson(`/api/admin/churches/${renameChurch.id}`, {
         method: "PATCH",
         body: JSON.stringify({ name, pastorName }),
       });
       setNotice("Canonical church identity updated.");
       await refresh();
+      setRenameChurch(null);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -276,7 +303,6 @@ export function ChurchDirectoryPage(): React.ReactElement {
       setError("Per-camper allocations must equal the received amount.");
       return;
     }
-    if (!window.confirm(`Record a ${tender} payment of ${money(amountCents)} across ${paymentAllocations.length} camper(s)?`)) return;
     setBusy(true);
     setError("");
     try {
@@ -297,6 +323,7 @@ export function ChurchDirectoryPage(): React.ReactElement {
       setNotes("");
       setNotice("Church payment recorded and camper balances updated.");
       await refresh();
+      setSelectedChurchId("");
     } catch (caught) {
       const apiError = caught as ApiHttpError;
       const body = apiError.body as { fields?: Array<{ message: string }> } | null;
@@ -338,25 +365,30 @@ export function ChurchDirectoryPage(): React.ReactElement {
           {years.map((year) => <option key={year.id} value={year.id}>{year.name} ({year.yearLabel})</option>)}
         </select></label>
       </div>
-      {error ? <p className="error" role="alert">{error}</p> : null}
+      {error && !renameChurch && !selectedChurchId ? <p className="error" role="alert">{error}</p> : null}
       {notice ? <p className="success" role="status">{notice}</p> : null}
 
-      <div className="panel table-scroll">
+      <div className="panel">
         <h2>Canonical church directory</h2>
-        <table className="report-table">
-          <thead><tr><th>Church</th><th>Pastor</th><th>Aliases</th><th>People</th><th>Payments</th><th>Actions</th></tr></thead>
-          <tbody>{churches.map((church) => (
-            <tr key={church.id}>
-              <td>{church.name}{!church.reviewedAt ? <small> · New/unreviewed</small> : null}</td>
-              <td>{church.pastorName}</td>
-              <td>{church.aliases.map((alias) => `${alias.name} - ${alias.pastorName}`).join("; ") || "—"}</td>
-              <td>{church.counts.campers} campers · {church.counts.workers} workers · {church.counts.leaders} leaders</td>
-              <td>{church.counts.payments}</td>
-              <td><button className="btn secondary" disabled={busy} onClick={() => void rename(church)}>Rename</button>{" "}
-                <button className="btn secondary" disabled={busy} onClick={() => setSelectedChurchId(church.id)}>Payments</button></td>
-            </tr>
-          ))}</tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="report-table">
+            <thead><tr><th>Church</th><th>Pastor</th><th>Aliases</th><th>People</th><th>Payments</th><th>Actions</th></tr></thead>
+            <tbody>{churches.map((church) => (
+              <tr key={church.id}>
+                <td>{church.name}{!church.reviewedAt ? <small> · New/unreviewed</small> : null}</td>
+                <td>{church.pastorName}</td>
+                <td>{church.aliases.map((alias) => `${alias.name} - ${alias.pastorName}`).join("; ") || "—"}</td>
+                <td>{church.counts.campers} campers · {church.counts.workers} workers · {church.counts.leaders} leaders</td>
+                <td>{church.counts.payments}</td>
+                <td><button className="btn secondary" disabled={busy} onClick={() => openRename(church)}>Rename</button>{" "}
+                  <button className="btn secondary" disabled={busy} onClick={() => {
+                    setError("");
+                    setSelectedChurchId(church.id);
+                  }}>Payments</button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
       </div>
 
       <div className="panel">
@@ -406,10 +438,108 @@ export function ChurchDirectoryPage(): React.ReactElement {
         </div>
       </div>
 
+      {renameChurch ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy) {
+              setRenameChurch(null);
+              setError("");
+            }
+          }}
+        >
+          <form
+            className="modal-card stack"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-church-title"
+            onSubmit={(event) => void rename(event)}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="rename-church-title" style={{ margin: 0 }}>Rename church</h2>
+            <p style={{ margin: 0 }}>
+              The prior church and pastor identity will remain available as an alias.
+            </p>
+            {error ? <p className="error" role="alert">{error}</p> : null}
+            <label>
+              Church name
+              <input
+                autoFocus
+                required
+                maxLength={200}
+                value={renameName}
+                onChange={(event) => setRenameName(event.target.value)}
+              />
+            </label>
+            <label>
+              Pastor name
+              <input
+                required
+                maxLength={200}
+                value={renamePastorName}
+                onChange={(event) => setRenamePastorName(event.target.value)}
+              />
+            </label>
+            <div className="registration-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => {
+                  setRenameChurch(null);
+                  setError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button className="btn" disabled={busy || !renameName.trim() || !renamePastorName.trim()}>
+                {busy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {selectedChurchId ? (
-        <div className="panel">
-          <h2>Record church payment</h2>
-          <p>Registration fees only. Merchandise remains on the family registration.</p>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy) {
+              setSelectedChurchId("");
+              setError("");
+            }
+          }}
+        >
+          <section
+            className="modal-card church-payment-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-church-payment-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="row church-payment-modal-header">
+              <div>
+                <h2 id="record-church-payment-title">Record church payment</h2>
+                <p>
+                  {selectedChurch ? `${selectedChurch.name} — ${selectedChurch.pastorName}. ` : ""}
+                  Registration fees only. Merchandise remains on the family registration.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => {
+                  setSelectedChurchId("");
+                  setError("");
+                }}
+              >
+                Close
+              </button>
+            </div>
+            {error ? <p className="error" role="alert">{error}</p> : null}
           <div className="table-scroll"><table className="report-table">
             <thead><tr><th>Include</th><th>Camper / family</th><th>Due</th><th>Paid</th><th>Remaining</th><th>Merchandise</th><th>Check-in</th>{explicitAllocationsRequired ? <th>Allocation</th> : null}</tr></thead>
             <tbody>{campers.map((camper) => <tr key={camper.id}>
@@ -440,6 +570,7 @@ export function ChurchDirectoryPage(): React.ReactElement {
             {payment.voidedAt ? <span>Voided by {payment.voidedBy?.username}: {payment.voidReason}</span>
               : <button className="btn secondary" disabled={busy} onClick={() => void voidPayment(payment)}>Void payment</button>}
           </article>)}
+          </section>
         </div>
       ) : null}
     </section>
