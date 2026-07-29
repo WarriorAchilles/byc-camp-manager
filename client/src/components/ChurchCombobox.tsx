@@ -138,6 +138,9 @@ export function ChurchCombobox({
             ))}
           </ul>
         ) : null}
+        <span id={statusId} className="registration-fine-print" aria-live="polite">
+          {statusText}
+        </span>
       </div>
       <label>
         Pastor full name
@@ -152,9 +155,6 @@ export function ChurchCombobox({
           })}
         />
       </label>
-      <span id={statusId} className="registration-fine-print" aria-live="polite">
-        {statusText}
-      </span>
     </>
   );
 }

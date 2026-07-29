@@ -303,7 +303,9 @@ export function FamilyRegistrationForm(): React.ReactElement {
             ...camper,
             useFamilyAddress: registrationType === "self" ? true : camper.useFamilyAddress,
             address: registrationType === "self" || camper.useFamilyAddress ? null : camper.address,
-            camperCellPhone: camper.camperCellPhone || null,
+            camperCellPhone: registrationType === "self"
+              ? guardian.phone
+              : camper.camperCellPhone || null,
             guardianName: registrationType === "self" ? selfName : camper.guardianName,
             guardianPhone: registrationType === "self" ? guardian.phone : camper.guardianPhone,
             photoUploadId: photoUploadIds[index],
@@ -480,7 +482,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
                 <label>Last name<input required value={camper.lastName} onChange={(event) => updateCamper(index, "lastName", event.target.value)} /></label>
                 <label>Date of birth<input required type="date" max={selfRegistration ? adultBirthDateMaximum() : new Date().toISOString().slice(0, 10)} value={camper.dateOfBirth} onChange={(event) => updateCamper(index, "dateOfBirth", event.target.value)} /></label>
                 <label>Gender<select required value={camper.gender} onChange={(event) => updateCamper(index, "gender", event.target.value as CamperDraft["gender"])}><option value="">Select one</option>{options.genders.map((gender) => <option key={gender} value={gender}>{gender === "male" ? "Male" : "Female"}</option>)}</select></label>
-                <label>Camper cell (optional, digits only)<input inputMode="numeric" minLength={10} maxLength={15} value={camper.camperCellPhone} onChange={(event) => updateCamper(index, "camperCellPhone", digitsOnly(event.target.value))} /></label>
+                {!selfRegistration ? <label>Camper cell (optional, digits only)<input inputMode="numeric" minLength={10} maxLength={15} value={camper.camperCellPhone} onChange={(event) => updateCamper(index, "camperCellPhone", digitsOnly(event.target.value))} /></label> : null}
                 {!selfRegistration ? <label>Parent/guardian name<input required value={camper.guardianName} onChange={(event) => updateCamper(index, "guardianName", event.target.value)} /></label> : null}
                 {!selfRegistration ? <label>Parent/guardian phone<input required inputMode="numeric" minLength={10} maxLength={15} value={camper.guardianPhone} onChange={(event) => updateCamper(index, "guardianPhone", digitsOnly(event.target.value))} /></label> : null}
                 <label>T-shirt size intent<select required value={camper.tShirtIntent} onChange={(event) => updateCamper(index, "tShirtIntent", event.target.value)}><option value="">Select one</option>{options.tShirtSizes.map((size) => <option key={size}>{size}</option>)}</select></label>
