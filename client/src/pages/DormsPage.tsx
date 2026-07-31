@@ -205,6 +205,30 @@ type RosterResponse = {
   medicalNotesSummaryLines: string[];
 };
 
+type CapacityOverrideRequiredBody = {
+  error: string;
+  code: "capacity_override_required";
+  capacityKind: "camper" | "leader" | "bed";
+  currentCount: number;
+  capacity: number;
+  dormName: string;
+};
+
+function isCapacityOverrideRequiredBody(value: unknown): value is CapacityOverrideRequiredBody {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "code" in value &&
+    value.code === "capacity_override_required" &&
+    "currentCount" in value &&
+    typeof value.currentCount === "number" &&
+    "capacity" in value &&
+    typeof value.capacity === "number" &&
+    "dormName" in value &&
+    typeof value.dormName === "string"
+  );
+}
+
 const dragMime = "application/x-byc-dorm-person";
 
 type AssignPersonKind = "camper" | "worker" | "dorm_leader";
@@ -299,13 +323,14 @@ export function DormsPage(): React.ReactElement {
   const [boardError, setBoardError] = useState<string | null>(null);
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
   const [autoAssignBusy, setAutoAssignBusy] = useState(false);
-  const [camperAssignModal, setCamperAssignModal] = useState<{
-    camperLabel: string;
+  const [assignmentConfirmModal, setAssignmentConfirmModal] = useState<{
+    personLabel: string;
     dormLabel: string;
     messages: string[];
+    isCapacityOverride: boolean;
     onConfirm: () => void;
   } | null>(null);
-  const camperAssignConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const assignmentConfirmRef = useRef<HTMLButtonElement | null>(null);
 
   const [rosterDormId, setRosterDormId] = useState("");
   const [roster, setRoster] = useState<RosterResponse | null>(null);
@@ -646,6 +671,7 @@ export function DormsPage(): React.ReactElement {
     personKind: AssignPersonKind,
     personId: string,
     dormId: string | null,
+    capacityOverride = false,
   ): Promise<void> => {
     if (!campYearId) {
       return;
@@ -656,7 +682,7 @@ export function DormsPage(): React.ReactElement {
         `/api/admin/camp-years/${campYearId}/dorm-assignments/assign`,
         {
           method: "POST",
-          body: JSON.stringify({ personKind, personId, dormId }),
+          body: JSON.stringify({ personKind, personId, dormId, capacityOverride }),
         },
       );
       const lines = result.warnings ?? [];
@@ -666,6 +692,34 @@ export function DormsPage(): React.ReactElement {
       await loadBoard();
     } catch (caught) {
       const err = caught as ApiHttpError;
+      if (
+        err instanceof Error &&
+        err.status === 409 &&
+        isCapacityOverrideRequiredBody(err.body) &&
+        dormId
+      ) {
+        const personLabel = findPersonLabel(personKind, personId);
+        const capacityLabel =
+          err.body.capacityKind === "camper"
+            ? "campers"
+            : err.body.capacityKind === "leader"
+              ? "leaders"
+              : "people";
+        setAssignmentConfirmModal({
+          personLabel,
+          dormLabel: err.body.dormName,
+          messages: [
+            `${err.body.currentCount} ${capacityLabel} are already assigned and the configured maximum is ${err.body.capacity}.`,
+            "Confirm to override the maximum capacity for this assignment.",
+          ],
+          isCapacityOverride: true,
+          onConfirm: () => {
+            setAssignmentConfirmModal(null);
+            void postAssign(personKind, personId, dormId, true);
+          },
+        });
+        return;
+      }
       setAssignMessage(err instanceof Error ? err.message : "Assignment failed.");
     }
   };
@@ -684,52 +738,128 @@ export function DormsPage(): React.ReactElement {
     return undefined;
   };
 
-  const requestCamperAssign = (personId: string, dormId: string | null): void => {
+  const findPersonLabel = (personKind: AssignPersonKind, personId: string): string => {
+    if (personKind === "camper") {
+      const camper = findCamperOnBoard(personId);
+      return camper ? `${camper.firstName} ${camper.lastName}` : "this camper";
+    }
+    if (personKind === "dorm_leader") {
+      const leader =
+        unassignedDormLeaders.find((row) => row.id === personId) ??
+        camperDorms.flatMap((dorm) => dorm.dormLeaders).find((row) => row.id === personId);
+      return leader ? `${leader.firstName} ${leader.lastName}` : "this dorm leader";
+    }
+    const worker =
+      unassignedWorkers.find((row) => row.id === personId) ??
+      camperDorms.flatMap((dorm) => dorm.workers).find((row) => row.id === personId) ??
+      workerDorms.flatMap((dorm) => dorm.workers).find((row) => row.id === personId);
+    return worker ? `${worker.firstName} ${worker.lastName}` : "this worker";
+  };
+
+  const currentDormIdForPerson = (
+    personKind: AssignPersonKind,
+    personId: string,
+  ): string | null | undefined => {
+    if (personKind === "camper") {
+      return findCamperOnBoard(personId)?.dormId;
+    }
+    if (personKind === "dorm_leader") {
+      const leader =
+        unassignedDormLeaders.find((row) => row.id === personId) ??
+        camperDorms.flatMap((dorm) => dorm.dormLeaders).find((row) => row.id === personId);
+      return leader?.assignedCamperDormId;
+    }
+    const worker =
+      unassignedWorkers.find((row) => row.id === personId) ??
+      camperDorms.flatMap((dorm) => dorm.workers).find((row) => row.id === personId) ??
+      workerDorms.flatMap((dorm) => dorm.workers).find((row) => row.id === personId);
+    return worker?.dormId;
+  };
+
+  const requestAssign = (
+    personKind: AssignPersonKind,
+    personId: string,
+    dormId: string | null,
+  ): void => {
     if (!campYearId) {
       return;
     }
     if (dormId === null) {
-      void postAssign("camper", personId, null);
+      void postAssign(personKind, personId, null);
       return;
     }
+    if (currentDormIdForPerson(personKind, personId) === dormId) {
+      return;
+    }
+
+    const targetDorm =
+      camperDorms.find((dorm) => dorm.id === dormId) ??
+      workerDorms.find((dorm) => dorm.id === dormId);
+    if (!targetDorm) {
+      void postAssign(personKind, personId, dormId);
+      return;
+    }
+
+    const messages: string[] = [];
     const camper = findCamperOnBoard(personId);
-    const targetDorm = camperDorms.find((dorm) => dorm.id === dormId);
-    if (!camper || !targetDorm) {
-      void postAssign("camper", personId, dormId);
-      return;
+    if (personKind === "camper" && camper && isBoardCamperDorm(targetDorm)) {
+      messages.push(...camperAssignExceptionMessages(camper, targetDorm, boardCampStartIso));
     }
-    if (camper.dormId === dormId) {
-      return;
+
+    let exceedsCapacity = false;
+    if (personKind === "camper" && isBoardCamperDorm(targetDorm)) {
+      exceedsCapacity = targetDorm.campers.length >= targetDorm.camperCapacity;
+      if (exceedsCapacity) {
+        messages.push(
+          `${targetDorm.campers.length} campers are already assigned and the configured maximum is ${targetDorm.camperCapacity}. Confirm to override the maximum capacity.`,
+        );
+      }
+    } else if (personKind === "dorm_leader" && isBoardCamperDorm(targetDorm)) {
+      exceedsCapacity = targetDorm.dormLeaders.length >= targetDorm.leaderCapacity;
+      if (exceedsCapacity) {
+        messages.push(
+          `${targetDorm.dormLeaders.length} leaders are already assigned and the configured maximum is ${targetDorm.leaderCapacity}. Confirm to override the maximum capacity.`,
+        );
+      }
+    } else if (personKind === "worker") {
+      exceedsCapacity = targetDorm.occupantCount >= targetDorm.bedCapacity;
+      if (exceedsCapacity) {
+        messages.push(
+          `${targetDorm.occupantCount} people are already assigned and the configured maximum is ${targetDorm.bedCapacity}. Confirm to override the maximum capacity.`,
+        );
+      }
     }
-    const messages = camperAssignExceptionMessages(camper, targetDorm, boardCampStartIso);
+
     if (messages.length === 0) {
-      void postAssign("camper", personId, dormId);
+      void postAssign(personKind, personId, dormId);
       return;
     }
-    setCamperAssignModal({
-      camperLabel: `${camper.firstName} ${camper.lastName}`,
+
+    setAssignmentConfirmModal({
+      personLabel: findPersonLabel(personKind, personId),
       dormLabel: targetDorm.name,
       messages,
+      isCapacityOverride: exceedsCapacity,
       onConfirm: () => {
-        setCamperAssignModal(null);
-        void postAssign("camper", personId, dormId);
+        setAssignmentConfirmModal(null);
+        void postAssign(personKind, personId, dormId, exceedsCapacity);
       },
     });
   };
 
   useEffect(() => {
-    if (!camperAssignModal) {
+    if (!assignmentConfirmModal) {
       return;
     }
-    camperAssignConfirmRef.current?.focus();
+    assignmentConfirmRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
-        setCamperAssignModal(null);
+        setAssignmentConfirmModal(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [camperAssignModal]);
+  }, [assignmentConfirmModal]);
 
   useEffect(() => {
     if (activeTab === "assignments") return;
@@ -871,8 +1001,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
     const payload = parseDragPayload(event);
     if (!payload || !dropAccepts(payload.personKind, zone)) return;
     const dormId = zone === "unassigned" ? null : zone.dormId;
-    if (payload.personKind === "camper") requestCamperAssign(payload.personId, dormId);
-    else void postAssign(payload.personKind, payload.personId, dormId);
+    requestAssign(payload.personKind, payload.personId, dormId);
   };
   const sortedDormsForRoster = useMemo(
     () => [...dorms].filter((dorm) => dorm.purpose === "camper").sort((left, right) => left.name.localeCompare(right.name)),
@@ -1232,7 +1361,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                       <div className="assign-person-name">{person.firstName} {person.lastName}</div>
                       <div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kindLabel}</span><span>{detail}</span><span>{currentDormName ? `Assigned to ${currentDormName}` : "Unassigned"}</span></div>
                     </div>
-                    <label className="muted assign-move-label">Move to (keyboard)<select className="assign-move-select" value={currentDormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{targetDorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({boardCapacityForPerson(dorm, kind)})</option>)}</select></label>
+                    <label className="muted assign-move-label">Move to (keyboard)<select className="assign-move-select" value={currentDormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; requestAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{targetDorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({boardCapacityForPerson(dorm, kind)})</option>)}</select></label>
                   </div>;
                 })}
               </div>
@@ -1278,7 +1407,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                       {occupants.length === 0 ? <p className="dorm-empty">Drop {isCamperDorm ? "campers, workers, or dorm leaders" : "workers"} here.</p> : null}
                       {occupants.map(({ kind, person }) => <div key={`${kind}-${person.id}`} className="assign-person-row">
                         <div className="assign-person" draggable onDragStart={(event) => beginPersonDrag(event, kind, person.id)} onDragEnd={endPersonDrag}><div className="assign-person-name">{person.firstName} {person.lastName}</div><div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker"}</span><span>{person.gender}</span></div></div>
-                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({boardCapacityForPerson(target, kind)})</option>)}</select></label>
+                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; requestAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({boardCapacityForPerson(target, kind)})</option>)}</select></label>
                       </div>)}
                     </div>
                   </article>;
@@ -1484,13 +1613,13 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
         </div>
       ) : null}
 
-      {camperAssignModal ? (
+      {assignmentConfirmModal ? (
         <div
           className="modal-backdrop"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setCamperAssignModal(null);
+              setAssignmentConfirmModal(null);
             }
           }}
         >
@@ -1498,20 +1627,22 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
             className="card stack modal-card"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="camper-assign-confirm-title"
+            aria-labelledby="assignment-confirm-title"
             onMouseDown={(event) => {
               event.stopPropagation();
             }}
           >
-            <h2 id="camper-assign-confirm-title" style={{ marginTop: 0 }}>
-              Confirm assignment
+            <h2 id="assignment-confirm-title" style={{ marginTop: 0 }}>
+              {assignmentConfirmModal.isCapacityOverride
+                ? "Capacity warning"
+                : "Confirm assignment"}
             </h2>
             <p style={{ margin: 0 }}>
-              Assign <strong>{camperAssignModal.camperLabel}</strong> to{" "}
-              <strong>{camperAssignModal.dormLabel}</strong>? This does not match normal rules:
+              Assign <strong>{assignmentConfirmModal.personLabel}</strong> to{" "}
+              <strong>{assignmentConfirmModal.dormLabel}</strong>?
             </p>
             <ul style={{ margin: "0.5rem 0", paddingLeft: "1.25rem" }}>
-              {camperAssignModal.messages.map((line, index) => (
+              {assignmentConfirmModal.messages.map((line, index) => (
                 <li key={`${index}-${line.slice(0, 48)}`}>{line}</li>
               ))}
             </ul>
@@ -1519,17 +1650,19 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
               <button
                 type="button"
                 className="btn secondary"
-                onClick={() => setCamperAssignModal(null)}
+                onClick={() => setAssignmentConfirmModal(null)}
               >
                 Cancel
               </button>
               <button
-                ref={camperAssignConfirmRef}
+                ref={assignmentConfirmRef}
                 type="button"
                 className="btn"
-                onClick={() => camperAssignModal.onConfirm()}
+                onClick={() => assignmentConfirmModal.onConfirm()}
               >
-                Confirm assignment
+                {assignmentConfirmModal.isCapacityOverride
+                  ? "Override capacity"
+                  : "Confirm assignment"}
               </button>
             </div>
           </div>

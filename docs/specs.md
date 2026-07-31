@@ -465,6 +465,7 @@ Super admins can create and configure dorms with the following properties:
   - Each camper dorm showing camper and dorm-leader usage against their separate capacities; worker dorms show total bed usage
   - An "unassigned" area for people not yet assigned to a dorm
 - Drag a person from one dorm to another, or from unassigned to a dorm. Valid targets depend on role: **campers** and **dorm leaders** only in **camper dorms**; **workers** only in **worker dorms**. The UI should block or strongly discourage invalid combinations (e.g., a camper or dorm leader in a worker dorm, or a worker in a camper dorm).
+- If an assignment would exceed the applicable camper, dorm-leader, or worker-bed capacity, show a warning modal with **Confirm override** and **Cancel** actions. Cancel leaves the assignment unchanged; confirming saves the assignment as an explicit admin override.
 - The system should warn (but not prevent) if an assignment violates gender or age group rules **for camper dorms**, in case an admin needs to make an exception.
 - **Worker dorms:** If the dorm is **co-ed**, gender mismatch warnings do not apply. If the dorm is **single gender** (Boys or Girls), the same style of gender warning as for camper dorms applies when assigning someone of a different gender.
 

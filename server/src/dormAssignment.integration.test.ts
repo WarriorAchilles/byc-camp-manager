@@ -250,7 +250,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(response.body.workers).toHaveLength(1);
   });
 
-  it("rejects camper assignment when dorm is at camper capacity", async () => {
+  it("requires confirmation before overriding camper capacity", async () => {
     await prisma.dorm.update({
       where: { id: camperDormId },
       data: { camperCapacity: 1 },
@@ -276,8 +276,23 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
       .post(`/api/admin/camp-years/${campYearId}/dorm-assignments/assign`)
       .set("Authorization", auth)
       .send({ personKind: "camper", personId: camperId, dormId: camperDormId });
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain("capacity");
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("capacity_override_required");
+    expect(response.body.capacityKind).toBe("camper");
+    expect(response.body.currentCount).toBe(1);
+    expect(response.body.capacity).toBe(1);
+
+    const override = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-assignments/assign`)
+      .set("Authorization", auth)
+      .send({
+        personKind: "camper",
+        personId: camperId,
+        dormId: camperDormId,
+        capacityOverride: true,
+      });
+    expect(override.status).toBe(200);
+    expect(override.body.warnings.join(" ")).toContain("admin override");
 
     await prisma.camper.delete({ where: { id: secondCamper.id } });
   });
@@ -369,8 +384,21 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
       .post("/api/admin/camp-years/" + campYearId + "/dorm-assignments/assign")
       .set("Authorization", auth)
       .send({ personKind: "dorm_leader", personId: unassignedLeader.id, dormId: camperDormId });
-    expect(leaderAssignment.status).toBe(400);
-    expect(leaderAssignment.body.error).toContain("leader capacity");
+    expect(leaderAssignment.status).toBe(409);
+    expect(leaderAssignment.body.code).toBe("capacity_override_required");
+    expect(leaderAssignment.body.capacityKind).toBe("leader");
+
+    const leaderOverride = await request(app)
+      .post("/api/admin/camp-years/" + campYearId + "/dorm-assignments/assign")
+      .set("Authorization", auth)
+      .send({
+        personKind: "dorm_leader",
+        personId: unassignedLeader.id,
+        dormId: camperDormId,
+        capacityOverride: true,
+      });
+    expect(leaderOverride.status).toBe(200);
+    expect(leaderOverride.body.warnings.join(" ")).toContain("admin override");
 
     await prisma.camper.update({ where: { id: camperId }, data: { dormId: null } });
     const automatic = await request(app)
@@ -381,6 +409,48 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(automatic.body.assignedCampers).toBe(1);
     const camper = await prisma.camper.findUniqueOrThrow({ where: { id: camperId } });
     expect(camper.dormId).toBe(camperDormId);
+  });
+
+  it("requires confirmation before overriding worker dorm bed capacity", async () => {
+    await prisma.dorm.update({ where: { id: workerDormId }, data: { bedCapacity: 1 } });
+    await prisma.worker.create({
+      data: {
+        campYearId,
+        email: `occupied-${Math.random().toString(36).slice(2)}@example.com`,
+        firstName: "Already",
+        lastName: "Assigned",
+        gender: Gender.male,
+        cellPhone: "5552222222",
+        streetAddress: "2 Main",
+        city: "City",
+        stateOrProvince: "IN",
+        postalCode: "46201",
+        country: "USA",
+        importSource: "admin_entry",
+        dormId: workerDormId,
+      },
+    });
+    const auth = await authHeader();
+
+    const warning = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-assignments/assign`)
+      .set("Authorization", auth)
+      .send({ personKind: "worker", personId: workerId, dormId: workerDormId });
+    expect(warning.status).toBe(409);
+    expect(warning.body.code).toBe("capacity_override_required");
+    expect(warning.body.capacityKind).toBe("bed");
+
+    const override = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-assignments/assign`)
+      .set("Authorization", auth)
+      .send({
+        personKind: "worker",
+        personId: workerId,
+        dormId: workerDormId,
+        capacityOverride: true,
+      });
+    expect(override.status).toBe(200);
+    expect(override.body.warnings.join(" ")).toContain("admin override");
   });
 
   it("rejects assigning a dorm leader to a worker dorm", async () => {

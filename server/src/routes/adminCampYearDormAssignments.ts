@@ -26,6 +26,7 @@ const assignBody = z.object({
   personKind: z.enum(["camper", "worker", "dorm_leader"]),
   personId: z.string().uuid(),
   dormId: z.string().uuid().nullable(),
+  capacityOverride: z.boolean().optional().default(false),
 });
 
 router.get("/board", async (req: AuthedRequest, res) => {
@@ -247,7 +248,7 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const { personKind, personId, dormId } = parsed.data;
+  const { personKind, personId, dormId, capacityOverride } = parsed.data;
 
   if (personKind === "dorm_leader") {
     const leader = await prisma.dormLeader.findFirst({
@@ -294,8 +295,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
           id: { not: personId },
         },
       });
-    if (otherDormLeaders >= dorm.leaderCapacity) {
-      res.status(400).json({ error: "Dorm is at leader capacity" });
+    const exceedsCapacity = otherDormLeaders >= dorm.leaderCapacity;
+    if (exceedsCapacity && !capacityOverride) {
+      res.status(409).json({
+        error: "Dorm leader capacity would be exceeded",
+        code: "capacity_override_required",
+        capacityKind: "leader",
+        currentCount: otherDormLeaders,
+        capacity: dorm.leaderCapacity,
+        dormName: dorm.name,
+      });
       return;
     }
 
@@ -309,8 +318,13 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       personKind: "dorm_leader",
       personId,
       dormId,
+      capacityOverride: exceedsCapacity,
     });
-    res.json({ warnings: [] as string[] });
+    res.json({
+      warnings: exceedsCapacity
+        ? ["Dorm leader capacity was exceeded with an admin override."]
+        : ([] as string[]),
+    });
     return;
   }
 
@@ -355,8 +369,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     const otherCampers = await prisma.camper.count({
         where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
       });
-    if (otherCampers >= dorm.camperCapacity) {
-      res.status(400).json({ error: "Dorm is at camper capacity" });
+    const exceedsCapacity = otherCampers >= dorm.camperCapacity;
+    if (exceedsCapacity && !capacityOverride) {
+      res.status(409).json({
+        error: "Camper capacity would be exceeded",
+        code: "capacity_override_required",
+        capacityKind: "camper",
+        currentCount: otherCampers,
+        capacity: dorm.camperCapacity,
+        dormName: dorm.name,
+      });
       return;
     }
 
@@ -373,6 +395,9 @@ router.post("/assign", async (req: AuthedRequest, res) => {
           }
         : null,
     });
+    if (exceedsCapacity) {
+      warnings.push("Camper capacity was exceeded with an admin override.");
+    }
 
     await prisma.camper.update({
       where: { id: personId },
@@ -385,6 +410,7 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       personId,
       dormId,
       warningCount: warnings.length,
+      capacityOverride: exceedsCapacity,
     });
     res.json({ warnings });
     return;
@@ -431,8 +457,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     }),
   ]);
   const countOthers = otherWorkers + assignedCampers + assignedDormLeaders;
-  if (countOthers >= dorm.bedCapacity) {
-    res.status(400).json({ error: "Dorm is at bed capacity" });
+  const exceedsCapacity = countOthers >= dorm.bedCapacity;
+  if (exceedsCapacity && !capacityOverride) {
+    res.status(409).json({
+      error: "Dorm bed capacity would be exceeded",
+      code: "capacity_override_required",
+      capacityKind: "bed",
+      currentCount: countOthers,
+      capacity: dorm.bedCapacity,
+      dormName: dorm.name,
+    });
     return;
   }
 
@@ -440,6 +474,9 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     workerGender: worker.gender,
     dormGender: dorm.genderDesignation,
   });
+  if (exceedsCapacity) {
+    warnings.push("Dorm bed capacity was exceeded with an admin override.");
+  }
 
   await prisma.worker.update({
     where: { id: personId },
@@ -452,6 +489,7 @@ router.post("/assign", async (req: AuthedRequest, res) => {
     personId,
     dormId,
     warningCount: warnings.length,
+    capacityOverride: exceedsCapacity,
   });
   res.json({ warnings });
 });
