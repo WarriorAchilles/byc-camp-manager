@@ -143,6 +143,23 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     };
   }
 
+  it("allows admins to create a camper without guardian information", async () => {
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const token = signAuthToken({ sub: admin.id, role: admin.role });
+    const { guardianName: _guardianName, guardianEmail: _guardianEmail, guardianPhone: _guardianPhone, ...payload } =
+      camperPayload();
+
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${token}`)
+      .send(payload);
+
+    expect(created.status).toBe(201);
+    expect(created.body.guardianName).toBe("");
+    expect(created.body.guardianEmail).toBe("");
+    expect(created.body.guardianPhone).toBe("");
+  });
+
   it("returns 409 when admin entry exceeds capacity until override is confirmed", async () => {
     const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const token = signAuthToken({ sub: admin.id, role: admin.role });

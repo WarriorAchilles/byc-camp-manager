@@ -51,8 +51,11 @@ const camperFields = {
 
 const camperRowSchema = z.object(camperFields);
 
-const createBody = z.object({
+export const adminCamperCreateBodySchema = z.object({
   ...camperFields,
+  guardianName: z.string().optional().default(""),
+  guardianEmail: z.union([z.literal(""), z.string().email()]).optional().default(""),
+  guardianPhone: z.string().optional().default(""),
   confirmCapacityOverride: z.boolean().optional(),
 });
 
@@ -146,7 +149,7 @@ router.post("/", requireRole(AdminRole.super_admin), async (req: AuthedRequest, 
   if (!campYearId) {
     return;
   }
-  const parsed = createBody.safeParse(req.body);
+  const parsed = adminCamperCreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request" });
     return;

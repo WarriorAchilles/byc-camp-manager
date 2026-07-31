@@ -850,21 +850,20 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
               </select>
             </label>
             <label>
-              Guardian name
-              <input value={guardianName} onChange={(event) => setGuardianName(event.target.value)} required />
+              Guardian name (optional)
+              <input value={guardianName} onChange={(event) => setGuardianName(event.target.value)} />
             </label>
             <label>
-              Guardian email
+              Guardian email (optional)
               <input
                 type="email"
                 value={guardianEmail}
                 onChange={(event) => setGuardianEmail(event.target.value)}
-                required
               />
             </label>
             <label>
-              Guardian phone
-              <input value={guardianPhone} onChange={(event) => setGuardianPhone(event.target.value)} required />
+              Guardian phone (optional)
+              <input value={guardianPhone} onChange={(event) => setGuardianPhone(event.target.value)} />
             </label>
             <label>
               Payment status
