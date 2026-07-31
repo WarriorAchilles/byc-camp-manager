@@ -90,7 +90,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm roster report API
     const bracket = await prisma.ageGroupBracket.create({
       data: {
         campYearId,
-        label: "Youth",
         minAge: 10,
         maxAge: 14,
         sortOrder: 1,
@@ -230,6 +229,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm roster report API
       .set("Authorization", header);
     expect(res.status).toBe(200);
     expect(res.body.ageGroupBrackets).toHaveLength(1);
-    expect(res.body.ageGroupBrackets[0].label).toBe("Youth");
+    expect(res.body.ageGroupBrackets[0]).toMatchObject({ minAge: 10, maxAge: 14 });
+    expect(res.body.ageGroupBrackets[0]).not.toHaveProperty("label");
   });
 });

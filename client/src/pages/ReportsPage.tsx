@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson } from "../api";
 import { useAuth } from "../auth";
+import {
+  ageFitsGroup,
+  formatAgeGroupRange,
+  type AgeGroupBracket as AgeBracket,
+} from "../ageGroups";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { resolveCampYearSelection } from "../campYearSelection";
 
@@ -8,14 +13,6 @@ type CampYearOption = {
   id: string;
   name: string;
   yearLabel: string;
-};
-
-type AgeBracket = {
-  id: string;
-  label: string;
-  minAge: number;
-  maxAge: number;
-  sortOrder: number;
 };
 
 type DormRow = {
@@ -160,7 +157,7 @@ function ageRangeLabel(bracket: AgeBracket | undefined): string {
   if (!bracket) {
     return "No age range";
   }
-  return `${bracket.label} (${bracket.minAge}-${bracket.maxAge})`;
+  return formatAgeGroupRange(bracket);
 }
 
 function defaultPizzaFactor(dorm: DormRow, bracket: AgeBracket | null): number {
@@ -524,7 +521,7 @@ export function ReportsPage(): React.ReactElement {
     if (checkInBracketFilter) {
       const bracket = brackets.find((b) => b.id === checkInBracketFilter);
       if (bracket) {
-        rows = rows.filter((row) => row.age >= bracket.minAge && row.age <= bracket.maxAge);
+        rows = rows.filter((row) => ageFitsGroup(row.age, bracket));
       }
     }
     rows.sort((a, b) => {
@@ -882,7 +879,7 @@ export function ReportsPage(): React.ReactElement {
                 <option value="">All</option>
                 {brackets.map((bracket) => (
                   <option key={bracket.id} value={bracket.id}>
-                    {bracket.label} ({bracket.minAge}–{bracket.maxAge})
+                    {formatAgeGroupRange(bracket)}
                   </option>
                 ))}
               </select>
@@ -905,7 +902,7 @@ export function ReportsPage(): React.ReactElement {
                   {roster.campYear.name} ({roster.campYear.yearLabel}) · Camp start {roster.campYear.startDate} ·{" "}
                   {dormGenderLabel(roster.dorm.genderDesignation)}
                   {roster.dorm.ageGroupBracket
-                    ? ` · Age group ${roster.dorm.ageGroupBracket.label} (${roster.dorm.ageGroupBracket.minAge}–${roster.dorm.ageGroupBracket.maxAge})`
+                    ? ` · Age group ${formatAgeGroupRange(roster.dorm.ageGroupBracket)}`
                     : ""}
                 </p>
                 <p className="report-print-meta">
@@ -1050,7 +1047,7 @@ export function ReportsPage(): React.ReactElement {
                 <option value="">All</option>
                 {brackets.map((bracket) => (
                   <option key={bracket.id} value={bracket.id}>
-                    {bracket.label} ({bracket.minAge}–{bracket.maxAge})
+                    {formatAgeGroupRange(bracket)}
                   </option>
                 ))}
               </select>

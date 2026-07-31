@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiJson } from "../api";
 import { MerchandiseCatalogEditor } from "../components/MerchandiseCatalogEditor";
 import { useAuth } from "../auth";
+import { formatAgeGroupRange, type AgeGroupBracket } from "../ageGroups";
 import { resolveCampYearSelectionNullable } from "../campYearSelection";
 
 type CampYearRow = {
@@ -35,15 +36,6 @@ type CampYearRow = {
   /** When false, the app does not send guardian confirmation emails after camper check-in. */
   checkInConfirmationEmailsEnabled?: boolean;
   activeCamperCount?: number;
-};
-
-type AgeGroupBracket = {
-  id: string;
-  label: string;
-  minAge: number;
-  maxAge: number;
-  sortOrder: number;
-  isActive: boolean;
 };
 
 function dateInputFromIso(isoDate: string): string {
@@ -87,12 +79,10 @@ export function CampConfigurationPage(): React.ReactElement {
   const [ageBrackets, setAgeBrackets] = useState<AgeGroupBracket[]>([]);
   const [ageBracketsLoading, setAgeBracketsLoading] = useState(false);
   const [bracketError, setBracketError] = useState<string | null>(null);
-  const [newBracketLabel, setNewBracketLabel] = useState("");
   const [newBracketMin, setNewBracketMin] = useState("");
   const [newBracketMax, setNewBracketMax] = useState("");
   const [newBracketSort, setNewBracketSort] = useState("");
   const [editingBracketId, setEditingBracketId] = useState<string | null>(null);
-  const [editBracketLabel, setEditBracketLabel] = useState("");
   const [editBracketMin, setEditBracketMin] = useState("");
   const [editBracketMax, setEditBracketMax] = useState("");
   const [editBracketSort, setEditBracketSort] = useState("");
@@ -172,7 +162,6 @@ export function CampConfigurationPage(): React.ReactElement {
   };
 
   const resetNewBracketForm = (): void => {
-    setNewBracketLabel("");
     setNewBracketMin("");
     setNewBracketMax("");
     setNewBracketSort("");
@@ -180,9 +169,8 @@ export function CampConfigurationPage(): React.ReactElement {
 
   const beginEditBracket = (bracket: AgeGroupBracket): void => {
     setEditingBracketId(bracket.id);
-    setEditBracketLabel(bracket.label);
     setEditBracketMin(String(bracket.minAge));
-    setEditBracketMax(String(bracket.maxAge));
+    setEditBracketMax(bracket.maxAge === null ? "" : String(bracket.maxAge));
     setEditBracketSort(String(bracket.sortOrder));
     setEditBracketActive(bracket.isActive);
   };
@@ -194,12 +182,13 @@ export function CampConfigurationPage(): React.ReactElement {
     }
     setBracketError(null);
     const minParsed = Number.parseInt(newBracketMin, 10);
-    const maxParsed = Number.parseInt(newBracketMax, 10);
-    if (Number.isNaN(minParsed) || Number.isNaN(maxParsed)) {
-      setBracketError("Min and max age must be whole numbers.");
+    const maxParsed =
+      newBracketMax.trim() === "" ? null : Number.parseInt(newBracketMax, 10);
+    if (Number.isNaN(minParsed) || (maxParsed !== null && Number.isNaN(maxParsed))) {
+      setBracketError("Ages must be whole numbers.");
       return;
     }
-    if (minParsed > maxParsed) {
+    if (maxParsed !== null && minParsed > maxParsed) {
       setBracketError("Min age cannot be greater than max age.");
       return;
     }
@@ -214,7 +203,6 @@ export function CampConfigurationPage(): React.ReactElement {
       await apiJson(`/api/admin/camp-years/${selectedId}/age-group-brackets`, {
         method: "POST",
         body: JSON.stringify({
-          label: newBracketLabel.trim(),
           minAge: minParsed,
           maxAge: maxParsed,
           sortOrder: sortParsed,
@@ -237,12 +225,13 @@ export function CampConfigurationPage(): React.ReactElement {
     }
     setBracketError(null);
     const minParsed = Number.parseInt(editBracketMin, 10);
-    const maxParsed = Number.parseInt(editBracketMax, 10);
-    if (Number.isNaN(minParsed) || Number.isNaN(maxParsed)) {
-      setBracketError("Min and max age must be whole numbers.");
+    const maxParsed =
+      editBracketMax.trim() === "" ? null : Number.parseInt(editBracketMax, 10);
+    if (Number.isNaN(minParsed) || (maxParsed !== null && Number.isNaN(maxParsed))) {
+      setBracketError("Ages must be whole numbers.");
       return;
     }
-    if (minParsed > maxParsed) {
+    if (maxParsed !== null && minParsed > maxParsed) {
       setBracketError("Min age cannot be greater than max age.");
       return;
     }
@@ -257,7 +246,6 @@ export function CampConfigurationPage(): React.ReactElement {
         {
           method: "PATCH",
           body: JSON.stringify({
-            label: editBracketLabel.trim(),
             minAge: minParsed,
             maxAge: maxParsed,
             sortOrder: sortParsed,
@@ -682,8 +670,8 @@ export function CampConfigurationPage(): React.ReactElement {
         <div className="card stack">
           <h2 style={{ marginTop: 0 }}>Age groups ({selected?.yearLabel ?? "camp year"})</h2>
           <p className="muted" style={{ margin: 0 }}>
-            Used for camper dorm auto-assignment and labels. Ages are measured at camp start (same rule
-            as dorm assignment).
+            Used for camper dorm auto-assignment. Ages are measured at camp start. Leave the maximum
+            blank when an age group has no upper age limit.
           </p>
           {bracketError ? <p className="error">{bracketError}</p> : null}
           {ageBracketsLoading ? <p className="muted">Loading age groups…</p> : null}
@@ -691,15 +679,6 @@ export function CampConfigurationPage(): React.ReactElement {
           <form className="stack" onSubmit={handleCreateBracket}>
             <h3 style={{ margin: 0, fontSize: "1rem" }}>Add age group</h3>
             <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-              <label className="stack" style={{ flex: "1 1 140px" }}>
-                Label
-                <input
-                  value={newBracketLabel}
-                  onChange={(event) => setNewBracketLabel(event.target.value)}
-                  placeholder="e.g. Juniors"
-                  required
-                />
-              </label>
               <label className="stack" style={{ flex: "0 0 88px" }}>
                 Min age
                 <input
@@ -710,12 +689,11 @@ export function CampConfigurationPage(): React.ReactElement {
                 />
               </label>
               <label className="stack" style={{ flex: "0 0 88px" }}>
-                Max age
+                Max age (optional)
                 <input
                   inputMode="numeric"
                   value={newBracketMax}
                   onChange={(event) => setNewBracketMax(event.target.value)}
-                  required
                 />
               </label>
               <label className="stack" style={{ flex: "0 0 100px" }}>
@@ -737,7 +715,6 @@ export function CampConfigurationPage(): React.ReactElement {
             <table>
               <thead>
                 <tr>
-                  <th>Label</th>
                   <th>Ages</th>
                   <th>Sort</th>
                   <th>Active</th>
@@ -747,17 +724,14 @@ export function CampConfigurationPage(): React.ReactElement {
               <tbody>
                 {ageBrackets.length === 0 && !ageBracketsLoading ? (
                   <tr>
-                    <td colSpan={5} className="muted">
+                    <td colSpan={4} className="muted">
                       No age groups yet. Add one above for dorm auto-assignment.
                     </td>
                   </tr>
                 ) : null}
                 {ageBrackets.map((bracket) => (
                   <tr key={bracket.id}>
-                    <td>{bracket.label}</td>
-                    <td>
-                      {bracket.minAge}–{bracket.maxAge}
-                    </td>
+                    <td>{formatAgeGroupRange(bracket)}</td>
                     <td>{bracket.sortOrder}</td>
                     <td>
                       <label className="row" style={{ gap: "0.35rem" }}>
@@ -767,7 +741,7 @@ export function CampConfigurationPage(): React.ReactElement {
                           onChange={(event) =>
                             void patchBracketActive(bracket, event.target.checked)
                           }
-                          aria-label={`Active: ${bracket.label}`}
+                          aria-label={`Active: ages ${formatAgeGroupRange(bracket)}`}
                         />
                         <span className="muted" style={{ fontSize: "0.8rem" }}>
                           {bracket.isActive ? "yes" : "no"}
@@ -802,14 +776,6 @@ export function CampConfigurationPage(): React.ReactElement {
           {editingBracketId ? (
             <form className="stack" onSubmit={handleSaveBracketEdit}>
               <h3 style={{ margin: 0, fontSize: "1rem" }}>Edit age group</h3>
-              <label className="stack">
-                Label
-                <input
-                  value={editBracketLabel}
-                  onChange={(event) => setEditBracketLabel(event.target.value)}
-                  required
-                />
-              </label>
               <div className="row" style={{ flexWrap: "wrap" }}>
                 <label className="stack" style={{ flex: "0 0 120px" }}>
                   Min age
@@ -821,12 +787,11 @@ export function CampConfigurationPage(): React.ReactElement {
                   />
                 </label>
                 <label className="stack" style={{ flex: "0 0 120px" }}>
-                  Max age
+                  Max age (optional)
                   <input
                     inputMode="numeric"
                     value={editBracketMax}
                     onChange={(event) => setEditBracketMax(event.target.value)}
-                    required
                   />
                 </label>
                 <label className="stack" style={{ flex: "0 0 120px" }}>
@@ -1101,8 +1066,8 @@ export function CampConfigurationPage(): React.ReactElement {
               Delete age group?
             </h2>
             <p style={{ margin: 0 }}>
-              Delete <strong>{bracketToDelete.label}</strong>? Dorms using it will keep their people
-              but no longer have an age group.
+              Delete age group <strong>{formatAgeGroupRange(bracketToDelete)}</strong>? Dorms using it
+              will keep their people but no longer have an age group.
             </p>
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button

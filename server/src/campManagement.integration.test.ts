@@ -83,7 +83,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     const bracket = await prisma.ageGroupBracket.create({
       data: {
         campYearId,
-        label: "Teens",
         minAge: 13,
         maxAge: 17,
         sortOrder: 1,
@@ -636,6 +635,35 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(created.body).not.toHaveProperty("checkInCamperQrScanEnabled");
     expect(created.body.checkInFamilyPaymentOptionEnabled).toBe(false);
     expect(created.body.checkInConfirmationEmailsEnabled).toBe(false);
+  });
+
+  it("creates age groups without labels or a maximum age", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/age-group-brackets`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ minAge: 18, sortOrder: 2 });
+
+    expect(created.status).toBe(201);
+    expect(created.body).not.toHaveProperty("label");
+    expect(created.body.minAge).toBe(18);
+    expect(created.body.maxAge).toBeNull();
+
+    const finite = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/age-group-brackets/${created.body.id}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ maxAge: 25 });
+    expect(finite.status).toBe(200);
+    expect(finite.body.maxAge).toBe(25);
+
+    const openEnded = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/age-group-brackets/${created.body.id}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ maxAge: null });
+    expect(openEnded.status).toBe(200);
+    expect(openEnded.body.maxAge).toBeNull();
   });
 
   it("deletes age groups and dorms while preserving and unassigning related records", async () => {

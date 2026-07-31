@@ -71,10 +71,17 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
     await prisma.ageGroupBracket.create({
       data: {
         campYearId,
-        label: "10-13",
         minAge: 10,
         maxAge: 13,
         sortOrder: 1,
+      },
+    });
+    await prisma.ageGroupBracket.create({
+      data: {
+        campYearId,
+        minAge: 18,
+        maxAge: null,
+        sortOrder: 2,
       },
     });
   });
@@ -94,7 +101,7 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
     const options = await request(app).get("/api/public/registration/leader/form-options");
     expect(options.status).toBe(200);
     expect(options.body.maritalStatuses).toEqual(["Single", "Married"]);
-    expect(options.body.ageGroupOptions).toEqual(["10-13"]);
+    expect(options.body.ageGroupOptions).toEqual(["10-13", "18+"]);
   });
 
   it("creates an operational dorm leader with every historical CSV field", async () => {

@@ -4,6 +4,12 @@ import { apiJson, apiUrl, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { PersonEditDialog, type EditablePersonKind } from "../components/PersonEditDialog";
+import {
+  ageFitsGroup,
+  ageGroupPreferenceValue,
+  formatAgeGroupRange,
+  type AgeGroupBracket,
+} from "../ageGroups";
 import { resolveCampYearSelection } from "../campYearSelection";
 
 type CampYearOption = {
@@ -107,15 +113,6 @@ type CapacityBody = {
   currentCamperCount: number;
   capacity: number;
   additionalCampers: number;
-};
-
-type AgeGroupBracket = {
-  id: string;
-  label: string;
-  minAge: number;
-  maxAge: number;
-  sortOrder: number;
-  isActive: boolean;
 };
 
 type CheckInStatus = "checked_in" | "not_checked_in";
@@ -419,7 +416,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         return false;
       }
       const age = ageOnCampStartUtc(dateOfBirth, selectedYear.startDate);
-      return age >= selectedAgeGroup.minAge && age <= selectedAgeGroup.maxAge;
+      return ageFitsGroup(age, selectedAgeGroup);
     },
     [selectedAgeGroup, selectedYear?.startDate],
   );
@@ -476,7 +473,8 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         if (checkInFilter && leader.checkInStatus !== checkInFilter) {
           return false;
         }
-        return !selectedAgeGroup || leader.roleLabel === selectedAgeGroup.label;
+        return !selectedAgeGroup ||
+          leader.roleLabel === ageGroupPreferenceValue(selectedAgeGroup);
       }),
     [checkInFilter, dormLeaders, genderFilter, normalizedNameSearch, selectedAgeGroup],
   );
@@ -1152,7 +1150,7 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                   <option value="">All age groups</option>
                   {ageGroupBrackets.map((bracket) => (
                     <option key={bracket.id} value={bracket.id}>
-                      {bracket.label} ({bracket.minAge}-{bracket.maxAge})
+                      {formatAgeGroupRange(bracket)}
                     </option>
                   ))}
                 </select>

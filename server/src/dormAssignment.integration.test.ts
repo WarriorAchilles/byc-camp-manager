@@ -83,7 +83,6 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     const bracket = await prisma.ageGroupBracket.create({
       data: {
         campYearId,
-        label: "Teens",
         minAge: 13,
         maxAge: 17,
         sortOrder: 1,

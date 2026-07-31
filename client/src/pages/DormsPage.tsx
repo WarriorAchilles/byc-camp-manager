@@ -9,6 +9,11 @@ import {
 } from "react";
 import { apiJson, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
+import {
+  ageFitsGroup,
+  formatAgeGroupRange,
+  type AgeGroupBracket as AgeBracket,
+} from "../ageGroups";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { resolveCampYearSelection } from "../campYearSelection";
 
@@ -16,14 +21,6 @@ type CampYearOption = {
   id: string;
   name: string;
   yearLabel: string;
-};
-
-type AgeBracket = {
-  id: string;
-  label: string;
-  minAge: number;
-  maxAge: number;
-  sortOrder: number;
 };
 
 type DormRow = {
@@ -134,10 +131,9 @@ function camperAssignExceptionMessages(
   }
   if (campStartIso && camper.dateOfBirth && targetDorm.ageGroupBracket) {
     const age = ageOnCampStartUtc(camper.dateOfBirth, campStartIso);
-    const { minAge, maxAge } = targetDorm.ageGroupBracket;
-    if (age < minAge || age > maxAge) {
+    if (!ageFitsGroup(age, targetDorm.ageGroupBracket)) {
       messages.push(
-        `This camper is age ${age} at camp start, outside this dorm's age group (${minAge}–${maxAge}). You can still save as an exception.`,
+        `This camper is age ${age} at camp start, outside this dorm's age group (${formatAgeGroupRange(targetDorm.ageGroupBracket)}). You can still save as an exception.`,
       );
     }
   }
@@ -986,7 +982,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                     <option value="">None (manual placement only)</option>
                     {brackets.map((bracket) => (
                       <option key={bracket.id} value={bracket.id}>
-                        {bracket.label} ({bracket.minAge}–{bracket.maxAge})
+                        {formatAgeGroupRange(bracket)}
                       </option>
                     ))}
                   </select>
@@ -1046,7 +1042,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                     <option value="">None</option>
                     {brackets.map((bracket) => (
                       <option key={bracket.id} value={bracket.id}>
-                        {bracket.label} ({bracket.minAge}–{bracket.maxAge})
+                        {formatAgeGroupRange(bracket)}
                       </option>
                     ))}
                   </select>
@@ -1204,7 +1200,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                 Capacity: {roster.occupantCount} / {roster.dorm.bedCapacity} beds · {roster.dorm.purpose} ·{" "}
                 {roster.dorm.genderDesignation}
                 {roster.dorm.ageGroupBracket
-                  ? ` · Age group ${roster.dorm.ageGroupBracket.label} (${roster.dorm.ageGroupBracket.minAge}–${roster.dorm.ageGroupBracket.maxAge})`
+                  ? ` · Age group ${formatAgeGroupRange(roster.dorm.ageGroupBracket)}`
                   : ""}
               </p>
               {roster.dormLeaders.length > 0 ? (

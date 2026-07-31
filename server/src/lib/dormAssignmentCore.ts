@@ -39,11 +39,11 @@ export function workerDormGenderMatches(
   return camperDormGenderMatches(designation, gender);
 }
 
-export function ageFitsBracket(age: number, minAge: number, maxAge: number): boolean {
-  return age >= minAge && age <= maxAge;
+export function ageFitsBracket(age: number, minAge: number, maxAge: number | null): boolean {
+  return age >= minAge && (maxAge === null || age <= maxAge);
 }
 
-export type DormBracketSlice = { minAge: number; maxAge: number; sortOrder: number };
+export type DormBracketSlice = { minAge: number; maxAge: number | null; sortOrder: number };
 
 export type CamperDormForAuto = {
   id: string;

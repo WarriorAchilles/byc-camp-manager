@@ -266,9 +266,8 @@ model ChurchAuditLog {
 model AgeGroupBracket {
   id         String  @id @default(uuid())
   campYearId String  @map("camp_year_id")
-  label      String
   minAge     Int     @map("min_age")
-  maxAge     Int     @map("max_age")
+  maxAge     Int?    @map("max_age")
   sortOrder  Int     @map("sort_order")
   isActive   Boolean @default(true) @map("is_active")
 

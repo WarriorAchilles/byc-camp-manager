@@ -58,9 +58,8 @@ const campYearDeleteBody = z.object({
 });
 
 const ageBracketCreateBody = z.object({
-  label: z.string().min(1),
   minAge: z.number().int().min(0).max(120),
-  maxAge: z.number().int().min(0).max(120),
+  maxAge: z.number().int().min(0).max(120).nullable().optional(),
   sortOrder: z.number().int(),
   isActive: z.boolean().optional(),
 });
@@ -265,16 +264,16 @@ ageBracketRouter.post("/", requireRole(AdminRole.super_admin), async (req: Authe
     res.status(404).json({ error: "Camp year not found" });
     return;
   }
-  if (parsed.data.minAge > parsed.data.maxAge) {
+  if (parsed.data.maxAge !== null && parsed.data.maxAge !== undefined &&
+      parsed.data.minAge > parsed.data.maxAge) {
     res.status(400).json({ error: "minAge cannot exceed maxAge" });
     return;
   }
   const created = await prisma.ageGroupBracket.create({
     data: {
       campYearId,
-      label: parsed.data.label.trim(),
       minAge: parsed.data.minAge,
-      maxAge: parsed.data.maxAge,
+      maxAge: parsed.data.maxAge ?? null,
       sortOrder: parsed.data.sortOrder,
       isActive: parsed.data.isActive ?? true,
     },
@@ -307,8 +306,8 @@ ageBracketRouter.patch("/:bracketId", requireRole(AdminRole.super_admin), async 
   }
 
   const minAge = parsed.data.minAge ?? existing.minAge;
-  const maxAge = parsed.data.maxAge ?? existing.maxAge;
-  if (minAge > maxAge) {
+  const maxAge = parsed.data.maxAge === undefined ? existing.maxAge : parsed.data.maxAge;
+  if (maxAge !== null && minAge > maxAge) {
     res.status(400).json({ error: "minAge cannot exceed maxAge" });
     return;
   }
@@ -316,7 +315,6 @@ ageBracketRouter.patch("/:bracketId", requireRole(AdminRole.super_admin), async 
   const updated = await prisma.ageGroupBracket.update({
     where: { id: bracketId },
     data: {
-      ...(parsed.data.label !== undefined ? { label: parsed.data.label.trim() } : {}),
       ...(parsed.data.minAge !== undefined ? { minAge: parsed.data.minAge } : {}),
       ...(parsed.data.maxAge !== undefined ? { maxAge: parsed.data.maxAge } : {}),
       ...(parsed.data.sortOrder !== undefined ? { sortOrder: parsed.data.sortOrder } : {}),
@@ -453,7 +451,7 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       };
     });
 
-    let ageBracketFilter: { minAge: number; maxAge: number } | null = null;
+    let ageBracketFilter: { minAge: number; maxAge: number | null } | null = null;
     if (rosterFilters.ageGroupBracketId) {
       const bracket = await prisma.ageGroupBracket.findFirst({
         where: { id: rosterFilters.ageGroupBracketId, campYearId },
@@ -472,7 +470,9 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       if (rosterFilters.gender && row.gender !== rosterFilters.gender) {
         return false;
       }
-      if (ageBracketFilter && (row.age < ageBracketFilter.minAge || row.age > ageBracketFilter.maxAge)) {
+      if (ageBracketFilter &&
+          (row.age < ageBracketFilter.minAge ||
+           (ageBracketFilter.maxAge !== null && row.age > ageBracketFilter.maxAge))) {
         return false;
       }
       return true;

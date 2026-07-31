@@ -233,4 +233,10 @@ describe("dormAssignmentCore", () => {
     expect(ageFitsBracket(17, 13, 17)).toBe(true);
     expect(ageFitsBracket(12, 13, 17)).toBe(false);
   });
+
+  it("treats a missing maximum as no upper age limit", () => {
+    expect(ageFitsBracket(18, 18, null)).toBe(true);
+    expect(ageFitsBracket(120, 18, null)).toBe(true);
+    expect(ageFitsBracket(17, 18, null)).toBe(false);
+  });
 });

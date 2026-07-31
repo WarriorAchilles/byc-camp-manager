@@ -287,7 +287,7 @@ Adult dorm leaders complete a dedicated public registration form. The field cont
 | How long faithfully serving the Lord | Yes | Long text. |
 | Church presently attending | Yes | |
 | Pastor name and pastor phone | Yes | |
-| Preferred age group | Yes | Suggested from active camp-year age groups while allowing the leader to enter the historical label used by camp. |
+| Preferred age group | Yes | Suggested as age ranges derived from the active camp-year age groups while still allowing free text for historical values. |
 | T-shirt size | No | Same size options and separate-purchase guidance as worker registration. |
 
 Each successful submission creates a **Dorm Leader** record with online-registration provenance so the leader is immediately available to admin people, dorm assignment, and check-in workflows. Submission keys make safe retries idempotent. A likely duplicate email or matching name and phone is rejected without overwriting the existing leader.
@@ -364,7 +364,7 @@ Super admins can configure the following camp-wide settings:
 - **Registration fee schedule** - early vs. late **base** rate for 1st–2nd camper (e.g. $165 / $180), **cutover date/time** (e.g. June 10), and **3rd+ child** rate (e.g. $90); see [Multi-Child Discounts and Early / Late Pricing](#multi-child-discounts-and-early--late-pricing)
 - **Discount tiers** - legacy model is “2 full tiers + reduced 3rd+”; amounts are configurable
 - **Merchandise catalog** - items available for pre-order, with names, prices, and options (sizes, colors, etc.). **TBD: Specific items and pricing.**
-- **Age group definitions** - named age brackets (each with min/max age or equivalent rules) used for **camper** dorm assignment and reporting (e.g., "Juniors: 7-9", "Teens: 13-15"). Super admins create, edit, reorder, and deactivate brackets per camp year; the product may ship with **sensible defaults** in seed data or migrations, but the live list is always admin-owned—no stakeholder sign-off is required to “freeze” age bands before build.
+- **Age group definitions** - unlabeled age brackets with a required minimum age and an optional maximum age, used for **camper** dorm assignment and reporting. A bracket without a maximum has no upper age limit (for example, `18+`). Super admins create, edit, reorder, and deactivate brackets per camp year; the product may ship with **sensible defaults** in seed data or migrations, but the live list is always admin-owned—no stakeholder sign-off is required to “freeze” age bands before build.
 
 ### People in the System
 

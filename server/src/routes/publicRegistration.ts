@@ -1096,9 +1096,11 @@ publicRegistrationRouter.get("/leader/form-options", async (_req, res, next) => 
     const ageGroupOptions = activeCampYearId
       ? (await prisma.ageGroupBracket.findMany({
           where: { campYearId: activeCampYearId, isActive: true },
-          select: { label: true },
+          select: { minAge: true, maxAge: true },
           orderBy: { sortOrder: "asc" },
-        })).map((bracket) => bracket.label)
+        })).map((bracket) =>
+          bracket.maxAge === null ? `${bracket.minAge}+` : `${bracket.minAge}-${bracket.maxAge}`,
+        )
       : [];
     res.setHeader("Cache-Control", "no-store");
     res.json({
