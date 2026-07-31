@@ -14,6 +14,7 @@ import { SelfCheckInQrPage } from "./pages/SelfCheckInQrPage";
 import { UsersAdminPage } from "./pages/UsersAdminPage";
 import { PublicRegistrationPage } from "./pages/PublicRegistrationPage";
 import { ChurchDirectoryPage } from "./pages/ChurchDirectoryPage";
+import { CamperConsentPage } from "./pages/CamperConsentPage";
 import { resolveBrowserSurface } from "./publicSurface";
 
 function FullPageAuthLoading(): React.ReactElement {
@@ -93,6 +94,10 @@ export function App(): React.ReactElement {
             }
           />
           <Route path="people" element={<PeoplePage />} />
+          <Route
+            path="camp-years/:campYearId/campers/:camperId/consent"
+            element={<CamperConsentPage />}
+          />
           <Route
             path="people/add"
             element={

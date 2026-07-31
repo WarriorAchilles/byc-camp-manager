@@ -114,11 +114,25 @@ router.get("/", async (req: AuthedRequest, res) => {
     include: {
       church: { select: { id: true, name: true, pastorName: true } },
       photo: { select: { camperId: true } },
+      familyRegistration: {
+        select: {
+          agreementTextSnapshot: true,
+          signatureData: true,
+          legalAcknowledged: true,
+          signedAt: true,
+        },
+      },
     },
   });
-  res.json({ campers: campers.map(({ photo, ...camper }) => ({
+  res.json({ campers: campers.map(({ photo, familyRegistration, ...camper }) => ({
     ...camper,
     hasPhoto: photo !== null,
+    hasESignatureConfirmation: Boolean(
+      familyRegistration?.agreementTextSnapshot
+      && familyRegistration.signatureData
+      && familyRegistration.legalAcknowledged
+      && familyRegistration.signedAt,
+    ),
     submittedChurchName: camper.churchName,
     submittedPastorName: camper.pastorName,
     churchName: camper.church?.name ?? camper.churchName,
@@ -334,6 +348,105 @@ router.get("/:camperId/photo", async (req: AuthedRequest, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Last-Modified", photo.updatedAt.toUTCString());
   res.send(Buffer.from(photo.data));
+});
+
+router.get("/:camperId/consent", async (req: AuthedRequest, res) => {
+  const campYearId = campYearIdFromParams(req.params.campYearId, res);
+  if (!campYearId) {
+    return;
+  }
+  const camperId = pathParam(req.params.camperId);
+  if (!camperId || !z.string().uuid().safeParse(camperId).success) {
+    res.status(400).json({ error: "Invalid camper id" });
+    return;
+  }
+
+  const camper = await prisma.camper.findFirst({
+    where: {
+      id: camperId,
+      campYearId,
+      archivedAt: null,
+      familyRegistration: { state: "confirmed" },
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      dateOfBirth: true,
+      campYear: {
+        select: {
+          id: true,
+          name: true,
+          yearLabel: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      familyRegistration: {
+        select: {
+          id: true,
+          guardianName: true,
+          guardianEmail: true,
+          guardianPhone: true,
+          guardianRelationship: true,
+          agreementVersion: true,
+          agreementTextSnapshot: true,
+          signatureMethod: true,
+          signatureData: true,
+          legalAcknowledged: true,
+          signedAt: true,
+          requestIp: true,
+          campers: {
+            orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              dateOfBirth: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const registration = camper?.familyRegistration;
+  if (
+    !camper
+    || !registration?.agreementTextSnapshot
+    || !registration.signatureMethod
+    || !registration.signatureData
+    || !registration.legalAcknowledged
+    || !registration.signedAt
+  ) {
+    res.status(404).json({ error: "No e-signature confirmation is available for this camper" });
+    return;
+  }
+
+  res.json({
+    camper: {
+      id: camper.id,
+      firstName: camper.firstName,
+      lastName: camper.lastName,
+      dateOfBirth: camper.dateOfBirth,
+    },
+    campYear: camper.campYear,
+    consent: {
+      registrationId: registration.id,
+      signerName: registration.signatureData,
+      signerRelationship: registration.guardianRelationship,
+      contactName: registration.guardianName,
+      contactEmail: registration.guardianEmail,
+      contactPhone: registration.guardianPhone,
+      signatureMethod: registration.signatureMethod,
+      legalAcknowledged: registration.legalAcknowledged,
+      signedAt: registration.signedAt,
+      requestIp: registration.requestIp,
+      agreementVersion: registration.agreementVersion,
+      agreementText: registration.agreementTextSnapshot,
+      coveredCampers: registration.campers,
+    },
+  });
 });
 
 router.get("/:camperId", async (req: AuthedRequest, res) => {

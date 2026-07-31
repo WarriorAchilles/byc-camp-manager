@@ -293,6 +293,127 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(photo.body).toEqual(jpeg);
   });
 
+  it("lets camp admins view the stored e-signature confirmation for a camper", async () => {
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const registration = await prisma.familyRegistration.create({
+      data: {
+        campYearId,
+        state: "confirmed",
+        guardianName: "Jamie Guardian",
+        guardianEmail: "jamie@example.test",
+        guardianPhone: "5551234567",
+        guardianRelationship: "Parent",
+        agreementVersion: "medical-2099.1",
+        agreementTextSnapshot: "Stored medical release text.\n\nCovered campers: Signed Camper, Sibling Camper",
+        signatureMethod: "typed",
+        signatureData: "Jamie Guardian",
+        legalAcknowledged: true,
+        signedAt: new Date("2099-01-15T20:30:00.000Z"),
+        requestIp: "203.0.113.10",
+        confirmedAt: new Date("2099-01-15T20:35:00.000Z"),
+        campers: {
+          create: [
+            {
+              campYearId,
+              firstName: "Signed",
+              lastName: "Camper",
+              dateOfBirth: new Date("2012-05-01T12:00:00.000Z"),
+              gender: Gender.male,
+              guardianName: "Jamie Guardian",
+              guardianEmail: "jamie@example.test",
+              guardianPhone: "5551234567",
+              paymentStatus: CamperPaymentStatus.paid_cash,
+              medicalReleaseSigned: true,
+              importSource: "online_registration",
+            },
+            {
+              campYearId,
+              firstName: "Sibling",
+              lastName: "Camper",
+              dateOfBirth: new Date("2014-06-02T12:00:00.000Z"),
+              gender: Gender.female,
+              guardianName: "Jamie Guardian",
+              guardianEmail: "jamie@example.test",
+              guardianPhone: "5551234567",
+              paymentStatus: CamperPaymentStatus.paid_cash,
+              medicalReleaseSigned: true,
+              importSource: "online_registration",
+            },
+          ],
+        },
+      },
+      include: { campers: { orderBy: { firstName: "asc" } } },
+    });
+    const camper = registration.campers.find((row) => row.firstName === "Signed");
+    expect(camper).toBeDefined();
+    const token = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+    const consentPath =
+      `/api/admin/camp-years/${campYearId}/campers/${camper!.id}/consent`;
+
+    expect((await request(app).get(consentPath)).status).toBe(401);
+
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${token}`);
+    const listedCamper = listed.body.campers.find((row: { id: string }) => row.id === camper!.id);
+    expect(listedCamper).toMatchObject({ hasESignatureConfirmation: true });
+    expect(listedCamper).not.toHaveProperty("signatureData");
+    expect(listedCamper).not.toHaveProperty("familyRegistration");
+
+    const response = await request(app)
+      .get(consentPath)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.camper).toMatchObject({
+      id: camper!.id,
+      firstName: "Signed",
+      lastName: "Camper",
+    });
+    expect(response.body.campYear).toMatchObject({
+      id: campYearId,
+      name: "Integration Camp",
+      yearLabel: "2099",
+    });
+    expect(response.body.consent).toMatchObject({
+      registrationId: registration.id,
+      signerName: "Jamie Guardian",
+      signerRelationship: "Parent",
+      signatureMethod: "typed",
+      legalAcknowledged: true,
+      requestIp: "203.0.113.10",
+      agreementVersion: "medical-2099.1",
+      agreementText: "Stored medical release text.\n\nCovered campers: Signed Camper, Sibling Camper",
+    });
+    expect(response.body.consent.coveredCampers).toHaveLength(2);
+  });
+
+  it("reports when a camper has no stored e-signature confirmation", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${signAuthToken({ sub: superAdmin.id, role: superAdmin.role })}`)
+      .send(camperPayload());
+    const token = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
+
+    const listed = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(listed.body.campers[0]).toMatchObject({
+      id: created.body.id,
+      hasESignatureConfirmation: false,
+    });
+
+    const response = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers/${created.body.id}/consent`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe(
+      "No e-signature confirmation is available for this camper",
+    );
+  });
+
   it("allows only super admins to delete workers and dorm leaders", async () => {
     const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const campAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: campAdminUsername } });

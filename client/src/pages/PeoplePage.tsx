@@ -31,6 +31,7 @@ type CamperRow = {
   feeDueCents: number | null;
   feePaidCents: number | null;
   hasPhoto: boolean;
+  hasESignatureConfirmation: boolean;
   churchId: string | null;
   churchName: string | null;
   pastorName: string | null;
@@ -1295,6 +1296,16 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                               ? "Mark paid"
                               : "Mark unpaid"}
                         </button>
+                        {camper.hasESignatureConfirmation ? (
+                          <Link
+                            className="btn secondary"
+                            to={`/admin/camp-years/${campYearId}/campers/${camper.id}/consent`}
+                          >
+                            View consent
+                          </Link>
+                        ) : (
+                          <span className="muted">No e-signature</span>
+                        )}
                         {superAdmin ? (
                           <button
                             type="button"

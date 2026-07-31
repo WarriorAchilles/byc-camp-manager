@@ -143,6 +143,7 @@ The parent adds one or more campers. For each camper, collect at least the field
 - Parent/guardian provides a **digital legal signature** (typed full name + checkbox acknowledgment, or drawn signature via signature pad).
 - Adult self-registrants receive and sign an adult-specific authorization that identifies them as the camper and does not assert that they are a parent or legal guardian.
 - Timestamp and IP address recorded for legal purposes.
+- Camp admins can view and print an e-signature confirmation from a camper's admin record. The confirmation uses the exact stored agreement snapshot and includes the covered camper(s), signer, acknowledgment, signature method, signing timestamp, agreement version, and recorded request IP so staff can provide proof of consent to a medical provider when needed.
 
 #### Step 4 - Merchandise Pre-Order (Optional)
 
