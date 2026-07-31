@@ -27,6 +27,7 @@ const campYearCreateBody = z.object({
   yearLabel: z.string().min(1),
   startDate: isoDateString,
   endDate: isoDateString,
+  copyFromCampYearId: z.string().uuid().nullable().optional(),
   camperCapacity: z.number().int().positive().nullable().optional(),
   familyRegistrationOpensAt: z.string().datetime().nullable().optional(),
   familyRegistrationClosesAt: z.string().datetime().nullable().optional(),
@@ -51,7 +52,7 @@ const campYearCreateBody = z.object({
   checkInConfirmationEmailsEnabled: z.boolean().optional(),
 });
 
-const campYearPatchBody = campYearCreateBody.partial();
+const campYearPatchBody = campYearCreateBody.omit({ copyFromCampYearId: true }).partial();
 
 const campYearDeleteBody = z.object({
   confirmationLabel: z.string(),
@@ -134,35 +135,101 @@ adminCampYearsRouter.post(
       res.status(400).json({ error: "Registration close time must be after open time" });
       return;
     }
-    const created = await prisma.campYear.create({
-      data: {
-        name: parsed.data.name.trim(),
-        yearLabel: parsed.data.yearLabel.trim(),
-        startDate: start,
-        endDate: end,
-        camperCapacity: parsed.data.camperCapacity ?? null,
-        familyRegistrationOpensAt: familyOpensAt,
-        familyRegistrationClosesAt: familyClosesAt,
-        familyRegistrationEnabled: parsed.data.familyRegistrationEnabled ?? false,
-        ...(parsed.data.familyRegistrationHeaderContent ? { familyRegistrationHeaderContent: parsed.data.familyRegistrationHeaderContent } : {}),
-        ...(parsed.data.familyRegistrationClosedMessage ? { familyRegistrationClosedMessage: parsed.data.familyRegistrationClosedMessage } : {}),
-        workerRegistrationOpensAt: workerOpensAt,
-        workerRegistrationClosesAt: workerClosesAt,
-        workerRegistrationEnabled: parsed.data.workerRegistrationEnabled ?? false,
-        ...(parsed.data.workerRegistrationHeaderContent ? { workerRegistrationHeaderContent: parsed.data.workerRegistrationHeaderContent } : {}),
-        ...(parsed.data.workerRegistrationClosedMessage ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage } : {}),
-        leaderRegistrationOpensAt: leaderOpensAt,
-        leaderRegistrationClosesAt: leaderClosesAt,
-        leaderRegistrationEnabled: parsed.data.leaderRegistrationEnabled ?? false,
-        ...(parsed.data.leaderRegistrationHeaderContent ? { leaderRegistrationHeaderContent: parsed.data.leaderRegistrationHeaderContent } : {}),
-        ...(parsed.data.leaderRegistrationClosedMessage ? { leaderRegistrationClosedMessage: parsed.data.leaderRegistrationClosedMessage } : {}),
-        feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null,
-        earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
-        lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
-        thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents ?? null,
-        checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled ?? false,
-        checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
-      },
+    const copySource = parsed.data.copyFromCampYearId
+      ? await prisma.campYear.findUnique({
+          where: { id: parsed.data.copyFromCampYearId },
+          select: {
+            ageGroupBrackets: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                minAge: true,
+                maxAge: true,
+                sortOrder: true,
+                isActive: true,
+              },
+            },
+            dorms: {
+              select: {
+                name: true,
+                purpose: true,
+                genderDesignation: true,
+                bedCapacity: true,
+                ageGroupBracketId: true,
+              },
+            },
+          },
+        })
+      : null;
+    if (parsed.data.copyFromCampYearId && !copySource) {
+      res.status(400).json({ error: "Source camp year not found" });
+      return;
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const campYear = await tx.campYear.create({
+        data: {
+          name: parsed.data.name.trim(),
+          yearLabel: parsed.data.yearLabel.trim(),
+          startDate: start,
+          endDate: end,
+          camperCapacity: parsed.data.camperCapacity ?? null,
+          familyRegistrationOpensAt: familyOpensAt,
+          familyRegistrationClosesAt: familyClosesAt,
+          familyRegistrationEnabled: parsed.data.familyRegistrationEnabled ?? false,
+          ...(parsed.data.familyRegistrationHeaderContent ? { familyRegistrationHeaderContent: parsed.data.familyRegistrationHeaderContent } : {}),
+          ...(parsed.data.familyRegistrationClosedMessage ? { familyRegistrationClosedMessage: parsed.data.familyRegistrationClosedMessage } : {}),
+          workerRegistrationOpensAt: workerOpensAt,
+          workerRegistrationClosesAt: workerClosesAt,
+          workerRegistrationEnabled: parsed.data.workerRegistrationEnabled ?? false,
+          ...(parsed.data.workerRegistrationHeaderContent ? { workerRegistrationHeaderContent: parsed.data.workerRegistrationHeaderContent } : {}),
+          ...(parsed.data.workerRegistrationClosedMessage ? { workerRegistrationClosedMessage: parsed.data.workerRegistrationClosedMessage } : {}),
+          leaderRegistrationOpensAt: leaderOpensAt,
+          leaderRegistrationClosesAt: leaderClosesAt,
+          leaderRegistrationEnabled: parsed.data.leaderRegistrationEnabled ?? false,
+          ...(parsed.data.leaderRegistrationHeaderContent ? { leaderRegistrationHeaderContent: parsed.data.leaderRegistrationHeaderContent } : {}),
+          ...(parsed.data.leaderRegistrationClosedMessage ? { leaderRegistrationClosedMessage: parsed.data.leaderRegistrationClosedMessage } : {}),
+          feeCutoverAt: parsed.data.feeCutoverAt ? new Date(parsed.data.feeCutoverAt) : null,
+          earlyCamperFeeCents: parsed.data.earlyCamperFeeCents ?? null,
+          lateCamperFeeCents: parsed.data.lateCamperFeeCents ?? null,
+          thirdPlusCamperFeeCents: parsed.data.thirdPlusCamperFeeCents ?? null,
+          checkInFamilyPaymentOptionEnabled: parsed.data.checkInFamilyPaymentOptionEnabled ?? false,
+          checkInConfirmationEmailsEnabled: parsed.data.checkInConfirmationEmailsEnabled ?? false,
+        },
+      });
+
+      if (copySource) {
+        const copiedBracketIds = new Map<string, string>();
+        for (const sourceBracket of copySource.ageGroupBrackets) {
+          const copiedBracket = await tx.ageGroupBracket.create({
+            data: {
+              campYearId: campYear.id,
+              minAge: sourceBracket.minAge,
+              maxAge: sourceBracket.maxAge,
+              sortOrder: sourceBracket.sortOrder,
+              isActive: sourceBracket.isActive,
+            },
+          });
+          copiedBracketIds.set(sourceBracket.id, copiedBracket.id);
+        }
+
+        if (copySource.dorms.length > 0) {
+          await tx.dorm.createMany({
+            data: copySource.dorms.map((sourceDorm) => ({
+              campYearId: campYear.id,
+              name: sourceDorm.name,
+              purpose: sourceDorm.purpose,
+              genderDesignation: sourceDorm.genderDesignation,
+              bedCapacity: sourceDorm.bedCapacity,
+              ageGroupBracketId: sourceDorm.ageGroupBracketId
+                ? copiedBracketIds.get(sourceDorm.ageGroupBracketId) ?? null
+                : null,
+            })),
+          });
+        }
+      }
+
+      return campYear;
     });
     res.status(201).json(created);
   },

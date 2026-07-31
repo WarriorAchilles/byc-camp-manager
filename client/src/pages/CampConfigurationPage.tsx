@@ -75,6 +75,11 @@ export function CampConfigurationPage(): React.ReactElement {
   const [createEnd, setCreateEnd] = useState("2026-07-07");
   const [createCapacity, setCreateCapacity] = useState("");
   const [showCreateCampYearForm, setShowCreateCampYearForm] = useState(false);
+  const [showCopyCampYearDialog, setShowCopyCampYearDialog] = useState(false);
+  const [copySourceCampYearId, setCopySourceCampYearId] = useState("");
+  const [creatingCampYear, setCreatingCampYear] = useState(false);
+  const [createCampYearError, setCreateCampYearError] = useState<string | null>(null);
+  const copySourceSelectRef = useRef<HTMLSelectElement | null>(null);
 
   const [ageBrackets, setAgeBrackets] = useState<AgeGroupBracket[]>([]);
   const [ageBracketsLoading, setAgeBracketsLoading] = useState(false);
@@ -337,8 +342,22 @@ export function CampConfigurationPage(): React.ReactElement {
       setError("Capacity must be a positive integer or blank.");
       return;
     }
+    setCopySourceCampYearId(selectedId ?? campYears[0]?.id ?? "");
+    setCreateCampYearError(null);
+    setShowCopyCampYearDialog(true);
+  };
+
+  const createCampYear = async (copyFromCampYearId: string | null): Promise<void> => {
+    if (!superAdmin || creatingCampYear) {
+      return;
+    }
+    const capacityRaw = createCapacity.trim();
+    const capacityParsed =
+      capacityRaw === "" ? null : Number.parseInt(capacityRaw, 10);
+    setCreateCampYearError(null);
+    setCreatingCampYear(true);
     try {
-      await apiJson<CampYearRow>("/api/admin/camp-years", {
+      const created = await apiJson<CampYearRow>("/api/admin/camp-years", {
         method: "POST",
         body: JSON.stringify({
           name: createName.trim(),
@@ -346,16 +365,42 @@ export function CampConfigurationPage(): React.ReactElement {
           startDate: createStart,
           endDate: createEnd,
           camperCapacity: capacityParsed,
+          copyFromCampYearId,
         }),
       });
+      setSelectedId(created.id);
       await load();
       setShowCreateCampYearForm(false);
+      setShowCopyCampYearDialog(false);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Could not create camp year.";
-      setError(message);
+      setCreateCampYearError(message);
+    } finally {
+      setCreatingCampYear(false);
     }
   };
+
+  const closeCopyCampYearDialog = useCallback((): void => {
+    if (!creatingCampYear) {
+      setShowCopyCampYearDialog(false);
+      setCreateCampYearError(null);
+    }
+  }, [creatingCampYear]);
+
+  useEffect(() => {
+    if (!showCopyCampYearDialog) {
+      return;
+    }
+    copySourceSelectRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closeCopyCampYearDialog();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeCopyCampYearDialog, showCopyCampYearDialog]);
 
   const handlePatch = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -1089,6 +1134,88 @@ export function CampConfigurationPage(): React.ReactElement {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {showCopyCampYearDialog ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCopyCampYearDialog();
+            }
+          }}
+        >
+          <form
+            className="card stack modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="copy-camp-year-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (copySourceCampYearId) {
+                void createCampYear(copySourceCampYearId);
+              }
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="copy-camp-year-title" style={{ marginTop: 0 }}>
+              Copy dorms and age groups?
+            </h2>
+            <p style={{ margin: 0 }}>
+              You can start {createName.trim()} ({createYearLabel.trim()}) with the dorm and age-group
+              configuration from an existing camp year.
+            </p>
+            <label className="stack">
+              Copy configuration from
+              <select
+                ref={copySourceSelectRef}
+                value={copySourceCampYearId}
+                disabled={campYears.length === 0 || creatingCampYear}
+                onChange={(event) => setCopySourceCampYearId(event.target.value)}
+              >
+                {campYears.length === 0 ? (
+                  <option value="">No existing camp years</option>
+                ) : null}
+                {campYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name} ({year.yearLabel})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted" style={{ margin: 0 }}>
+              Only dorm settings and age groups are copied. Camper, worker, and dorm-leader
+              assignments are not copied.
+            </p>
+            {createCampYearError ? <p className="error">{createCampYearError}</p> : null}
+            <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={creatingCampYear}
+                onClick={closeCopyCampYearDialog}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={creatingCampYear}
+                onClick={() => void createCampYear(null)}
+              >
+                Create without copying
+              </button>
+              <button
+                type="submit"
+                className="btn"
+                disabled={!copySourceCampYearId || creatingCampYear}
+              >
+                {creatingCampYear ? "Creating…" : "Copy and create"}
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 

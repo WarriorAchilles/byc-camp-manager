@@ -652,6 +652,136 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(created.body).not.toHaveProperty("checkInCamperQrScanEnabled");
     expect(created.body.checkInFamilyPaymentOptionEnabled).toBe(false);
     expect(created.body.checkInConfirmationEmailsEnabled).toBe(false);
+    expect(await prisma.ageGroupBracket.count({ where: { campYearId: created.body.id } })).toBe(0);
+    expect(await prisma.dorm.count({ where: { campYearId: created.body.id } })).toBe(0);
+  });
+
+  it("copies dorms and age groups into a new camp year without copying assignments", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const secondBracket = await prisma.ageGroupBracket.create({
+      data: {
+        campYearId,
+        minAge: 18,
+        maxAge: null,
+        sortOrder: 2,
+        isActive: false,
+      },
+    });
+    const workerDorm = await prisma.dorm.create({
+      data: {
+        campYearId,
+        name: "Staff Lodge",
+        purpose: "worker",
+        genderDesignation: "co_ed",
+        bedCapacity: 12,
+      },
+    });
+
+    const camper = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/campers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send(camperPayload());
+    expect(camper.status).toBe(201);
+    const worker = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/workers`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ ...workerPayload(), dormId: workerDorm.id });
+    expect(worker.status).toBe(201);
+    const leader = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorm-leaders`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        firstName: "Dorm",
+        lastName: "Leader",
+        gender: Gender.male,
+        email: "copy-test-leader@example.com",
+        phone: "5555550199",
+        assignedCamperDormId: camperDormId,
+      });
+    expect(leader.status).toBe(201);
+
+    const created = await request(app)
+      .post("/api/admin/camp-years")
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        name: "Copied Configuration Camp",
+        yearLabel: "2101",
+        startDate: "2101-07-01",
+        endDate: "2101-07-07",
+        copyFromCampYearId: campYearId,
+      });
+
+    expect(created.status).toBe(201);
+    const copiedBrackets = await prisma.ageGroupBracket.findMany({
+      where: { campYearId: created.body.id },
+      orderBy: { sortOrder: "asc" },
+    });
+    expect(copiedBrackets).toHaveLength(2);
+    expect(copiedBrackets.map(({ minAge, maxAge, sortOrder, isActive }) => ({
+      minAge,
+      maxAge,
+      sortOrder,
+      isActive,
+    }))).toEqual([
+      { minAge: 13, maxAge: 17, sortOrder: 1, isActive: true },
+      { minAge: 18, maxAge: null, sortOrder: 2, isActive: false },
+    ]);
+    expect(copiedBrackets.map((bracket) => bracket.id)).not.toContain(secondBracket.id);
+
+    const copiedDorms = await prisma.dorm.findMany({
+      where: { campYearId: created.body.id },
+      orderBy: { name: "asc" },
+    });
+    expect(copiedDorms).toHaveLength(2);
+    expect(copiedDorms.map((dorm) => ({
+      name: dorm.name,
+      purpose: dorm.purpose,
+      genderDesignation: dorm.genderDesignation,
+      bedCapacity: dorm.bedCapacity,
+      ageGroupBracketId: dorm.ageGroupBracketId,
+    }))).toEqual([
+      {
+        name: "Staff Lodge",
+        purpose: "worker",
+        genderDesignation: "co_ed",
+        bedCapacity: 12,
+        ageGroupBracketId: null,
+      },
+      {
+        name: "Test Cabin",
+        purpose: "camper",
+        genderDesignation: "boys",
+        bedCapacity: 20,
+        ageGroupBracketId: copiedBrackets[0]?.id,
+      },
+    ]);
+    expect(copiedDorms.map((dorm) => dorm.id)).not.toContain(camperDormId);
+    expect(copiedDorms.map((dorm) => dorm.id)).not.toContain(workerDorm.id);
+    expect(await prisma.camper.count({ where: { campYearId: created.body.id } })).toBe(0);
+    expect(await prisma.worker.count({ where: { campYearId: created.body.id } })).toBe(0);
+    expect(await prisma.dormLeader.count({ where: { campYearId: created.body.id } })).toBe(0);
+  });
+
+  it("rejects an unknown camp year as a copy source without creating a year", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+    const countBefore = await prisma.campYear.count();
+
+    const created = await request(app)
+      .post("/api/admin/camp-years")
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        name: "Invalid Copy Camp",
+        yearLabel: "2102",
+        startDate: "2102-07-01",
+        endDate: "2102-07-07",
+        copyFromCampYearId: "00000000-0000-4000-8000-000000000000",
+      });
+
+    expect(created.status).toBe(400);
+    expect(created.body.error).toBe("Source camp year not found");
+    expect(await prisma.campYear.count()).toBe(countBefore);
   });
 
   it("creates age groups without labels or a maximum age", async () => {
