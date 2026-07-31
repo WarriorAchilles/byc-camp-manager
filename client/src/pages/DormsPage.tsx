@@ -82,6 +82,19 @@ function isBoardCamperDorm(
   return "dormLeaders" in dorm;
 }
 
+function dormTypePresentation(dorm: DormRow): {
+  className: "dorm-card--boys" | "dorm-card--girls" | "dorm-card--worker";
+  label: string;
+} {
+  if (dorm.purpose === "worker") {
+    return { className: "dorm-card--worker", label: "Worker dorm" };
+  }
+  if (dorm.genderDesignation === "girls") {
+    return { className: "dorm-card--girls", label: "Girls dorm" };
+  }
+  return { className: "dorm-card--boys", label: "Boys dorm" };
+}
+
 function boardCapacityForPerson(
   dorm: BoardDormCamper | BoardDormWorker,
   kind: "camper" | "dorm_leader" | "worker",
@@ -1378,10 +1391,17 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                 {visibleCamperDorms.length + visibleWorkerDorms.length === 0 ? <p className="dorm-empty dorm-grid-empty">No dorms match these filters.</p> : null}
                 {[...visibleCamperDorms, ...visibleWorkerDorms].map((dorm) => {
                   const isCamperDorm = isBoardCamperDorm(dorm);
+                  const dormType = dormTypePresentation(dorm);
                   const occupants: Array<{ kind: "camper"; person: BoardCamper } | { kind: "dorm_leader"; person: BoardDormLeader } | { kind: "worker"; person: BoardWorker }> = isCamperDorm ? [...dorm.campers.map((person) => ({ kind: "camper" as const, person })), ...dorm.dormLeaders.map((person) => ({ kind: "dorm_leader" as const, person })), ...dorm.workers.map((person) => ({ kind: "worker" as const, person }))] : dorm.workers.map((person) => ({ kind: "worker" as const, person }));
-                  return <article key={dorm.id} className="assign-column" onDragOver={(event) => handleDragOverBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })} onDrop={(event) => handleDropBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })}>
+                  return <article key={dorm.id} className={`assign-column dorm-card ${dormType.className}`} onDragOver={(event) => handleDragOverBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })} onDrop={(event) => handleDropBench(event, { dormPurpose: dorm.purpose, dormId: dorm.id })}>
                     <div className="dorm-card-header">
-                      <div><strong>{dorm.name}</strong><div className="dorm-card-meta">{dorm.genderDesignation} | {isCamperDorm ? "Camper" : "Worker"} dorm</div></div>
+                      <div className="dorm-card-heading">
+                        <strong className="dorm-card-title">{dorm.name}</strong>
+                        <div className="dorm-card-meta">
+                          <span className="dorm-type-badge">{dormType.label}</span>
+                          <span>{isCamperDorm ? "Camper housing" : dorm.genderDesignation === "co_ed" ? "Co-ed housing" : `${dorm.genderDesignation} housing`}</span>
+                        </div>
+                      </div>
                       {(superAdmin || isCamperDorm) ? <div className="dorm-card-menu-wrap">
                         <button type="button" className="dorm-menu-button" aria-label={`Actions for ${dorm.name}`} aria-expanded={openDormMenuId === dorm.id} aria-haspopup="true" onClick={(event) => { event.stopPropagation(); openDormMenuTriggerRef.current = event.currentTarget; setOpenDormMenuId(openDormMenuId === dorm.id ? null : dorm.id); }}>...</button>
                         {openDormMenuId === dorm.id ? <div className="dorm-card-menu" onClick={(event) => event.stopPropagation()}>
