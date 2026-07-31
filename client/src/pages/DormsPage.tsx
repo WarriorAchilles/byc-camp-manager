@@ -29,6 +29,8 @@ type DormRow = {
   purpose: "camper" | "worker";
   genderDesignation: "boys" | "girls" | "co_ed";
   bedCapacity: number;
+  camperCapacity: number;
+  leaderCapacity: number;
   ageGroupBracketId: string | null;
 };
 
@@ -78,6 +80,21 @@ function isBoardCamperDorm(
   dorm: BoardDormCamper | BoardDormWorker,
 ): dorm is BoardDormCamper {
   return "dormLeaders" in dorm;
+}
+
+function boardCapacityForPerson(
+  dorm: BoardDormCamper | BoardDormWorker,
+  kind: "camper" | "dorm_leader" | "worker",
+): string {
+  if (isBoardCamperDorm(dorm)) {
+    if (kind === "camper") {
+      return `${dorm.campers.length}/${dorm.camperCapacity} campers`;
+    }
+    if (kind === "dorm_leader") {
+      return `${dorm.dormLeaders.length}/${dorm.leaderCapacity} leaders`;
+    }
+  }
+  return `${dorm.occupantCount}/${dorm.bedCapacity} beds`;
 }
 type BoardPersonPaletteItem = (
   | { kind: "camper"; person: BoardCamper }
@@ -153,6 +170,8 @@ type RosterResponse = {
     purpose: string;
     genderDesignation: string;
     bedCapacity: number;
+    camperCapacity: number;
+    leaderCapacity: number;
     ageGroupBracket: AgeBracket | null;
   };
   occupantCount: number;
@@ -251,6 +270,8 @@ export function DormsPage(): React.ReactElement {
   const [newPurpose, setNewPurpose] = useState<"camper" | "worker">("camper");
   const [newGender, setNewGender] = useState<"boys" | "girls" | "co_ed">("boys");
   const [newCapacity, setNewCapacity] = useState("8");
+  const [newCamperCapacity, setNewCamperCapacity] = useState("8");
+  const [newLeaderCapacity, setNewLeaderCapacity] = useState("2");
   const [newBracketId, setNewBracketId] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -258,6 +279,8 @@ export function DormsPage(): React.ReactElement {
   const [editPurpose, setEditPurpose] = useState<"camper" | "worker">("camper");
   const [editGender, setEditGender] = useState<"boys" | "girls" | "co_ed">("boys");
   const [editCapacity, setEditCapacity] = useState("");
+  const [editCamperCapacity, setEditCamperCapacity] = useState("");
+  const [editLeaderCapacity, setEditLeaderCapacity] = useState("");
   const [editBracketId, setEditBracketId] = useState("");
   const [deletingDormId, setDeletingDormId] = useState<string | null>(null);
   const [dormToDelete, setDormToDelete] = useState<DormRow | null>(null);
@@ -442,8 +465,24 @@ export function DormsPage(): React.ReactElement {
     }
     setInventoryError(null);
     const capacityParsed = Number.parseInt(newCapacity, 10);
-    if (Number.isNaN(capacityParsed) || capacityParsed < 1) {
+    const camperCapacityParsed = Number.parseInt(newCamperCapacity, 10);
+    const leaderCapacityParsed = Number.parseInt(newLeaderCapacity, 10);
+    if (newPurpose === "worker" && (Number.isNaN(capacityParsed) || capacityParsed < 1)) {
       setInventoryError("Bed capacity must be a positive integer.");
+      return;
+    }
+    if (
+      newPurpose === "camper" &&
+      (Number.isNaN(camperCapacityParsed) || camperCapacityParsed < 1)
+    ) {
+      setInventoryError("Camper capacity must be a positive integer.");
+      return;
+    }
+    if (
+      newPurpose === "camper" &&
+      (Number.isNaN(leaderCapacityParsed) || leaderCapacityParsed < 0)
+    ) {
+      setInventoryError("Leader capacity must be zero or a positive integer.");
       return;
     }
     try {
@@ -453,13 +492,20 @@ export function DormsPage(): React.ReactElement {
           name: newName.trim(),
           purpose: newPurpose,
           genderDesignation: newGender,
-          bedCapacity: capacityParsed,
+          ...(newPurpose === "camper"
+            ? {
+                camperCapacity: camperCapacityParsed,
+                leaderCapacity: leaderCapacityParsed,
+              }
+            : { bedCapacity: capacityParsed }),
           ageGroupBracketId:
             newPurpose === "camper" && newBracketId ? newBracketId : null,
         }),
       });
       setNewName("");
       setNewCapacity("8");
+      setNewCamperCapacity("8");
+      setNewLeaderCapacity("2");
       setNewBracketId("");
       await loadInventory();
       await loadBoard();
@@ -476,6 +522,8 @@ export function DormsPage(): React.ReactElement {
     setEditPurpose(dorm.purpose);
     setEditGender(dorm.genderDesignation);
     setEditCapacity(String(dorm.bedCapacity));
+    setEditCamperCapacity(String(dorm.camperCapacity));
+    setEditLeaderCapacity(String(dorm.leaderCapacity));
     setEditBracketId(dorm.ageGroupBracketId ?? "");
   };
 
@@ -486,8 +534,24 @@ export function DormsPage(): React.ReactElement {
     }
     setInventoryError(null);
     const capacityParsed = Number.parseInt(editCapacity, 10);
-    if (Number.isNaN(capacityParsed) || capacityParsed < 1) {
+    const camperCapacityParsed = Number.parseInt(editCamperCapacity, 10);
+    const leaderCapacityParsed = Number.parseInt(editLeaderCapacity, 10);
+    if (editPurpose === "worker" && (Number.isNaN(capacityParsed) || capacityParsed < 1)) {
       setInventoryError("Bed capacity must be a positive integer.");
+      return;
+    }
+    if (
+      editPurpose === "camper" &&
+      (Number.isNaN(camperCapacityParsed) || camperCapacityParsed < 1)
+    ) {
+      setInventoryError("Camper capacity must be a positive integer.");
+      return;
+    }
+    if (
+      editPurpose === "camper" &&
+      (Number.isNaN(leaderCapacityParsed) || leaderCapacityParsed < 0)
+    ) {
+      setInventoryError("Leader capacity must be zero or a positive integer.");
       return;
     }
     try {
@@ -497,7 +561,12 @@ export function DormsPage(): React.ReactElement {
           name: editName.trim(),
           purpose: editPurpose,
           genderDesignation: editGender,
-          bedCapacity: capacityParsed,
+          ...(editPurpose === "camper"
+            ? {
+                camperCapacity: camperCapacityParsed,
+                leaderCapacity: leaderCapacityParsed,
+              }
+            : { bedCapacity: capacityParsed }),
           ageGroupBracketId:
             editPurpose === "camper" && editBracketId ? editBracketId : null,
         }),
@@ -962,16 +1031,41 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                   {genderOptionsForPurpose(newPurpose)}
                 </select>
               </label>
-              <label className="stack">
-                Bed capacity
-                <input
-                  type="number"
-                  min={1}
-                  value={newCapacity}
-                  onChange={(event) => setNewCapacity(event.target.value)}
-                  required
-                />
-              </label>
+              {newPurpose === "camper" ? (
+                <>
+                  <label className="stack">
+                    Camper capacity
+                    <input
+                      type="number"
+                      min={1}
+                      value={newCamperCapacity}
+                      onChange={(event) => setNewCamperCapacity(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="stack">
+                    Leader capacity
+                    <input
+                      type="number"
+                      min={0}
+                      value={newLeaderCapacity}
+                      onChange={(event) => setNewLeaderCapacity(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="stack">
+                  Bed capacity
+                  <input
+                    type="number"
+                    min={1}
+                    value={newCapacity}
+                    onChange={(event) => setNewCapacity(event.target.value)}
+                    required
+                  />
+                </label>
+              )}
               {newPurpose === "camper" ? (
                 <label className="stack">
                   Age group (for auto-assign; optional)
@@ -1022,16 +1116,41 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                   {genderOptionsForPurpose(editPurpose)}
                 </select>
               </label>
-              <label className="stack">
-                Bed capacity
-                <input
-                  type="number"
-                  min={1}
-                  value={editCapacity}
-                  onChange={(event) => setEditCapacity(event.target.value)}
-                  required
-                />
-              </label>
+              {editPurpose === "camper" ? (
+                <>
+                  <label className="stack">
+                    Camper capacity
+                    <input
+                      type="number"
+                      min={1}
+                      value={editCamperCapacity}
+                      onChange={(event) => setEditCamperCapacity(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="stack">
+                    Leader capacity
+                    <input
+                      type="number"
+                      min={0}
+                      value={editLeaderCapacity}
+                      onChange={(event) => setEditLeaderCapacity(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="stack">
+                  Bed capacity
+                  <input
+                    type="number"
+                    min={1}
+                    value={editCapacity}
+                    onChange={(event) => setEditCapacity(event.target.value)}
+                    required
+                  />
+                </label>
+              )}
               {editPurpose === "camper" ? (
                 <label className="stack">
                   Age group
@@ -1113,7 +1232,7 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                       <div className="assign-person-name">{person.firstName} {person.lastName}</div>
                       <div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kindLabel}</span><span>{detail}</span><span>{currentDormName ? `Assigned to ${currentDormName}` : "Unassigned"}</span></div>
                     </div>
-                    <label className="muted assign-move-label">Move to (keyboard)<select className="assign-move-select" value={currentDormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{targetDorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({dorm.occupantCount}/{dorm.bedCapacity})</option>)}</select></label>
+                    <label className="muted assign-move-label">Move to (keyboard)<select className="assign-move-select" value={currentDormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{targetDorms.map((dorm) => <option key={dorm.id} value={dorm.id}>{dorm.name} ({boardCapacityForPerson(dorm, kind)})</option>)}</select></label>
                   </div>;
                 })}
               </div>
@@ -1142,12 +1261,24 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
                         </div> : null}
                       </div> : null}
                     </div>
-                    <div className="dorm-capacity"><span>{dorm.occupantCount} assigned</span><strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong></div>
+                    <div className="dorm-capacity">
+                      {isCamperDorm ? (
+                        <>
+                          <span>{dorm.campers.length}/{dorm.camperCapacity} campers</span>
+                          <strong>{dorm.dormLeaders.length}/{dorm.leaderCapacity} leaders</strong>
+                        </>
+                      ) : (
+                        <>
+                          <span>{dorm.occupantCount} assigned</span>
+                          <strong>{dorm.occupantCount}/{dorm.bedCapacity}</strong>
+                        </>
+                      )}
+                    </div>
                     <div className="dorm-occupant-list">
                       {occupants.length === 0 ? <p className="dorm-empty">Drop {isCamperDorm ? "campers, workers, or dorm leaders" : "workers"} here.</p> : null}
                       {occupants.map(({ kind, person }) => <div key={`${kind}-${person.id}`} className="assign-person-row">
                         <div className="assign-person" draggable onDragStart={(event) => beginPersonDrag(event, kind, person.id)} onDragEnd={endPersonDrag}><div className="assign-person-name">{person.firstName} {person.lastName}</div><div className="assign-person-meta"><span className={`person-kind person-kind-${kind}`}>{kind === "dorm_leader" ? "Dorm leader" : kind === "camper" ? "Camper" : "Worker"}</span><span>{person.gender}</span></div></div>
-                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({target.occupantCount}/{target.bedCapacity})</option>)}</select></label>
+                        <label className="muted assign-move-label">Move to<select className="assign-move-select" value={kind === "dorm_leader" ? person.assignedCamperDormId ?? "" : person.dormId ?? ""} aria-label={`Move ${person.firstName} ${person.lastName}`} onChange={(event) => { const dormId = event.target.value || null; if (kind === "camper") requestCamperAssign(person.id, dormId); else void postAssign(kind, person.id, dormId); }}><option value="">Unassigned</option>{(kind === "worker" ? [...camperDorms, ...workerDorms] : camperDorms).map((target) => <option key={target.id} value={target.id}>{target.name} ({boardCapacityForPerson(target, kind)})</option>)}</select></label>
                       </div>)}
                     </div>
                   </article>;
@@ -1197,7 +1328,10 @@ const focusableSelector = "input:not([disabled]), select:not([disabled]), textar
           {roster ? (
             <div className="stack">
               <p className="muted" style={{ margin: 0 }}>
-                Capacity: {roster.occupantCount} / {roster.dorm.bedCapacity} beds · {roster.dorm.purpose} ·{" "}
+                {roster.dorm.purpose === "camper"
+                  ? `Capacity: ${roster.campers?.length ?? 0} / ${roster.dorm.camperCapacity} campers · ${roster.dormLeaders.length} / ${roster.dorm.leaderCapacity} leaders`
+                  : `Capacity: ${roster.occupantCount} / ${roster.dorm.bedCapacity} beds`}{" "}
+                · {roster.dorm.purpose} ·{" "}
                 {roster.dorm.genderDesignation}
                 {roster.dorm.ageGroupBracket
                   ? ` · Age group ${formatAgeGroupRange(roster.dorm.ageGroupBracket)}`

@@ -446,7 +446,7 @@ Super admins can create and configure dorms with the following properties:
   - **Camper dorms** - Always **single gender**: **Boys** or **Girls** only. Co-ed is not available for camper dorms.
   - **Worker dorms** - Configurable per dorm: **Boys**, **Girls**, or **Co-ed**. Co-ed supports married couples, families with young children, or any camp policy that allows mixed-gender worker housing; single-gender worker dorms are available when the camp prefers to separate by gender.
 - **Age group** - One of the configured age group brackets (**camper dorms only**; worker dorms do not use camper age brackets for assignment logic)
-- **Bed count / capacity** - Every assigned person consumes one bed, including each dorm leader assigned to a camper dorm.
+- **Capacity** - Camper dorms configure separate maximum counts for **campers** and **dorm leaders**; filling one role's quota does not reduce the other role's available slots. Worker dorms configure a single bed capacity.
 - **Assigned dorm leader(s)** (**camper dorms**; worker dorms do not need assigned leaders)
 
 ### Auto-Assignment
@@ -454,7 +454,7 @@ Super admins can create and configure dorms with the following properties:
 - When camper data is available (via registration or CSV import), the system can **auto-assign campers to camper dorms** based on:
   - Gender (must match the dorm's single-gender designation)
   - Age group (calculated from date of birth)
-- Auto-assignment fills dorms up to their bed capacity.
+- Auto-assignment fills camper dorms up to their camper capacity and worker dorms up to their bed capacity. Dorm leaders are assigned separately up to each camper dorm's leader capacity.
 - Workers are auto-assigned only to dorms with **purpose = Worker**. Workers are never auto-assigned into camper dorms, and campers are never auto-assigned into worker dorms.
 
 ### Manual Assignment (Drag and Drop)
@@ -462,7 +462,7 @@ Super admins can create and configure dorms with the following properties:
 - After auto-assignment (or at any time), camp admins can **manually reassign** people between dorms using a **drag-and-drop interface**.
 - The interface should display:
   - **Camper dorms** and **worker dorms** in clearly separated sections (or with explicit labels), each further grouped by gender designation as appropriate
-  - Each dorm showing its current occupants and remaining capacity
+  - Each camper dorm showing camper and dorm-leader usage against their separate capacities; worker dorms show total bed usage
   - An "unassigned" area for people not yet assigned to a dorm
 - Drag a person from one dorm to another, or from unassigned to a dorm. Valid targets depend on role: **campers** and **dorm leaders** only in **camper dorms**; **workers** only in **worker dorms**. The UI should block or strongly discourage invalid combinations (e.g., a camper or dorm leader in a worker dorm, or a worker in a camper dorm).
 - The system should warn (but not prevent) if an assignment violates gender or age group rules **for camper dorms**, in case an admin needs to make an exception.
@@ -473,7 +473,7 @@ Super admins can create and configure dorms with the following properties:
 - For any dorm, admins can view a detailed roster showing:
   - All assigned people (name, age, check-in status)
   - Dorm leader(s)
-  - Capacity used vs. total
+  - Capacity used vs. total, split into camper and dorm-leader capacity for camper dorms
   - Medical notes summary (allergies, medications) for the dorm leader's reference
 
 ---
@@ -690,7 +690,7 @@ Dorm leaders are created through their own public leader registration flow, admi
 - Name
 - **Gender designation** - For **camper** dorms: `boys` or `girls` only. For **worker** dorms: `boys`, `girls`, or `co_ed` (super-admin configurable per dorm)
 - Age group (FK or label; **camper dorms only**; null or N/A for worker dorms)
-- Bed count / capacity
+- Camper capacity and dorm-leader capacity for camper dorms; bed capacity for worker dorms
 - Assigned dorm leader(s) (typically **camper** dorms)
 
 ### Camp Configuration

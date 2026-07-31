@@ -65,7 +65,7 @@ export type CamperDormSlot = {
   name: string;
   purpose: DormPurposeType;
   genderDesignation: DormGenderDesignationType;
-  bedCapacity: number;
+  camperCapacity: number;
   ageGroupBracket: DormBracketSlice | null;
 };
 
@@ -120,7 +120,7 @@ export function autoAssignCampersGreedy(
         continue;
       }
       const used = counts.get(dorm.id) ?? 0;
-      if (used >= dorm.bedCapacity) {
+      if (used >= dorm.camperCapacity) {
         continue;
       }
       result.push({ camperId: camper.id, dormId: dorm.id });

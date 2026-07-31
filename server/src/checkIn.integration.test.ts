@@ -101,6 +101,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("check-in API", () => {
         purpose: "camper",
         genderDesignation: "boys",
         bedCapacity: 40,
+        camperCapacity: 40,
+        leaderCapacity: 2,
         ageGroupBracketId: bracket.id,
       },
     });

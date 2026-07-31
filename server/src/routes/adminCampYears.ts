@@ -67,15 +67,30 @@ const ageBracketCreateBody = z.object({
 
 const ageBracketPatchBody = ageBracketCreateBody.partial();
 
-const dormCreateBody = z.object({
+const dormBody = z.object({
   name: z.string().min(1),
   purpose: z.nativeEnum(DormPurpose),
   genderDesignation: z.nativeEnum(DormGenderDesignation),
-  bedCapacity: z.number().int().positive(),
+  bedCapacity: z.number().int().positive().optional(),
+  camperCapacity: z.number().int().positive().optional(),
+  leaderCapacity: z.number().int().nonnegative().optional(),
   ageGroupBracketId: z.string().uuid().nullable().optional(),
 });
 
-const dormPatchBody = dormCreateBody.partial();
+const dormCreateBody = dormBody.superRefine((dorm, context) => {
+  if (dorm.purpose === DormPurpose.camper) {
+    if (dorm.camperCapacity === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["camperCapacity"], message: "Required" });
+    }
+    if (dorm.leaderCapacity === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["leaderCapacity"], message: "Required" });
+    }
+  } else if (dorm.bedCapacity === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["bedCapacity"], message: "Required" });
+  }
+});
+
+const dormPatchBody = dormBody.partial();
 
 /** Optional filters for GET …/dorms/:dormId/roster (query string). */
 const dormRosterQuerySchema = z.object({
@@ -155,6 +170,8 @@ adminCampYearsRouter.post(
                 purpose: true,
                 genderDesignation: true,
                 bedCapacity: true,
+                camperCapacity: true,
+                leaderCapacity: true,
                 ageGroupBracketId: true,
               },
             },
@@ -221,6 +238,8 @@ adminCampYearsRouter.post(
               purpose: sourceDorm.purpose,
               genderDesignation: sourceDorm.genderDesignation,
               bedCapacity: sourceDorm.bedCapacity,
+              camperCapacity: sourceDorm.camperCapacity,
+              leaderCapacity: sourceDorm.leaderCapacity,
               ageGroupBracketId: sourceDorm.ageGroupBracketId
                 ? copiedBracketIds.get(sourceDorm.ageGroupBracketId) ?? null
                 : null,
@@ -583,6 +602,8 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
         purpose: dorm.purpose,
         genderDesignation: dorm.genderDesignation,
         bedCapacity: dorm.bedCapacity,
+        camperCapacity: dorm.camperCapacity,
+        leaderCapacity: dorm.leaderCapacity,
         ageGroupBracket: dorm.ageGroupBracket,
       },
       occupantCount: campers.length + workers.length + dormLeaders.length,
@@ -636,6 +657,8 @@ dormReadRouter.get("/:dormId/roster", async (req: AuthedRequest, res) => {
       purpose: dorm.purpose,
       genderDesignation: dorm.genderDesignation,
       bedCapacity: dorm.bedCapacity,
+      camperCapacity: dorm.camperCapacity,
+      leaderCapacity: dorm.leaderCapacity,
       ageGroupBracket: dorm.ageGroupBracket,
     },
     occupantCount: workers.length,
@@ -690,7 +713,14 @@ dormMutationRouter.post("/", async (req: AuthedRequest, res) => {
       name: parsed.data.name.trim(),
       purpose: parsed.data.purpose,
       genderDesignation: parsed.data.genderDesignation,
-      bedCapacity: parsed.data.bedCapacity,
+      bedCapacity:
+        parsed.data.purpose === DormPurpose.camper
+          ? parsed.data.camperCapacity! + parsed.data.leaderCapacity!
+          : parsed.data.bedCapacity!,
+      camperCapacity:
+        parsed.data.purpose === DormPurpose.camper ? parsed.data.camperCapacity! : 0,
+      leaderCapacity:
+        parsed.data.purpose === DormPurpose.camper ? parsed.data.leaderCapacity! : 0,
       ageGroupBracketId:
         parsed.data.purpose === DormPurpose.camper ? parsed.data.ageGroupBracketId ?? null : null,
     },
@@ -723,6 +753,13 @@ dormMutationRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
   }
 
   const nextPurpose = parsed.data.purpose ?? existing.purpose;
+  const nextCamperCapacity = parsed.data.camperCapacity ?? existing.camperCapacity;
+  const nextLeaderCapacity = parsed.data.leaderCapacity ?? existing.leaderCapacity;
+  const nextWorkerCapacity = parsed.data.bedCapacity ?? existing.bedCapacity;
+  if (nextPurpose === DormPurpose.camper && nextCamperCapacity < 1) {
+    res.status(400).json({ error: "Camper capacity must be a positive integer" });
+    return;
+  }
   let ageGroupBracketId = existing.ageGroupBracketId;
   if (parsed.data.ageGroupBracketId !== undefined) {
     ageGroupBracketId = parsed.data.ageGroupBracketId;
@@ -755,7 +792,12 @@ dormMutationRouter.patch("/:dormId", async (req: AuthedRequest, res) => {
       ...(parsed.data.genderDesignation !== undefined
         ? { genderDesignation: parsed.data.genderDesignation }
         : {}),
-      ...(parsed.data.bedCapacity !== undefined ? { bedCapacity: parsed.data.bedCapacity } : {}),
+      bedCapacity:
+        nextPurpose === DormPurpose.camper
+          ? nextCamperCapacity + nextLeaderCapacity
+          : nextWorkerCapacity,
+      camperCapacity: nextPurpose === DormPurpose.camper ? nextCamperCapacity : 0,
+      leaderCapacity: nextPurpose === DormPurpose.camper ? nextLeaderCapacity : 0,
       ageGroupBracketId,
     },
   });

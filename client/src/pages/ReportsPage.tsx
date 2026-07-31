@@ -21,6 +21,8 @@ type DormRow = {
   purpose: "camper" | "worker";
   genderDesignation: string;
   bedCapacity: number;
+  camperCapacity: number;
+  leaderCapacity: number;
   ageGroupBracketId: string | null;
 };
 
@@ -45,6 +47,8 @@ type DormRosterResponse = {
     purpose: string;
     genderDesignation: string;
     bedCapacity: number;
+    camperCapacity: number;
+    leaderCapacity: number;
     ageGroupBracket: AgeBracket | null;
   };
   occupantCount: number;
@@ -834,7 +838,7 @@ export function ReportsPage(): React.ReactElement {
                 <option value="">Select a camper dorm</option>
                 {camperDorms.map((dorm) => (
                   <option key={dorm.id} value={dorm.id}>
-                    {dorm.name} · {dormGenderLabel(dorm.genderDesignation)} · {dorm.bedCapacity} beds
+                    {dorm.name} · {dormGenderLabel(dorm.genderDesignation)} · {dorm.camperCapacity} campers / {dorm.leaderCapacity} leaders
                   </option>
                 ))}
               </select>
@@ -906,7 +910,8 @@ export function ReportsPage(): React.ReactElement {
                     : ""}
                 </p>
                 <p className="report-print-meta">
-                  <strong>Capacity:</strong> {roster.occupantCount} assigned / {roster.dorm.bedCapacity} beds
+                  <strong>Capacity:</strong> {roster.campers.length} / {roster.dorm.camperCapacity} campers ·{" "}
+                  {roster.dormLeaders.length} / {roster.dorm.leaderCapacity} leaders
                 </p>
                 {roster.dormLeaders.length > 0 ? (
                   <p className="report-print-meta">

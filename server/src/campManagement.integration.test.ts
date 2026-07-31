@@ -96,6 +96,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
         purpose: "camper",
         genderDesignation: "boys",
         bedCapacity: 20,
+        camperCapacity: 20,
+        leaderCapacity: 2,
         ageGroupBracketId: bracket.id,
       },
     });
@@ -656,6 +658,37 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
     expect(await prisma.dorm.count({ where: { campYearId: created.body.id } })).toBe(0);
   });
 
+  it("configures separate camper and leader capacities for camper dorms", async () => {
+    const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
+    const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
+
+    const created = await request(app)
+      .post(`/api/admin/camp-years/${campYearId}/dorms`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({
+        name: "Capacity Cabin",
+        purpose: "camper",
+        genderDesignation: "girls",
+        camperCapacity: 12,
+        leaderCapacity: 3,
+      });
+
+    expect(created.status).toBe(201);
+    expect(created.body.camperCapacity).toBe(12);
+    expect(created.body.leaderCapacity).toBe(3);
+    expect(created.body.bedCapacity).toBe(15);
+
+    const updated = await request(app)
+      .patch(`/api/admin/camp-years/${campYearId}/dorms/${created.body.id}`)
+      .set("Authorization", `Bearer ${superAdminToken}`)
+      .send({ camperCapacity: 14, leaderCapacity: 2 });
+
+    expect(updated.status).toBe(200);
+    expect(updated.body.camperCapacity).toBe(14);
+    expect(updated.body.leaderCapacity).toBe(2);
+    expect(updated.body.bedCapacity).toBe(16);
+  });
+
   it("copies dorms and age groups into a new camp year without copying assignments", async () => {
     const superAdmin = await prisma.adminUser.findUniqueOrThrow({ where: { username: superUsername } });
     const superAdminToken = signAuthToken({ sub: superAdmin.id, role: superAdmin.role });
@@ -739,6 +772,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       purpose: dorm.purpose,
       genderDesignation: dorm.genderDesignation,
       bedCapacity: dorm.bedCapacity,
+      camperCapacity: dorm.camperCapacity,
+      leaderCapacity: dorm.leaderCapacity,
       ageGroupBracketId: dorm.ageGroupBracketId,
     }))).toEqual([
       {
@@ -746,6 +781,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
         purpose: "worker",
         genderDesignation: "co_ed",
         bedCapacity: 12,
+        camperCapacity: 0,
+        leaderCapacity: 0,
         ageGroupBracketId: null,
       },
       {
@@ -753,6 +790,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
         purpose: "camper",
         genderDesignation: "boys",
         bedCapacity: 20,
+        camperCapacity: 20,
+        leaderCapacity: 2,
         ageGroupBracketId: copiedBrackets[0]?.id,
       },
     ]);

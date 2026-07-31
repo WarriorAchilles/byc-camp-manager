@@ -285,6 +285,8 @@ model Dorm {
   purpose           DormPurpose
   genderDesignation DormGenderDesignation @map("gender_designation")
   bedCapacity       Int                   @map("bed_capacity")
+  camperCapacity    Int                   @default(0) @map("camper_capacity")
+  leaderCapacity    Int                   @default(0) @map("leader_capacity")
   ageGroupBracketId String?               @map("age_group_bracket_id")
 
   campYear              CampYear         @relation(fields: [campYearId], references: [id], onDelete: Cascade)

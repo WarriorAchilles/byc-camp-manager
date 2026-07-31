@@ -96,6 +96,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
         bedCapacity: 10,
+        camperCapacity: 10,
+        leaderCapacity: 2,
         ageGroupBracketId: bracket.id,
       },
     });
@@ -233,6 +235,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(response.body.campers).toHaveLength(1);
     expect(response.body.dormLeaders).toHaveLength(1);
     expect(response.body.dorm.bedCapacity).toBe(10);
+    expect(response.body.dorm.camperCapacity).toBe(10);
+    expect(response.body.dorm.leaderCapacity).toBe(2);
   });
 
   it("includes assigned workers in a camper dorm roster and capacity", async () => {
@@ -246,10 +250,10 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(response.body.workers).toHaveLength(1);
   });
 
-  it("rejects camper assignment when dorm is at bed capacity", async () => {
+  it("rejects camper assignment when dorm is at camper capacity", async () => {
     await prisma.dorm.update({
       where: { id: camperDormId },
-      data: { bedCapacity: 1 },
+      data: { camperCapacity: 1 },
     });
     const secondCamper = await prisma.camper.create({
       data: {
@@ -325,8 +329,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
     expect(camperDorm.occupantCount).toBe(1);
   });
 
-  it('counts a dorm leader against capacity for camper assignment and auto-assignment', async () => {
-    await prisma.dorm.update({ where: { id: camperDormId }, data: { bedCapacity: 1 } });
+  it("enforces camper and leader capacities independently", async () => {
+    await prisma.dorm.update({
+      where: { id: camperDormId },
+      data: { bedCapacity: 2, camperCapacity: 1, leaderCapacity: 1 },
+    });
     await prisma.dormLeader.create({
       data: {
         campYearId,
@@ -345,8 +352,7 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
       .post('/api/admin/camp-years/' + campYearId + '/dorm-assignments/assign')
       .set('Authorization', auth)
       .send({ personKind: 'camper', personId: camperId, dormId: camperDormId });
-    expect(manual.status).toBe(400);
-    expect(manual.body.error).toContain('capacity');
+    expect(manual.status).toBe(200);
 
     const unassignedLeader = await prisma.dormLeader.create({
       data: {
@@ -364,16 +370,17 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm assignment API", 
       .set("Authorization", auth)
       .send({ personKind: "dorm_leader", personId: unassignedLeader.id, dormId: camperDormId });
     expect(leaderAssignment.status).toBe(400);
-    expect(leaderAssignment.body.error).toContain("capacity");
+    expect(leaderAssignment.body.error).toContain("leader capacity");
 
+    await prisma.camper.update({ where: { id: camperId }, data: { dormId: null } });
     const automatic = await request(app)
       .post('/api/admin/camp-years/' + campYearId + '/dorm-assignments/auto-assign')
       .set('Authorization', auth)
       .send({});
     expect(automatic.status).toBe(200);
-    expect(automatic.body.assignedCampers).toBe(0);
+    expect(automatic.body.assignedCampers).toBe(1);
     const camper = await prisma.camper.findUniqueOrThrow({ where: { id: camperId } });
-    expect(camper.dormId).toBeNull();
+    expect(camper.dormId).toBe(camperDormId);
   });
 
   it("rejects assigning a dorm leader to a worker dorm", async () => {

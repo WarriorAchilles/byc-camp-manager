@@ -135,19 +135,12 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
   const workers = await prisma.worker.findMany({
     where: { campYearId, archivedAt: null },
   });
-  const dormLeaders = await prisma.dormLeader.findMany({
-    where: { campYearId, archivedAt: null },
-  });
-
   const camperDormRows = dorms.filter((d) => d.purpose === DormPurpose.camper);
   const workerDormRows = dorms.filter((d) => d.purpose === DormPurpose.worker);
 
   const camperCounts = new Map<string, number>();
   for (const dorm of camperDormRows) {
-    const count =
-      campers.filter((c) => c.dormId === dorm.id).length +
-      workers.filter((w) => w.dormId === dorm.id).length +
-      dormLeaders.filter((leader) => leader.assignedCamperDormId === dorm.id).length;
+    const count = campers.filter((c) => c.dormId === dorm.id).length;
     camperCounts.set(dorm.id, count);
   }
   const workerCounts = new Map<string, number>();
@@ -164,7 +157,7 @@ router.post("/auto-assign", async (req: AuthedRequest, res) => {
     name: dorm.name,
     purpose: dorm.purpose,
     genderDesignation: dorm.genderDesignation,
-    bedCapacity: dorm.bedCapacity,
+    camperCapacity: dorm.camperCapacity,
     ageGroupBracket: dorm.ageGroupBracket
       ? {
           minAge: dorm.ageGroupBracket.minAge,
@@ -293,20 +286,16 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       return;
     }
 
-    const [assignedCampers, assignedWorkers, otherDormLeaders] = await Promise.all([
-      prisma.camper.count({ where: { dormId, campYearId, archivedAt: null } }),
-      prisma.worker.count({ where: { dormId, campYearId, archivedAt: null } }),
-      prisma.dormLeader.count({
+    const otherDormLeaders = await prisma.dormLeader.count({
         where: {
           assignedCamperDormId: dormId,
           campYearId,
           archivedAt: null,
           id: { not: personId },
         },
-      }),
-    ]);
-    if (assignedCampers + assignedWorkers + otherDormLeaders >= dorm.bedCapacity) {
-      res.status(400).json({ error: 'Dorm is at bed capacity' });
+      });
+    if (otherDormLeaders >= dorm.leaderCapacity) {
+      res.status(400).json({ error: "Dorm is at leader capacity" });
       return;
     }
 
@@ -363,18 +352,11 @@ router.post("/assign", async (req: AuthedRequest, res) => {
       return;
     }
 
-    const [otherCampers, assignedWorkers, assignedDormLeaders] = await Promise.all([
-      prisma.camper.count({
+    const otherCampers = await prisma.camper.count({
         where: { dormId, campYearId, archivedAt: null, id: { not: personId } },
-      }),
-      prisma.worker.count({ where: { dormId, campYearId, archivedAt: null } }),
-      prisma.dormLeader.count({
-        where: { assignedCamperDormId: dormId, campYearId, archivedAt: null },
-      }),
-    ]);
-    const countOthers = otherCampers + assignedWorkers + assignedDormLeaders;
-    if (countOthers >= dorm.bedCapacity) {
-      res.status(400).json({ error: "Dorm is at bed capacity" });
+      });
+    if (otherCampers >= dorm.camperCapacity) {
+      res.status(400).json({ error: "Dorm is at camper capacity" });
       return;
     }
 

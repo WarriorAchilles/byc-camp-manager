@@ -85,7 +85,7 @@ async function assertCamperDormForLeader(
   }
   const dorm = await prisma.dorm.findFirst({
     where: { id: dormId, campYearId },
-    select: { purpose: true, bedCapacity: true },
+    select: { purpose: true, leaderCapacity: true },
   });
   if (!dorm) {
     return { ok: false, status: 400, message: 'Dorm not found for this camp year' };
@@ -97,20 +97,16 @@ async function assertCamperDormForLeader(
       message: 'Dorm leader assignment must reference a camper dorm',
     };
   }
-  const [assignedCampers, assignedWorkers, assignedDormLeaders] = await Promise.all([
-    prisma.camper.count({ where: { campYearId, dormId, archivedAt: null } }),
-    prisma.worker.count({ where: { campYearId, dormId, archivedAt: null } }),
-    prisma.dormLeader.count({
-      where: {
-        campYearId,
-        assignedCamperDormId: dormId,
-        archivedAt: null,
-        ...(excludedDormLeaderId ? { id: { not: excludedDormLeaderId } } : {}),
-      },
-    }),
-  ]);
-  if (assignedCampers + assignedWorkers + assignedDormLeaders >= dorm.bedCapacity) {
-    return { ok: false, status: 400, message: 'Dorm is at bed capacity' };
+  const assignedDormLeaders = await prisma.dormLeader.count({
+    where: {
+      campYearId,
+      assignedCamperDormId: dormId,
+      archivedAt: null,
+      ...(excludedDormLeaderId ? { id: { not: excludedDormLeaderId } } : {}),
+    },
+  });
+  if (assignedDormLeaders >= dorm.leaderCapacity) {
+    return { ok: false, status: 400, message: "Dorm is at leader capacity" };
   }
   return { ok: true };
 }

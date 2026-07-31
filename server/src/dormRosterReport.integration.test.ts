@@ -104,6 +104,8 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("dorm roster report API
         purpose: "camper",
         genderDesignation: "boys",
         bedCapacity: 24,
+        camperCapacity: 24,
+        leaderCapacity: 2,
         ageGroupBracketId: bracket.id,
       },
     });

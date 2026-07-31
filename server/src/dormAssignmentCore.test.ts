@@ -49,7 +49,7 @@ describe("dormAssignmentCore", () => {
         name: "B Cabin",
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
-        bedCapacity: 1,
+        camperCapacity: 1,
         ageGroupBracket: bracket,
       },
       {
@@ -57,7 +57,7 @@ describe("dormAssignmentCore", () => {
         name: "A Cabin",
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
-        bedCapacity: 2,
+        camperCapacity: 2,
         ageGroupBracket: bracket,
       },
     ];
@@ -98,7 +98,7 @@ describe("dormAssignmentCore", () => {
         name: "Z Teen",
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
-        bedCapacity: 5,
+        camperCapacity: 5,
         ageGroupBracket: bracketTeen,
       },
       {
@@ -106,7 +106,7 @@ describe("dormAssignmentCore", () => {
         name: "A Young",
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
-        bedCapacity: 5,
+        camperCapacity: 5,
         ageGroupBracket: bracketYoung,
       },
     ];
@@ -134,7 +134,7 @@ describe("dormAssignmentCore", () => {
         name: "Open",
         purpose: DormPurpose.camper,
         genderDesignation: DormGenderDesignation.boys,
-        bedCapacity: 5,
+        camperCapacity: 5,
         ageGroupBracket: null,
       },
     ];
