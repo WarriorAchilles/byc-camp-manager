@@ -57,6 +57,7 @@ import {
   type LeaderSubmission,
 } from "../lib/leaderRegistration.js";
 import {
+  dispatchLeaderRegistrationConfirmation,
   dispatchWorkerRegistrationConfirmation,
 } from "../lib/registrationConfirmationMail.js";
 import { resolveChurchPair, suggestChurches } from "../lib/churchIdentity.js";
@@ -1134,6 +1135,7 @@ publicRegistrationRouter.post("/leader", submissionLimit, async (req, res, next)
       req.ip || req.socket.remoteAddress || "unknown",
       new Date(),
     );
+    await dispatchLeaderRegistrationConfirmation(result.leader.id);
     res.status(result.replayed ? 200 : 201).json({
       registrationId: result.leader.id,
       status: "received",

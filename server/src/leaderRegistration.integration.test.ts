@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { SETTINGS_ROW_ID } from "./lib/activeCampYearSetting.js";
 import type { LeaderSubmission } from "./lib/leaderRegistration.js";
+import { LEADER_REGISTRATION_TEMPLATE_KEY } from "./lib/registrationConfirmationMail.js";
 
 function validLeaderSubmission(): LeaderSubmission {
   return {
@@ -34,6 +35,7 @@ function validLeaderSubmission(): LeaderSubmission {
 async function schemaIsReady(): Promise<boolean> {
   try {
     await prisma.dormLeader.findFirst({ select: { publicSubmissionKey: true } });
+    await prisma.emailDeliveryAttempt.findFirst({ select: { dormLeaderId: true } });
     return true;
   } catch {
     return false;
@@ -52,6 +54,7 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
 
   beforeEach(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.dormLeader.deleteMany({});
     await prisma.campYear.deleteMany({});
 
@@ -88,6 +91,7 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
 
   afterAll(async () => {
     await prisma.appSettings.deleteMany({});
+    await prisma.emailDeliveryAttempt.deleteMany({});
     await prisma.dormLeader.deleteMany({});
     await prisma.campYear.deleteMany({});
     await prisma.$disconnect();
@@ -133,6 +137,13 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
     });
     expect(leader.publicSubmittedAt).not.toBeNull();
     expect(leader.publicSubmissionIp).toBeTruthy();
+    expect(await prisma.emailDeliveryAttempt.findUniqueOrThrow({
+      where: { idempotencyKey: `${LEADER_REGISTRATION_TEMPLATE_KEY}:${leader.id}` },
+    })).toMatchObject({
+      dormLeaderId: leader.id,
+      recipientEmail: input.email,
+      templateKey: LEADER_REGISTRATION_TEMPLATE_KEY,
+    });
   });
 
   it("replays the same submission key and blocks duplicate identities", async () => {
@@ -142,6 +153,9 @@ describe.skipIf(!integrationReady)("public leader registration API", () => {
     expect(first.status).toBe(201);
     expect(retry.status).toBe(200);
     expect(retry.body.registrationId).toBe(first.body.registrationId);
+    expect(await prisma.emailDeliveryAttempt.count({
+      where: { dormLeaderId: first.body.registrationId },
+    })).toBe(1);
 
     const duplicate = validLeaderSubmission();
     duplicate.submissionKey = "07ac7a37-18ac-4a1d-a83f-a80b5ae1ba42";

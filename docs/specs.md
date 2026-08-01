@@ -536,7 +536,16 @@ Sent immediately after a worker submits **worker registration**. Contains:
 - Reminders from the informational block (testimony, pastor recommendation, rules expectations) as appropriate
 - Arrival instructions explaining that the worker scans the posted self-check-in QR code at the physical check-in location; do not include the QR code or its URL
 
-### 3. Check-In Confirmation Email
+### 3. Leader registration confirmation
+
+Sent immediately after a dorm leader submits **leader registration**. Contains:
+
+- Confirmation that the registration was received
+- A **copy of submitted responses** (all fields)
+- Camp dates, leader registration information, and T-shirt purchase guidance
+- Arrival instructions explaining that the leader scans the posted self-check-in QR code at the physical check-in location; do not include the QR code or its URL
+
+### 4. Check-In Confirmation Email
 
 Sent to the parent/guardian email after a **camper** is checked in at camp. Contains:
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFamilyRegistrationConfirmationContent,
+  buildLeaderRegistrationConfirmationContent,
   buildWorkerRegistrationConfirmationContent,
 } from "./lib/registrationConfirmationMail.js";
 
@@ -139,5 +140,45 @@ describe("registration confirmation templates", () => {
     expect(content.text).toContain("scan the posted self-check-in QR code");
     expect(content.text).not.toContain("private-token");
     expect(content.html).not.toContain("/self-check-in/private-token");
+  });
+
+  it("renders a complete leader response copy and arrival guidance without a self-check-in URL", () => {
+    const content = buildLeaderRegistrationConfirmationContent({
+      campName: "BYC Leader Camp",
+      campStartDate: new Date("2099-07-01T12:00:00Z"),
+      campEndDate: new Date("2099-07-07T12:00:00Z"),
+      campInformation: "Camp address and contact. /self-check-in/private-leader-token",
+      responses: {
+        email: "taylor.leader@example.test",
+        firstName: "Taylor",
+        lastName: "Leader",
+        dateOfBirth: new Date("1980-01-02T12:00:00Z"),
+        gender: "female",
+        phone: "5551234567",
+        altPhone: null,
+        streetAddress: "1 Camp Road",
+        city: "Lebanon",
+        stateOrProvince: "PA",
+        postalCode: "17042",
+        country: "United States",
+        maritalStatus: "Married",
+        faithServingResponse: "Faithfully serving for twenty years.",
+        churchName: "Bible Church",
+        pastorName: "Pastor Example",
+        pastorPhone: "5559876543",
+        roleLabel: "10-13",
+        tShirtSize: "L",
+      },
+    });
+
+    expect(content.subject).toContain("Leader registration received");
+    expect(content.text).toContain("Email: taylor.leader@example.test");
+    expect(content.text).toContain("Marital status: Married");
+    expect(content.text).toContain("Faith and serving response: Faithfully serving for twenty years.");
+    expect(content.text).toContain("Preferred age group: 10-13");
+    expect(content.text).toContain("T-shirt size: L");
+    expect(content.text).toContain("scan the posted self-check-in QR code");
+    expect(content.text).not.toContain("private-leader-token");
+    expect(content.html).not.toContain("/self-check-in/private-leader-token");
   });
 });

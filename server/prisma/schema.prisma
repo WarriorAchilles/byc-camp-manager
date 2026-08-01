@@ -517,6 +517,7 @@ model EmailDeliveryAttempt {
   id                             String              @id @default(uuid())
   familyRegistrationId           String?             @map("family_registration_id")
   workerRegistrationSubmissionId String?             @map("worker_registration_submission_id")
+  dormLeaderId                   String?             @map("dorm_leader_id")
   idempotencyKey                 String?             @unique @map("idempotency_key")
   templateKey                    String              @map("template_key")
   recipientEmail                 String              @map("recipient_email")
@@ -531,9 +532,11 @@ model EmailDeliveryAttempt {
 
   familyRegistration           FamilyRegistration?           @relation(fields: [familyRegistrationId], references: [id], onDelete: Cascade)
   workerRegistrationSubmission WorkerRegistrationSubmission? @relation(fields: [workerRegistrationSubmissionId], references: [id], onDelete: Cascade)
+  dormLeader                   DormLeader?                    @relation(fields: [dormLeaderId], references: [id], onDelete: Cascade)
 
   @@index([familyRegistrationId, status])
   @@index([workerRegistrationSubmissionId, status])
+  @@index([dormLeaderId, status])
   @@index([recipientEmail, attemptedAt])
   @@map("email_delivery_attempts")
 }
@@ -748,9 +751,10 @@ model DormLeader {
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
 
-  campYear           CampYear @relation(fields: [campYearId], references: [id], onDelete: Cascade)
-  assignedCamperDorm Dorm?    @relation(fields: [assignedCamperDormId], references: [id], onDelete: SetNull)
-  church            Church?  @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  campYear              CampYear               @relation(fields: [campYearId], references: [id], onDelete: Cascade)
+  assignedCamperDorm    Dorm?                  @relation(fields: [assignedCamperDormId], references: [id], onDelete: SetNull)
+  church                Church?                @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  emailDeliveryAttempts EmailDeliveryAttempt[]
 
   @@index([campYearId])
   @@index([campYearId, email])

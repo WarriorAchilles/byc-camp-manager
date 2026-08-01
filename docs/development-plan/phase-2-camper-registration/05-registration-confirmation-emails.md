@@ -29,7 +29,7 @@ Registration confirmations must use the same **Nodemailer + Amazon SES SMTP rela
 
 ## Goal
 
-Send family camper and worker registration confirmation emails through Amazon SES, including pricing summaries, submitted responses, and required camp guidance. Registrants do not receive personal QR codes; they scan the camp's posted self-check-in QR code after arriving at the physical check-in location.
+Send family camper, worker, and leader registration confirmation emails through Amazon SES, including pricing summaries, submitted responses, and required camp guidance. Registrants do not receive personal QR codes; they scan the camp's posted self-check-in QR code after arriving at the physical check-in location.
 
 ## Agent Tasks
 
@@ -41,8 +41,10 @@ Send family camper and worker registration confirmation emails through Amazon SE
 - [ ] Create a family registration confirmation email template with registration confirmation, registered campers, itemized pricing breakdown, merchandise summary, payment status, cash amount due when applicable, camp dates, relevant camp information, and instructions to scan the posted self-check-in QR code after arriving.
 - [ ] Do not include or attach an individual camper QR code, the camp self-check-in QR code, or the self-check-in URL in registration emails.
 - [ ] Create a worker registration confirmation email template with registration confirmation, a copy of submitted responses, testimony reminder, pastor recommendation reminder, rules expectations, and instructions to scan the posted self-check-in QR code after arriving; do not include the QR code or its URL.
+- [ ] Create a leader registration confirmation email template with registration confirmation, a copy of submitted responses, camp and T-shirt guidance, and instructions to scan the posted self-check-in QR code after arriving; do not include the QR code or its URL.
 - [ ] Send family confirmation emails only after the Step 00 lifecycle reaches the approved confirmed state: after verified Stripe payment, or immediately after confirmed cash-at-camp selection.
 - [ ] Send worker confirmation emails immediately after accepted worker submission.
+- [ ] Send leader confirmation emails immediately after accepted leader submission.
 - [ ] Record durable email send status or delivery attempts for operational troubleshooting and make retries idempotent so a webhook replay does not send duplicate confirmations.
 - [ ] Add tests for template rendering, absence of camper and camp self-check-in QR codes/URLs, on-site self-check-in instructions, cash payment messaging, worker submitted-response copies, log redaction, duplicate-trigger suppression, and provider failure handling.
 

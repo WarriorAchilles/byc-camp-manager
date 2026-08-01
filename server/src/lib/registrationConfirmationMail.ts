@@ -7,6 +7,7 @@ import {
   type EmailDeliveryResult,
 } from "./emailDelivery.js";
 import { writeOpsLog } from "./opsLog.js";
+import { LEADER_T_SHIRT_GUIDANCE } from "./leaderRegistration.js";
 import { WORKER_CONFIRMATION_GUIDANCE } from "./workerRegistration.js";
 
 const {
@@ -17,6 +18,7 @@ const {
 
 export const FAMILY_REGISTRATION_TEMPLATE_KEY = "family_registration_confirmation";
 export const WORKER_REGISTRATION_TEMPLATE_KEY = "worker_registration_confirmation";
+export const LEADER_REGISTRATION_TEMPLATE_KEY = "leader_registration_confirmation";
 
 type FamilyTemplateInput = {
   campName: string;
@@ -72,6 +74,34 @@ type WorkerTemplateInput = {
     taskPreferenceFirst: string;
     taskPreferenceSecond: string;
     taskPreferenceThird: string;
+    tShirtSize: string | null;
+  };
+};
+
+type LeaderTemplateInput = {
+  campName: string;
+  campStartDate: Date;
+  campEndDate: Date;
+  campInformation: string;
+  responses: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: Date | null;
+    gender: string;
+    phone: string;
+    altPhone: string | null;
+    streetAddress: string | null;
+    city: string | null;
+    stateOrProvince: string | null;
+    postalCode: string | null;
+    country: string | null;
+    maritalStatus: string | null;
+    faithServingResponse: string | null;
+    churchName: string | null;
+    pastorName: string | null;
+    pastorPhone: string | null;
+    roleLabel: string | null;
     tShirtSize: string | null;
   };
 };
@@ -211,7 +241,7 @@ ${campInformationHtml}
   };
 }
 
-function responseRows(input: WorkerTemplateInput): Array<[string, string]> {
+function workerResponseRows(input: WorkerTemplateInput): Array<[string, string]> {
   const { responses } = input;
   return [
     ["Email", responses.email],
@@ -241,7 +271,7 @@ export function buildWorkerRegistrationConfirmationContent(
   input: WorkerTemplateInput,
 ): EmailContent {
   const campInformation = stripSelfCheckInUrls(input.campInformation.trim());
-  const rows = responseRows(input);
+  const rows = workerResponseRows(input);
   const text = [
     `Hello ${input.responses.firstName},`,
     "",
@@ -287,6 +317,80 @@ ${campInformationHtml}
   };
 }
 
+function leaderResponseRows(input: LeaderTemplateInput): Array<[string, string]> {
+  const { responses } = input;
+  return [
+    ["Email", responses.email],
+    ["First name", responses.firstName],
+    ["Last name", responses.lastName],
+    ["Date of birth", responses.dateOfBirth ? formatDate(responses.dateOfBirth) : "Not provided"],
+    ["Gender", responses.gender],
+    ["Cell phone", responses.phone],
+    ["Alternate phone", responses.altPhone ?? "Not provided"],
+    ["Street address", responses.streetAddress ?? "Not provided"],
+    ["City", responses.city ?? "Not provided"],
+    ["State or province", responses.stateOrProvince ?? "Not provided"],
+    ["Postal code", responses.postalCode ?? "Not provided"],
+    ["Country", responses.country ?? "Not provided"],
+    ["Marital status", responses.maritalStatus ?? "Not provided"],
+    ["Faith and serving response", responses.faithServingResponse ?? "Not provided"],
+    ["Church name", responses.churchName ?? "Not provided"],
+    ["Pastor name", responses.pastorName ?? "Not provided"],
+    ["Pastor phone", responses.pastorPhone ?? "Not provided"],
+    ["Preferred age group", responses.roleLabel ?? "Not provided"],
+    ["T-shirt size", responses.tShirtSize ?? "Not selected"],
+  ];
+}
+
+export function buildLeaderRegistrationConfirmationContent(
+  input: LeaderTemplateInput,
+): EmailContent {
+  const campInformation = stripSelfCheckInUrls(input.campInformation.trim());
+  const rows = leaderResponseRows(input);
+  const arrival =
+    "After arriving at the physical check-in location, scan the posted self-check-in QR code to begin check-in.";
+  const text = [
+    `Hello ${input.responses.firstName},`,
+    "",
+    `Your leader registration for ${input.campName} was received.`,
+    "",
+    "Copy of your submitted responses:",
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    "",
+    `T-shirt information: ${LEADER_T_SHIRT_GUIDANCE}`,
+    "",
+    `Camp dates: ${campDateRange(input.campStartDate, input.campEndDate)}`,
+    ...(campInformation ? ["", "Camp information:", campInformation] : []),
+    "",
+    "Arrival and check-in:",
+    arrival,
+    "",
+    "This email intentionally does not include a QR code or self-check-in link.",
+  ].join("\n");
+  const responseHtml = rows
+    .map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
+    .join("");
+  const campInformationHtml = campInformation
+    ? `<h2>Camp information</h2><p>${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`
+    : "";
+  const html = `<p>Hello ${escapeHtml(input.responses.firstName)},</p>
+<p>Your leader registration for <strong>${escapeHtml(input.campName)}</strong> was received.</p>
+<h2>Copy of your submitted responses</h2>
+<table><tbody>${responseHtml}</tbody></table>
+<h2>T-shirt information</h2>
+<p>${escapeHtml(LEADER_T_SHIRT_GUIDANCE)}</p>
+<p><strong>Camp dates:</strong> ${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</p>
+${campInformationHtml}
+<h2>Arrival and check-in</h2>
+<p>${escapeHtml(arrival)}</p>
+<p><em>This email intentionally does not include a QR code or self-check-in link.</em></p>`;
+  return {
+    subject: `Leader registration received — ${input.campName}`,
+    text,
+    html,
+  };
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
@@ -297,6 +401,7 @@ async function claimDelivery(input: {
   recipientEmail: string;
   familyRegistrationId?: string;
   workerRegistrationSubmissionId?: string;
+  dormLeaderId?: string;
 }): Promise<{ claimed: true; attemptId: string } | { claimed: false }> {
   const existing = await prisma.emailDeliveryAttempt.findUnique({
     where: { idempotencyKey: input.idempotencyKey },
@@ -326,6 +431,7 @@ async function claimDelivery(input: {
         recipientEmail: input.recipientEmail,
         familyRegistrationId: input.familyRegistrationId,
         workerRegistrationSubmissionId: input.workerRegistrationSubmissionId,
+        dormLeaderId: input.dormLeaderId,
       },
       select: { id: true },
     });
@@ -383,6 +489,7 @@ async function deliverRecorded(input: {
   content: EmailContent;
   familyRegistrationId?: string;
   workerRegistrationSubmissionId?: string;
+  dormLeaderId?: string;
 }): Promise<RegistrationEmailDispatchResult> {
   const claim = await claimDelivery(input);
   if (!claim.claimed) return { status: "duplicate_suppressed" };
@@ -490,6 +597,46 @@ export async function dispatchWorkerRegistrationConfirmation(
   } catch {
     writeOpsLog("registration_confirmation_email", {
       workerRegistrationSubmissionId,
+      result: "not_recorded",
+    });
+    return { status: "not_recorded" };
+  }
+}
+
+export async function dispatchLeaderRegistrationConfirmation(
+  dormLeaderId: string,
+): Promise<RegistrationEmailDispatchResult> {
+  try {
+    const leader = await prisma.dormLeader.findUnique({
+      where: { id: dormLeaderId },
+      include: { campYear: true },
+    });
+    if (!leader) return { status: "not_found" };
+    if (!leader.publicSubmittedAt || !leader.publicSubmissionKey) {
+      return { status: "not_eligible" };
+    }
+    const result = await deliverRecorded({
+      idempotencyKey: `${LEADER_REGISTRATION_TEMPLATE_KEY}:${leader.id}`,
+      templateKey: LEADER_REGISTRATION_TEMPLATE_KEY,
+      recipientEmail: leader.email,
+      dormLeaderId: leader.id,
+      content: buildLeaderRegistrationConfirmationContent({
+        campName: leader.campYear.name,
+        campStartDate: leader.campYear.startDate,
+        campEndDate: leader.campYear.endDate,
+        campInformation: leader.campYear.leaderRegistrationHeaderContent,
+        responses: leader,
+      }),
+    });
+    writeOpsLog("registration_confirmation_email", {
+      dormLeaderId: leader.id,
+      campYearId: leader.campYearId,
+      result: result.status,
+    });
+    return result;
+  } catch {
+    writeOpsLog("registration_confirmation_email", {
+      dormLeaderId,
       result: "not_recorded",
     });
     return { status: "not_recorded" };

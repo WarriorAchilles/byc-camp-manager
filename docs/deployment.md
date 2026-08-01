@@ -26,7 +26,7 @@ Further product context: `docs/specs.md`.
 | `CLIENT_DIST_PATH` | usually unset (Vite proxies `/api`) | optional path to `client/dist` | e.g. `/app/client/dist` | When set to an existing directory, the API also serves the SPA and `index.html` fallback for client routes |
 | `STRIPE_SECRET_KEY` | test restricted key (`rk_test_...`) preferred | test/staging restricted key | live restricted key (`rk_live_...`) preferred | Server-only Stripe API key; never expose to client code or logs |
 | `STRIPE_WEBHOOK_SECRET` | from `stripe listen` | staging webhook signing secret | production webhook signing secret | Required to verify `checkout.session.completed` webhook events |
-| `EMAIL_TRANSPORT` | `log` (default) | `smtp` | `smtp` | `smtp` sends all check-in, family-registration, and worker-registration confirmations; `log` performs no network send and records safe metadata/status only |
+| `EMAIL_TRANSPORT` | `log` (default) | `smtp` | `smtp` | `smtp` sends all check-in, family-registration, worker-registration, and leader-registration confirmations; `log` performs no network send and records safe metadata/status only |
 | `EMAIL_FROM` | n/a if `log` | SES-verified sender/domain | same | Required for `smtp`; the identity must be verified in the SES sending region |
 | `SMTP_HOST` | n/a if `log` | `email-smtp.<region>.amazonaws.com` | same | Regional SES SMTP endpoint shared by every transactional email type |
 | `SMTP_PORT` | n/a if `log` | `587` | same | STARTTLS; use `465` only for intentionally configured implicit TLS |
@@ -37,7 +37,7 @@ Never commit real `.env` files. Use your AWS account secret store, CI OIDC, or p
 
 ### Amazon SES transactional email
 
-The same SMTP settings deliver camper check-in confirmations and family/worker registration confirmations. In the AWS region used for sending, create and verify an SES domain identity, publish the generated DKIM records, and request production access so the application can send to unverified recipients. Generate SES SMTP credentials for that region and store both `SMTP_USER` and `SMTP_PASS` in the deployment secret store. SES SMTP credentials are not ordinary AWS access keys and are region-specific.
+The same SMTP settings deliver camper check-in confirmations and family/worker/leader registration confirmations. In the AWS region used for sending, create and verify an SES domain identity, publish the generated DKIM records, and request production access so the application can send to unverified recipients. Generate SES SMTP credentials for that region and store both `SMTP_USER` and `SMTP_PASS` in the deployment secret store. SES SMTP credentials are not ordinary AWS access keys and are region-specific.
 
 Set `SMTP_HOST` to the regional endpoint, such as `email-smtp.us-east-2.amazonaws.com`, and set `EMAIL_FROM` to an address covered by the verified identity. Delivery results and the Nodemailer provider message identifier (when supplied) are recorded in `email_delivery_attempts` for registration emails; the public registration API never returns that identifier.
 
