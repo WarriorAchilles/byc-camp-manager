@@ -93,6 +93,10 @@ describe("registration confirmation templates", () => {
     expect(content.text).toContain("Payment received via Stripe: $165.00");
     expect(content.text).toContain("No merchandise was ordered");
     expect(content.text).not.toContain("PAY AT CAMP WITH CASH");
+    expect(content.text).not.toContain("Merchandise subtotal:");
+    expect(content.text).not.toContain("Discounts:");
+    expect(content.html).not.toContain("Merchandise subtotal:");
+    expect(content.html).not.toContain("Discounts:");
   });
 
   it("renders a complete worker response copy and required reminders without a self-check-in URL", () => {

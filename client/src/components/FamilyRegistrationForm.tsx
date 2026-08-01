@@ -671,7 +671,7 @@ export function ReceiptBreakdown({ receipt }: { receipt: RegistrationReceipt }):
     <dl className="receipt-totals">
       <div><dt>Registration subtotal</dt><dd>{formatMoney(receipt.registrationSubtotalCents)}</dd></div>
       {receipt.discountCents > 0 ? <div className="receipt-discount"><dt>Multi-camper discounts</dt><dd>−{formatMoney(receipt.discountCents)}</dd></div> : null}
-      <div><dt>Merchandise subtotal</dt><dd>{formatMoney(receipt.merchandiseSubtotalCents)}</dd></div>
+      {receipt.merchandiseSubtotalCents > 0 ? <div><dt>Merchandise subtotal</dt><dd>{formatMoney(receipt.merchandiseSubtotalCents)}</dd></div> : null}
       <div className="receipt-grand-total"><dt>Total</dt><dd>{formatMoney(receipt.totalDueCents)}</dd></div>
     </dl>
   </section>;

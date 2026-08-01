@@ -150,8 +150,12 @@ export function buildFamilyRegistrationConfirmationContent(
     "Itemized pricing:",
     ...receiptLines,
     `Registration subtotal: ${formatMoney(input.registrationSubtotalCents)}`,
-    `Merchandise subtotal: ${formatMoney(input.merchandiseSubtotalCents)}`,
-    `Discounts: -${formatMoney(input.discountCents)}`,
+    ...(input.merchandiseSubtotalCents > 0
+      ? [`Merchandise subtotal: ${formatMoney(input.merchandiseSubtotalCents)}`]
+      : []),
+    ...(input.discountCents > 0
+      ? [`Discounts: -${formatMoney(input.discountCents)}`]
+      : []),
     `Total: ${formatMoney(input.totalDueCents)}`,
     "",
     paymentText,
@@ -189,8 +193,7 @@ export function buildFamilyRegistrationConfirmationContent(
 <h2>Itemized pricing</h2>
 <ul>${receiptHtml}</ul>
 <p>Registration subtotal: ${escapeHtml(formatMoney(input.registrationSubtotalCents))}<br>
-Merchandise subtotal: ${escapeHtml(formatMoney(input.merchandiseSubtotalCents))}<br>
-Discounts: -${escapeHtml(formatMoney(input.discountCents))}<br>
+${input.merchandiseSubtotalCents > 0 ? `Merchandise subtotal: ${escapeHtml(formatMoney(input.merchandiseSubtotalCents))}<br>\n` : ""}${input.discountCents > 0 ? `Discounts: -${escapeHtml(formatMoney(input.discountCents))}<br>\n` : ""}
 <strong>Total: ${escapeHtml(formatMoney(input.totalDueCents))}</strong></p>
 <p><strong>${escapeHtml(paymentText)}</strong></p>
 <h2>Merchandise summary</h2>

@@ -107,6 +107,31 @@ describe("family registration payment summary", () => {
     expect(html).toContain("Merchandise subtotal");
     expect(html).toContain("$40.00");
     expect(html).toContain("$205.00");
+    expect(html).not.toContain("Multi-camper discounts");
+  });
+
+  it("omits empty merchandise and discount totals from the final receipt", () => {
+    const receipt: RegistrationReceipt = {
+      registrationSubtotalCents: 16500,
+      merchandiseSubtotalCents: 0,
+      discountCents: 0,
+      totalDueCents: 16500,
+      receiptLineItems: [{
+        description: "Taylor Camper registration",
+        quantity: 1,
+        unitPriceCents: 16500,
+        discountCents: 0,
+        lineTotalCents: 16500,
+        lineType: "registration",
+      }],
+    };
+
+    const html = renderToStaticMarkup(<ReceiptBreakdown receipt={receipt} />);
+
+    expect(html).not.toContain("Merchandise subtotal");
+    expect(html).not.toContain("Multi-camper discounts");
+    expect(html).toContain("Registration subtotal");
+    expect(html).toContain("$165.00");
   });
 });
 
