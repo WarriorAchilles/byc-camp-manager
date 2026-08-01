@@ -792,7 +792,7 @@ export class SeasonalOperations extends cdk.Resource {
         destinations: [
           {
             cloudWatchLogsLogGroup: {
-              logGroupArn: `${controllerLogGroup.logGroupArn}:*`,
+              logGroupArn: controllerLogGroup.logGroupArn,
             },
           },
         ],

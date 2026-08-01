@@ -13,7 +13,7 @@
     "initialSuperAdminSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:initial-admin-90GKKp",
     "@aws-cdk/aws-ecs:removeDefaultDesiredCount": true,
     "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,
-    "certificateArn": "arn:aws:acm:us-east-2:644238516603:certificate/9770c231-befd-495d-9924-85fbc8c7fb8e",
+    "certificateArn": "arn:aws:acm:us-east-2:644238516603:certificate/bcb3f025-4552-4844-bb9e-0ceaea6c9f5e",
     "adminPublicOrigin": "https://admin.believersyouthcamp.com",
     "registrationPublicOrigin": "https://registration.believersyouthcamp.com",
     "stripeSecretKeySecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-secret-key-ND3Znw",

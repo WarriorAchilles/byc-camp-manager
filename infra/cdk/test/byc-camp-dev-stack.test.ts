@@ -132,7 +132,18 @@ describe("BYC seasonal controller", () => {
       LoggingConfiguration: {
         IncludeExecutionData: false,
         Level: "ERROR",
-        Destinations: Match.anyValue(),
+        Destinations: [
+          {
+            CloudWatchLogsLogGroup: {
+              LogGroupArn: {
+                "Fn::GetAtt": [
+                  Match.stringLikeRegexp("SeasonalControllerLogs"),
+                  "Arn",
+                ],
+              },
+            },
+          },
+        ],
       },
     });
     template.hasResourceProperties("AWS::Logs::LogGroup", {
