@@ -262,6 +262,31 @@ describe("BYC seasonal controller", () => {
     expect(definition.States["Set error mode"]).toBeDefined();
   });
 
+  it("uses Step Functions parameter casing for every RDS SDK task", () => {
+    const template = Template.fromStack(createStack());
+    const stateMachines = Object.values(
+      template.findResources("AWS::StepFunctions::StateMachine"),
+    );
+    const definition = JSON.parse(stateMachines[0].Properties.DefinitionString) as {
+      States: Record<
+        string,
+        { Resource?: string; Parameters?: Record<string, unknown> }
+      >;
+    };
+    const rdsTasks = Object.values(definition.States).filter((state) =>
+      state.Resource?.startsWith("arn:aws:states:::aws-sdk:rds:"),
+    );
+
+    expect(rdsTasks).toHaveLength(10);
+    for (const task of rdsTasks) {
+      expect(task.Parameters).toHaveProperty(
+        "DbInstanceIdentifier",
+        "${DatabaseIdentifier}",
+      );
+      expect(task.Parameters).not.toHaveProperty("DBInstanceIdentifier");
+    }
+  });
+
   it("validates human-readable seasonal context", () => {
     expect(() => createStack({ seasonWakeMonthDay: "02-31" })).toThrow(
       "seasonWakeMonthDay must be a valid calendar date",

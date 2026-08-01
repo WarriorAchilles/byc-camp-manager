@@ -17,6 +17,7 @@
     "adminPublicOrigin": "https://admin.believersyouthcamp.com",
     "registrationPublicOrigin": "https://registration.believersyouthcamp.com",
     "stripeSecretKeySecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-secret-key-ND3Znw",
-    "stripeWebhookSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-webhook-secret-YnJAuy"
+    "stripeWebhookSecretArn": "arn:aws:secretsmanager:us-east-2:644238516603:secret:byc/stripe-webhook-secret-YnJAuy",
+    "opsAlertEmail": "ZionEm7@gmail.com"
   }
 }

@@ -164,7 +164,7 @@ function addEnsureRdsAvailable(
   };
   states[describe] = awsSdkTask(
     "arn:aws:states:::aws-sdk:rds:describeDBInstances",
-    { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     choice,
     "$.rds",
   );
@@ -191,7 +191,7 @@ function addEnsureRdsAvailable(
   };
   states[start] = awsSdkTask(
     "arn:aws:states:::aws-sdk:rds:startDBInstance",
-    { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     `${prefix} wait`,
   );
   addCounter(states, prefix, describe);
@@ -216,7 +216,7 @@ function addEnsureRdsStopped(
   };
   states[describe] = awsSdkTask(
     "arn:aws:states:::aws-sdk:rds:describeDBInstances",
-    { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     choice,
     "$.rds",
   );
@@ -243,7 +243,7 @@ function addEnsureRdsStopped(
   };
   states[stop] = awsSdkTask(
     "arn:aws:states:::aws-sdk:rds:stopDBInstance",
-    { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     `${prefix} wait`,
   );
   addCounter(states, prefix, describe);
@@ -573,7 +573,7 @@ function buildStateMachineDefinition(): Record<string, unknown> {
   states["Compensate inspect RDS"] = {
     Type: "Task",
     Resource: "arn:aws:states:::aws-sdk:rds:describeDBInstances",
-    Parameters: { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    Parameters: { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     ResultPath: "$.compensationRds",
     Retry: RETRY,
     Catch: [{ ErrorEquals: ["States.ALL"], Next: "Set error mode" }],
@@ -593,7 +593,7 @@ function buildStateMachineDefinition(): Record<string, unknown> {
   states["Compensate stop RDS"] = {
     Type: "Task",
     Resource: "arn:aws:states:::aws-sdk:rds:stopDBInstance",
-    Parameters: { DBInstanceIdentifier: "${DatabaseIdentifier}" },
+    Parameters: { DbInstanceIdentifier: "${DatabaseIdentifier}" },
     ResultPath: null,
     Retry: RETRY,
     Catch: [{ ErrorEquals: ["States.ALL"], Next: "Set error mode" }],
