@@ -111,7 +111,7 @@ For storage and downstream operational compatibility, an adult self-registrant's
 #### Entry Choice - Registration Type
 
 - **I am 18 or older and registering myself** - collect the adult camper's own email, phone, mailing address, and camper information; do not request parent/guardian information.
-- **The camper is under 18, or I am a parent/guardian** - use the family flow below for minors, children, or multiple campers; a parent or legal guardian completes this branch.
+- **The camper will be under 18 on day one, or I am a parent/guardian** - use the family flow below for minors, children, or multiple campers; a parent or legal guardian completes this branch.
 
 #### Step 1 - Parent / Guardian Information
 
@@ -139,15 +139,15 @@ The parent adds one or more campers. For each camper, collect at least the field
 
 #### Step 3 - Medical Release & Legal Agreement
 
-- Display the medical release / liability waiver text.
-- Parent/guardian provides a **digital legal signature** (typed full name + checkbox acknowledgment, or drawn signature via signature pad).
-- Adult self-registrants receive and sign an adult-specific authorization that identifies them as the camper and does not assert that they are a parent or legal guardian.
+- This step is required only when the registration includes a camper who will be **under 18 on the first day of camp**. Campers who will be age 18 or older on day one do not require a medical consent form, and adult-only registrations skip this step.
+- Display the medical release / liability waiver text and identify only the minor campers covered by it.
+- The parent/guardian provides a **digital legal signature** (typed full name + checkbox acknowledgment, or drawn signature via signature pad).
 - Timestamp and IP address recorded for legal purposes.
 - Camp admins can view and print an e-signature confirmation from a camper's admin record. The confirmation uses the exact stored agreement snapshot and includes the covered camper(s), signer, acknowledgment, signature method, signing timestamp, agreement version, and recorded request IP so staff can provide proof of consent to a medical provider when needed.
 
 #### Step 4 - Merchandise Pre-Order (Optional)
 
-- After the medical release, the parent is presented with available camp merchandise for pre-order (e.g., t-shirts, hats).
+- After the medical release, when one is required, the parent is presented with available camp merchandise for pre-order (e.g., t-shirts, hats). Adult-only registrations proceed directly from camper information to merchandise.
 - Each merch item displays its name, price, and available options (size, color, etc.).
 - The parent can select items and quantities per camper or per family as appropriate.
 - Pre-ordering is optional - the parent can skip this step entirely.
@@ -182,7 +182,7 @@ The parent adds one or more campers. For each camper, collect at least the field
 
 #### Camper fields (legacy parity)
 
-The **family (camper)** registration UI should expose configurable **camp header** content equivalent to the top of the legacy Google Form (dates, **check-in after 4:00 p.m.** on arrival day, ages **10–25**, venue name and address, fee summary, Square / payment links, contact phone and email, and notices: e.g. campers under 18 must submit the **emergency medical form** from [Believersyouthcamp.com/registrationforms](https://Believersyouthcamp.com/registrationforms); youth **over 25** should use the **worker** form).
+The **family (camper)** registration UI should expose configurable **camp header** content equivalent to the top of the legacy Google Form (dates, **check-in after 4:00 p.m.** on arrival day, ages **10–25**, venue name and address, fee summary, Square / payment links, contact phone and email, and notices: e.g. campers who will be under 18 on the first day of camp must submit the **emergency medical form** from [Believersyouthcamp.com/registrationforms](https://Believersyouthcamp.com/registrationforms); youth **over 25** should use the **worker** form).
 
 **Authoritative checklist** (same semantics as [Camper Registration - BYC 2026](https://docs.google.com/forms/d/e/1FAIpQLSeIEgbd-w0vlTgxnMCbNaKxks82kb28FRWQEl9sRRfK9tIOGw/viewform); cross-check all pages of the live form before release):
 

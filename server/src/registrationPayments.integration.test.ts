@@ -66,7 +66,7 @@ describe.skipIf(!integrationReady)("family registration payments", () => {
       fullName: "Payment Guardian",
       email: "payment@example.test",
     };
-    submission.legal.typedName = "Payment Guardian";
+    submission.legal!.typedName = "Payment Guardian";
     submission.campers = [0, 1].map((index) => ({
       ...submission.campers[0]!,
       firstName: `Pay${index + 1}`,

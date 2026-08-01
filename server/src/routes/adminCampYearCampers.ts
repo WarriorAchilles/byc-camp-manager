@@ -131,7 +131,8 @@ router.get("/", async (req: AuthedRequest, res) => {
     ...camper,
     hasPhoto: photo !== null,
     hasESignatureConfirmation: Boolean(
-      familyRegistration?.agreementTextSnapshot
+      camper.medicalReleaseSigned
+      && familyRegistration?.agreementTextSnapshot
       && familyRegistration.signatureData
       && familyRegistration.legalAcknowledged
       && familyRegistration.signedAt,
@@ -369,6 +370,7 @@ router.get("/:camperId/consent", async (req: AuthedRequest, res) => {
       id: camperId,
       campYearId,
       archivedAt: null,
+      medicalReleaseSigned: true,
       familyRegistration: { state: "confirmed" },
     },
     select: {
@@ -400,6 +402,7 @@ router.get("/:camperId/consent", async (req: AuthedRequest, res) => {
           signedAt: true,
           requestIp: true,
           campers: {
+            where: { medicalReleaseSigned: true },
             orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
             select: {
               id: true,

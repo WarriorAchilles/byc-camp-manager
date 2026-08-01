@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  ADULT_MEDICAL_AGREEMENT_VERSION,
   agreementSnapshot,
   CAMPER_T_SHIRT_SIZES,
+  camperRequiresMedicalConsent,
   familySubmissionSchema,
   safeRequestIp,
   STATE_PROVINCE_OPTIONS,
@@ -50,11 +50,7 @@ describe("family registration contract", () => {
       guardianName: "Taylor Camper",
       guardianPhone: adult.guardian.phone,
     };
-    adult.legal = {
-      ...adult.legal,
-      typedName: "Taylor Camper",
-      agreementVersion: ADULT_MEDICAL_AGREEMENT_VERSION,
-    };
+    adult.legal = null;
     expect(familySubmissionSchema.safeParse(adult).success).toBe(true);
 
     adult.campers.push({ ...adult.campers[0]! });
@@ -69,10 +65,17 @@ describe("family registration contract", () => {
     }
   });
 
-  it("requires the registration type to use its matching legal agreement", () => {
+  it("allows the camp-specific persistence layer to enforce whether authorization is required", () => {
     const input = validFamilySubmission();
-    input.legal.agreementVersion = ADULT_MEDICAL_AGREEMENT_VERSION;
-    expect(familySubmissionSchema.safeParse(input).success).toBe(false);
+    input.legal = null;
+    expect(familySubmissionSchema.safeParse(input).success).toBe(true);
+  });
+
+  it("uses age on the first day of camp and exempts campers on their eighteenth birthday", () => {
+    const campStartDate = new Date("2026-08-01T12:00:00.000Z");
+    expect(camperRequiresMedicalConsent("2008-08-02", campStartDate)).toBe(true);
+    expect(camperRequiresMedicalConsent("2008-08-01", campStartDate)).toBe(false);
+    expect(camperRequiresMedicalConsent("2000-01-01", campStartDate)).toBe(false);
   });
 
   it("keeps the legacy option lists and agreement snapshot stable", () => {

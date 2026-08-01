@@ -1,6 +1,7 @@
 import prismaClientPkg, { Prisma, type CamperPaymentStatus } from "@prisma/client";
 import { z } from "zod";
 import {
+  camperRequiresMedicalConsent,
   familySubmissionSchema,
   type FamilySubmission,
 } from "./familyRegistration.js";
@@ -50,6 +51,7 @@ export async function materializePendingFamilyCampers(
     where: { id: input.familyRegistrationId },
     include: {
       campers: { orderBy: { createdAt: "asc" }, select: { id: true } },
+      campYear: { select: { startDate: true } },
     },
   });
 
@@ -137,7 +139,8 @@ export async function materializePendingFamilyCampers(
         feeDueCents,
         feePaidCents: input.markFeesPaid ? feeDueCents : 0,
         paymentStatus: input.paymentStatus,
-        medicalReleaseSigned: true,
+        medicalReleaseSigned: snapshot.submission.registrationType === "family"
+          && camperRequiresMedicalConsent(camper.dateOfBirth, registration.campYear.startDate),
         importSource: ImportSource.online_registration,
       },
       select: { id: true },

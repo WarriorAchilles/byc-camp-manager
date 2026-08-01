@@ -5,19 +5,14 @@ export const FAMILY_RESERVATION_MINUTES = 30;
 
 export const MEDICAL_AGREEMENT_VERSION = "byc-medical-authorization-2026-07-11";
 
-export const ADULT_MEDICAL_AGREEMENT_VERSION = "byc-adult-medical-authorization-2026-07-13";
+// Accepted only so registrations already pending during this change can still be completed.
+const LEGACY_ADULT_MEDICAL_AGREEMENT_VERSION = "byc-adult-medical-authorization-2026-07-13";
 
 export const MEDICAL_AGREEMENT_TEXT =
   "This is to give Douglas Severt consent to sign for EMERGENCY MEDICAL and/or SURGICAL TREATMENT for the camper(s) listed in this registration.";
 
 export const LEGAL_ACKNOWLEDGMENT_TEXT =
   "I am the parent or legal guardian authorized to provide this consent, agree to use electronic records, and intend my typed name to be my legal electronic signature.";
-
-export const ADULT_MEDICAL_AGREEMENT_TEXT =
-  "I authorize Douglas Severt to consent to EMERGENCY MEDICAL and/or SURGICAL TREATMENT on my behalf if I am unable to provide consent myself.";
-
-export const ADULT_LEGAL_ACKNOWLEDGMENT_TEXT =
-  "I am the adult camper named in this registration, I am at least 18 years old, I agree to use electronic records, and I intend my typed name to be my legal electronic signature.";
 
 export const REGISTRATION_TYPES = ["family", "self"] as const;
 export type RegistrationType = typeof REGISTRATION_TYPES[number];
@@ -64,6 +59,15 @@ const addressSchema = z.object({
   postalCode: requiredText(20),
   country: requiredText(100),
 }).strict();
+
+export function camperRequiresMedicalConsent(dateOfBirth: string, campStartDate: Date): boolean {
+  const adultCutoff = new Date(Date.UTC(
+    campStartDate.getUTCFullYear() - 18,
+    campStartDate.getUTCMonth(),
+    campStartDate.getUTCDate(),
+  )).toISOString().slice(0, 10);
+  return dateOfBirth > adultCutoff;
+}
 
 const camperSchema = z.object({
   firstName: requiredText(100),
@@ -120,8 +124,11 @@ export const familySubmissionSchema = z.object({
   legal: z.object({
     typedName: requiredText(200),
     acknowledged: z.literal(true),
-    agreementVersion: z.enum([MEDICAL_AGREEMENT_VERSION, ADULT_MEDICAL_AGREEMENT_VERSION]),
-  }).strict(),
+    agreementVersion: z.enum([
+      MEDICAL_AGREEMENT_VERSION,
+      LEGACY_ADULT_MEDICAL_AGREEMENT_VERSION,
+    ]),
+  }).strict().nullable(),
 }).strict().superRefine((submission, ctx) => {
   const photoUploadIds = submission.campers
     .map((camper) => camper.photoUploadId)
@@ -131,17 +138,6 @@ export const familySubmissionSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["campers"],
       message: "Each camper photo upload may only be used once",
-    });
-  }
-
-  const expectedAgreementVersion = submission.registrationType === "self"
-    ? ADULT_MEDICAL_AGREEMENT_VERSION
-    : MEDICAL_AGREEMENT_VERSION;
-  if (submission.legal.agreementVersion !== expectedAgreementVersion) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["legal", "agreementVersion"],
-      message: "Agreement version does not match the registration type",
     });
   }
 
@@ -162,10 +158,8 @@ export const familySubmissionSchema = z.object({
     today.getUTCFullYear() - 18,
     today.getUTCMonth(),
     today.getUTCDate(),
-    23, 59, 59, 999,
-  ));
-  const dateOfBirth = new Date(`${camper.dateOfBirth}T12:00:00.000Z`);
-  if (dateOfBirth > adultCutoff) {
+  )).toISOString().slice(0, 10);
+  if (camper.dateOfBirth > adultCutoff) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["campers", 0, "dateOfBirth"],
@@ -200,15 +194,11 @@ export const familySubmissionSchema = z.object({
 
 export type FamilySubmission = z.infer<typeof familySubmissionSchema>;
 
-export function agreementSnapshot(camperNames: string[], registrationType: RegistrationType = "family"): string {
-  const medicalText = registrationType === "self" ? ADULT_MEDICAL_AGREEMENT_TEXT : MEDICAL_AGREEMENT_TEXT;
-  const acknowledgmentText = registrationType === "self"
-    ? ADULT_LEGAL_ACKNOWLEDGMENT_TEXT
-    : LEGAL_ACKNOWLEDGMENT_TEXT;
+export function agreementSnapshot(camperNames: string[]): string {
   return [
-    medicalText,
+    MEDICAL_AGREEMENT_TEXT,
     `Covered camper(s): ${camperNames.join(", ")}.`,
-    acknowledgmentText,
+    LEGAL_ACKNOWLEDGMENT_TEXT,
   ].join("\n\n");
 }
 

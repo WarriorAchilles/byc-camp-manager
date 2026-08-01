@@ -1301,7 +1301,12 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
                             View consent
                           </Link>
                         ) : (
-                          <span className="muted">No e-signature</span>
+                          <span className="muted">
+                            {selectedYear?.startDate
+                              && ageOnCampStartUtc(camper.dateOfBirth, selectedYear.startDate) >= 18
+                              ? "Medical consent not required"
+                              : "No e-signature"}
+                          </span>
                         )}
                         {superAdmin ? (
                           <button

@@ -5,9 +5,7 @@ import { prisma } from "../db.js";
 import { getActiveCampYearId } from "../lib/activeCampYearSetting.js";
 import {
   agreementSnapshot,
-  ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
-  ADULT_MEDICAL_AGREEMENT_TEXT,
-  ADULT_MEDICAL_AGREEMENT_VERSION,
+  camperRequiresMedicalConsent,
   FAMILY_RESERVATION_MINUTES,
   familySubmissionSchema,
   MEDICAL_AGREEMENT_TEXT,
@@ -430,10 +428,19 @@ export async function persistFamilySubmission(
           if (error instanceof PricingError) throw new SubmissionError(400, error.code);
           throw error;
         }
-        const snapshot = agreementSnapshot(
-          input.campers.map((camper) => `${camper.firstName} ${camper.lastName}`),
-          input.registrationType,
-        );
+        const coveredCampers = input.registrationType === "family"
+          ? input.campers.filter((camper) => camperRequiresMedicalConsent(
+            camper.dateOfBirth,
+            camp.startDate,
+          ))
+          : [];
+        const legal = coveredCampers.length > 0 ? input.legal : null;
+        if (coveredCampers.length > 0 && legal?.agreementVersion !== MEDICAL_AGREEMENT_VERSION) {
+          throw new SubmissionError(400, "medical_consent_required");
+        }
+        const snapshot = legal
+          ? agreementSnapshot(coveredCampers.map((camper) => `${camper.firstName} ${camper.lastName}`))
+          : null;
         const registration = await tx.familyRegistration.create({
           data: {
             submissionKey: input.submissionKey,
@@ -459,13 +466,13 @@ export async function persistFamilySubmission(
             discountCents: pricing.discountCents,
             totalDueCents: pricing.totalDueCents,
             pricingSnapshot: pricing.pricingSnapshot,
-            agreementVersion: input.legal.agreementVersion,
+            agreementVersion: legal?.agreementVersion ?? null,
             agreementTextSnapshot: snapshot,
-            signatureMethod: "typed",
-            signatureData: input.legal.typedName,
-            legalAcknowledged: true,
-            signedAt: now,
-            requestIp: safeRequestIp(requestIp),
+            signatureMethod: legal ? "typed" : null,
+            signatureData: legal?.typedName ?? null,
+            legalAcknowledged: legal !== null,
+            signedAt: legal ? now : null,
+            requestIp: legal ? safeRequestIp(requestIp) : null,
             expiresAt: new Date(now.getTime() + FAMILY_RESERVATION_MINUTES * 60_000),
             receiptLineItems: {
               create: pricing.receiptLines.map((line) => ({
@@ -533,14 +540,15 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
     });
     return;
   }
-  if (parsed.data.legal.typedName.toLocaleLowerCase() !== parsed.data.guardian.fullName.toLocaleLowerCase()) {
+  if (
+    parsed.data.legal
+    && parsed.data.legal.typedName.toLocaleLowerCase() !== parsed.data.guardian.fullName.toLocaleLowerCase()
+  ) {
     res.status(400).json({
       error: "validation_failed",
       fields: [{
         path: "legal.typedName",
-        message: parsed.data.registrationType === "self"
-          ? "Signature must match your full name"
-          : "Signature must match the parent or guardian full name",
+        message: "Signature must match the parent or guardian full name",
       }],
     });
     return;
@@ -578,6 +586,12 @@ publicRegistrationRouter.post("/family", submissionLimit, async (req, res, next)
 publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => {
   try {
     const activeCampYearId = await getActiveCampYearId(prisma);
+    const activeCampYear = activeCampYearId
+      ? await prisma.campYear.findUnique({
+        where: { id: activeCampYearId },
+        select: { startDate: true },
+      })
+      : null;
     const merchandiseItems = activeCampYearId
       ? await prisma.merchandiseItem.findMany({
         where: { campYearId: activeCampYearId, isActive: true },
@@ -594,6 +608,7 @@ publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => 
       : [];
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json({
+      campStartDate: activeCampYear?.startDate.toISOString() ?? null,
       genders: ["male", "female"],
       stateOrProvinceOptions: STATE_PROVINCE_OPTIONS,
       tShirtSizes: CAMPER_T_SHIRT_SIZES,
@@ -601,12 +616,6 @@ publicRegistrationRouter.get("/family/form-options", async (_req, res, next) => 
         version: MEDICAL_AGREEMENT_VERSION,
         text: MEDICAL_AGREEMENT_TEXT,
         acknowledgmentText: LEGAL_ACKNOWLEDGMENT_TEXT,
-        signatureMethod: "typed",
-      },
-      adultMedicalAgreement: {
-        version: ADULT_MEDICAL_AGREEMENT_VERSION,
-        text: ADULT_MEDICAL_AGREEMENT_TEXT,
-        acknowledgmentText: ADULT_LEGAL_ACKNOWLEDGMENT_TEXT,
         signatureMethod: "typed",
       },
       merchandiseItems,

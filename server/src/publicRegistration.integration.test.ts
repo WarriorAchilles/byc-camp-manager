@@ -6,7 +6,6 @@ import { createApp } from "./app.js";
 import { prisma } from "./db.js";
 import { SETTINGS_ROW_ID } from "./lib/activeCampYearSetting.js";
 import { validFamilySubmission } from "./familyRegistrationTestData.js";
-import { ADULT_MEDICAL_AGREEMENT_VERSION } from "./lib/familyRegistration.js";
 import { persistFamilySubmission } from "./routes/publicRegistration.js";
 import { confirmFamilyRegistrationCash } from "./lib/stripeCheckout.js";
 
@@ -36,8 +35,8 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
       data: {
         name: "Public Test Camp",
         yearLabel: "2099",
-        startDate: new Date("2099-07-01T12:00:00Z"),
-        endDate: new Date("2099-07-07T12:00:00Z"),
+        startDate: new Date("2026-08-10T12:00:00Z"),
+        endDate: new Date("2026-08-17T12:00:00Z"),
         camperCapacity: 1,
         familyRegistrationEnabled: true,
         familyRegistrationOpensAt: new Date(Date.now() - 60_000),
@@ -91,10 +90,11 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
+      campStartDate: "2026-08-10T00:00:00.000Z",
       genders: ["male", "female"],
       medicalAgreement: { signatureMethod: "typed" },
-      adultMedicalAgreement: { signatureMethod: "typed" },
     });
+    expect(response.body).not.toHaveProperty("adultMedicalAgreement");
     expect(response.body.stateOrProvinceOptions).toContain("IN");
     expect(response.body.tShirtSizes).toContain("Adult M");
     expect(response.body.merchandiseItems).toEqual([]);
@@ -287,6 +287,51 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     ]));
   });
 
+  it("covers only minor campers when a family registration also includes an adult", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
+    const input = validFamilySubmission();
+    input.campers.push({
+      ...input.campers[0]!,
+      firstName: "Adult",
+      dateOfBirth: "1999-05-04",
+    });
+
+    const result = await persistFamilySubmission(input, "192.0.2.25", new Date());
+    const pending = await prisma.familyRegistration.findUniqueOrThrow({
+      where: { id: result.registration.id },
+    });
+    expect(pending.agreementTextSnapshot).toContain("Taylor Camper");
+    expect(pending.agreementTextSnapshot).not.toContain("Adult Camper");
+
+    expect((await confirmFamilyRegistrationCash({
+      familyRegistrationId: result.registration.id,
+    })).ok).toBe(true);
+    const campers = await prisma.camper.findMany({
+      where: { familyRegistrationId: result.registration.id },
+      orderBy: { firstName: "asc" },
+    });
+    expect(Object.fromEntries(campers.map((camper) => [
+      camper.firstName,
+      camper.medicalReleaseSigned,
+    ]))).toEqual({ Adult: false, Taylor: true });
+  });
+
+  it("enforces medical authorization from age on the first day of camp", async () => {
+    await selectActiveYear();
+    await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
+    const input = validFamilySubmission();
+    input.legal = null;
+
+    await expect(persistFamilySubmission(input, "192.0.2.26", new Date())).rejects.toMatchObject({
+      status: 400,
+      code: "medical_consent_required",
+    });
+    expect(await prisma.familyRegistration.count({
+      where: { submissionKey: input.submissionKey },
+    })).toBe(0);
+  });
+
   it("persists an adult self-registration without requiring separate guardian details", async () => {
     await selectActiveYear();
     await prisma.campYear.update({ where: { id: campYearId }, data: { camperCapacity: 10 } });
@@ -303,11 +348,7 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
       guardianName: "Taylor Camper",
       guardianPhone: input.guardian.phone,
     };
-    input.legal = {
-      typedName: "Taylor Camper",
-      acknowledged: true,
-      agreementVersion: ADULT_MEDICAL_AGREEMENT_VERSION,
-    };
+    input.legal = null;
 
     const response = await request(app).post("/api/public/registration/family").send(input);
     expect(response.status).toBe(201);
@@ -327,9 +368,11 @@ describe.skipIf(!integrationReady)("public registration availability API", () =>
     expect(stored.guardianRelationship).toBe("Self");
     expect(stored.guardianName).toBe("Taylor Camper");
     expect(stored.campers[0]?.guardianName).toBe("Taylor Camper");
-    expect(stored.agreementVersion).toBe(ADULT_MEDICAL_AGREEMENT_VERSION);
-    expect(stored.agreementTextSnapshot).toContain("adult camper named in this registration");
-    expect(stored.agreementTextSnapshot).not.toContain("parent or legal guardian");
+    expect(stored.agreementVersion).toBeNull();
+    expect(stored.agreementTextSnapshot).toBeNull();
+    expect(stored.signatureData).toBeNull();
+    expect(stored.signedAt).toBeNull();
+    expect(stored.campers[0]?.medicalReleaseSigned).toBe(false);
   });
 
   it("replays the same idempotency key without creating another family", async () => {

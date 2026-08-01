@@ -6,6 +6,7 @@ import {
   type RegistrationReceipt,
 } from "./FamilyRegistrationForm";
 import {
+  camperRequiresMedicalConsent,
   createAdditionalCamper,
   type CamperDraft,
 } from "./familyRegistrationCamper";
@@ -137,7 +138,7 @@ describe("family registration payment summary", () => {
 
 describe("family registration progress", () => {
   it("omits merchandise when the active catalog is empty", () => {
-    expect(registrationProgressLabels("family", false)).toEqual([
+    expect(registrationProgressLabels("family", false, true)).toEqual([
       "Parent or guardian",
       "Campers",
       "Medical authorization",
@@ -146,12 +147,18 @@ describe("family registration progress", () => {
   });
 
   it("includes merchandise when an active item is available", () => {
-    expect(registrationProgressLabels("self", true)).toEqual([
+    expect(registrationProgressLabels("self", true, false)).toEqual([
       "Your contact information",
       "Camper information",
-      "Medical authorization",
       "Merchandise",
       "Payment",
     ]);
+  });
+
+  it("uses age on the first day of camp and exempts campers on their eighteenth birthday", () => {
+    const campStartDate = new Date("2026-08-01T12:00:00.000Z");
+    expect(camperRequiresMedicalConsent("2008-08-02", campStartDate)).toBe(true);
+    expect(camperRequiresMedicalConsent("2008-08-01", campStartDate)).toBe(false);
+    expect(camperRequiresMedicalConsent("1999-05-04", campStartDate)).toBe(false);
   });
 });

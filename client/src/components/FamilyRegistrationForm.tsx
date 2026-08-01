@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiJson, apiUrl, type ApiHttpError } from "../api";
 import {
+  camperRequiresMedicalConsent,
   createAdditionalCamper,
   type Address,
   type CamperDraft,
@@ -13,16 +14,11 @@ import { ChurchCombobox } from "./ChurchCombobox";
 import { RegistrationHomeLink } from "./RegistrationHomeLink";
 
 type FormOptions = {
+  campStartDate: string | null;
   genders: string[];
   stateOrProvinceOptions: string[];
   tShirtSizes: string[];
   medicalAgreement: {
-    version: string;
-    text: string;
-    acknowledgmentText: string;
-    signatureMethod: "typed";
-  };
-  adultMedicalAgreement: {
     version: string;
     text: string;
     acknowledgmentText: string;
@@ -266,9 +262,11 @@ export function FamilyRegistrationForm(): React.ReactElement {
     const registrationContact = registrationType === "self"
       ? { ...guardian, fullName: selfName, relationship: "Self" }
       : guardian;
-    const agreement = registrationType === "self"
-      ? options.adultMedicalAgreement
-      : options.medicalAgreement;
+    const campStartDate = options.campStartDate ? new Date(options.campStartDate) : null;
+    const medicalConsentRequired = registrationType === "family"
+      && campers.some((camper) => campStartDate
+        ? camperRequiresMedicalConsent(camper.dateOfBirth, campStartDate)
+        : Boolean(camper.dateOfBirth));
     setSubmitting(true);
     setError("");
     try {
@@ -311,11 +309,11 @@ export function FamilyRegistrationForm(): React.ReactElement {
             photoUploadId: photoUploadIds[index],
           })),
           merchandiseSelections: selectedMerchandise,
-          legal: {
+          legal: medicalConsentRequired ? {
             typedName,
             acknowledged,
-            agreementVersion: agreement.version,
-          },
+            agreementVersion: options.medicalAgreement.version,
+          } : null,
         }),
       });
       setRegistrationId(result.registrationId);
@@ -334,6 +332,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
       const body = apiError.body as { error?: string; fields?: Array<{ message: string }> } | null;
       if (body?.error === "capacity_reached") setError("Camper capacity was reached before this registration could be saved.");
       else if (body?.error === "registration_closed") setError("Registration is no longer open.");
+      else if (body?.error === "medical_consent_required") setError("Medical authorization is required for each camper who will be under 18 on the first day of camp.");
       else if (body?.fields?.[0]?.message) setError(body.fields[0].message);
       else setError("We could not save this registration. Please review the form and try again.");
     } finally {
@@ -427,10 +426,10 @@ export function FamilyRegistrationForm(): React.ReactElement {
           <div className="registration-type-options">
             <button className="registration-type-option" type="button" onClick={() => setRegistrationType("self")}>
               <strong>I am 18 or older and registering myself</strong>
-              <span>Use your own contact information and complete an adult medical authorization.</span>
+              <span>Use your own contact information. Adult campers do not need a medical consent form.</span>
             </button>
             <button className="registration-type-option" type="button" onClick={() => setRegistrationType("family")}>
-              <strong>The camper is under 18, or I am a parent/guardian</strong>
+              <strong>The camper will be under 18 when camp starts, or I am a parent/guardian</strong>
               <span>A parent or legal guardian completes this flow for one or more campers.</span>
             </button>
           </div>
@@ -440,9 +439,21 @@ export function FamilyRegistrationForm(): React.ReactElement {
   }
 
   const selfRegistration = registrationType === "self";
-  const agreement = selfRegistration ? options.adultMedicalAgreement : options.medicalAgreement;
+  const agreement = options.medicalAgreement;
   const hasMerchandise = options.merchandiseItems.length > 0;
-  const progressLabels = registrationProgressLabels(registrationType, hasMerchandise);
+  const campStartDate = options.campStartDate ? new Date(options.campStartDate) : null;
+  const coveredCampers = selfRegistration
+    ? []
+    : campers.filter((camper) => campStartDate
+      ? camperRequiresMedicalConsent(camper.dateOfBirth, campStartDate)
+      : Boolean(camper.dateOfBirth));
+  const medicalConsentRequired = coveredCampers.length > 0;
+  const merchandiseStep = medicalConsentRequired ? 4 : 3;
+  const progressLabels = registrationProgressLabels(
+    registrationType,
+    hasMerchandise,
+    medicalConsentRequired,
+  );
 
   return (
     <div className="family-registration-form">
@@ -471,7 +482,15 @@ export function FamilyRegistrationForm(): React.ReactElement {
       ) : null}
 
       {step === 2 ? (
-        <form onSubmit={(event) => { event.preventDefault(); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (medicalConsentRequired || hasMerchandise) {
+            setStep(3);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          } else {
+            void submit();
+          }
+        }}>
           {campers.map((camper, index) => (
             <fieldset className="registration-fieldset camper-entry" key={index}>
               <legend>{selfRegistration ? "Your camper information" : `Camper ${index + 1}`}</legend>
@@ -581,11 +600,11 @@ export function FamilyRegistrationForm(): React.ReactElement {
             setCamperPhotos((current) => [...current, null]);
           }}>Add another camper</button> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(1)}>Back</button><button className="btn" type="submit">Continue to authorization</button></div>
+          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(1)}>Back</button><button className="btn" type="submit" disabled={submitting}>{medicalConsentRequired ? "Continue to authorization" : hasMerchandise ? "Continue to merchandise" : submitting ? "Calculating and saving…" : "Review total and choose payment"}</button></div>
         </form>
       ) : null}
 
-      {step === 3 ? (
+      {medicalConsentRequired && step === 3 ? (
         <form onSubmit={(event) => {
           event.preventDefault();
           if (hasMerchandise) {
@@ -597,9 +616,9 @@ export function FamilyRegistrationForm(): React.ReactElement {
         }}>
           <fieldset className="registration-fieldset">
             <legend>Emergency medical authorization</legend>
-            <div className="agreement-copy"><p>{agreement.text}</p><p><strong>Covered camper(s):</strong> {campers.map((camper) => `${camper.firstName} ${camper.lastName}`).join(", ")}</p></div>
+            <div className="agreement-copy"><p>{agreement.text}</p><p><strong>Covered camper(s):</strong> {coveredCampers.map((camper) => `${camper.firstName} ${camper.lastName}`).join(", ")}</p></div>
             <label className="registration-checkbox"><input required type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />{agreement.acknowledgmentText}</label>
-            <label>{selfRegistration ? "Type your first and last name exactly as entered for the camper" : "Type the parent or guardian full name exactly as entered in Step 1"}<input required autoComplete="name" value={typedName} onChange={(event) => setTypedName(event.target.value)} /></label>
+            <label>Type the parent or guardian full name exactly as entered in Step 1<input required autoComplete="name" value={typedName} onChange={(event) => setTypedName(event.target.value)} /></label>
             <p className="registration-fine-print">The accepted agreement text, typed name, date and time, and request IP address will be stored with this registration.</p>
           </fieldset>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -607,7 +626,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
         </form>
       ) : null}
 
-      {hasMerchandise && step === 4 ? (
+      {hasMerchandise && step === merchandiseStep ? (
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <fieldset className="registration-fieldset">
             <legend>Optional merchandise pre-order</legend>
@@ -629,7 +648,7 @@ export function FamilyRegistrationForm(): React.ReactElement {
             </div>
           </fieldset>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(3)}>Back</button><button className="btn" type="submit" disabled={submitting}>{submitting ? "Calculating and saving…" : "Review total and choose payment"}</button></div>
+          <div className="registration-actions"><button className="btn secondary" type="button" onClick={() => setStep(medicalConsentRequired ? 3 : 2)}>Back</button><button className="btn" type="submit" disabled={submitting}>{submitting ? "Calculating and saving…" : "Review total and choose payment"}</button></div>
         </form>
       ) : null}
     </div>

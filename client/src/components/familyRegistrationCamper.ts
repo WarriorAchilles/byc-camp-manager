@@ -32,6 +32,16 @@ export type CamperDraft = {
   specialNeeds: string;
 };
 
+export function camperRequiresMedicalConsent(dateOfBirth: string, campStartDate: Date): boolean {
+  if (!dateOfBirth) return false;
+  const adultCutoff = new Date(Date.UTC(
+    campStartDate.getUTCFullYear() - 18,
+    campStartDate.getUTCMonth(),
+    campStartDate.getUTCDate(),
+  )).toISOString().slice(0, 10);
+  return dateOfBirth > adultCutoff;
+}
+
 export function createAdditionalCamper(firstCamper: CamperDraft): CamperDraft {
   return {
     ...firstCamper,

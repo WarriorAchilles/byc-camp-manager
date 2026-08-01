@@ -357,13 +357,28 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
               medicalReleaseSigned: true,
               importSource: "online_registration",
             },
+            {
+              campYearId,
+              firstName: "Adult",
+              lastName: "Camper",
+              dateOfBirth: new Date("1999-05-04T12:00:00.000Z"),
+              gender: Gender.female,
+              guardianName: "Jamie Guardian",
+              guardianEmail: "jamie@example.test",
+              guardianPhone: "5551234567",
+              paymentStatus: CamperPaymentStatus.paid_cash,
+              medicalReleaseSigned: false,
+              importSource: "online_registration",
+            },
           ],
         },
       },
       include: { campers: { orderBy: { firstName: "asc" } } },
     });
     const camper = registration.campers.find((row) => row.firstName === "Signed");
+    const adultCamper = registration.campers.find((row) => row.firstName === "Adult");
     expect(camper).toBeDefined();
+    expect(adultCamper).toBeDefined();
     const token = signAuthToken({ sub: campAdmin.id, role: campAdmin.role });
     const consentPath =
       `/api/admin/camp-years/${campYearId}/campers/${camper!.id}/consent`;
@@ -374,7 +389,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       .get(`/api/admin/camp-years/${campYearId}/campers`)
       .set("Authorization", `Bearer ${token}`);
     const listedCamper = listed.body.campers.find((row: { id: string }) => row.id === camper!.id);
+    const listedAdultCamper = listed.body.campers.find(
+      (row: { id: string }) => row.id === adultCamper!.id,
+    );
     expect(listedCamper).toMatchObject({ hasESignatureConfirmation: true });
+    expect(listedAdultCamper).toMatchObject({ hasESignatureConfirmation: false });
     expect(listedCamper).not.toHaveProperty("signatureData");
     expect(listedCamper).not.toHaveProperty("familyRegistration");
 
@@ -404,6 +423,11 @@ describe.skipIf(!integrationDbReady || !campSchemaReady)("camp management API", 
       agreementText: "Stored medical release text.\n\nCovered campers: Signed Camper, Sibling Camper",
     });
     expect(response.body.consent.coveredCampers).toHaveLength(2);
+
+    const adultResponse = await request(app)
+      .get(`/api/admin/camp-years/${campYearId}/campers/${adultCamper!.id}/consent`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(adultResponse.status).toBe(404);
   });
 
   it("reports when a camper has no stored e-signature confirmation", async () => {
