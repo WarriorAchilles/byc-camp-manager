@@ -64,6 +64,9 @@ describe("registration confirmation templates", () => {
     expect(content.text).not.toContain("secret-token");
     expect(content.html).not.toContain("https://admin.example.test/self-check-in/");
     expect(content.html).toContain("Jamie &amp; Family");
+    expect(content.html).toContain('<img src="cid:byc-logo@believersyouthcamp.com"');
+    expect(content.html).toContain("Payment due at check-in");
+    expect(content.html).toContain('role="presentation"');
   });
 
   it("renders Stripe paid status without a cash balance reminder", () => {
@@ -140,6 +143,8 @@ describe("registration confirmation templates", () => {
     expect(content.text).toContain("scan the posted self-check-in QR code");
     expect(content.text).not.toContain("private-token");
     expect(content.html).not.toContain("/self-check-in/private-token");
+    expect(content.html).toContain('<img src="cid:byc-logo@believersyouthcamp.com"');
+    expect(content.html).toContain("Thank you for volunteering");
   });
 
   it("renders a complete leader response copy and arrival guidance without a self-check-in URL", () => {
@@ -180,5 +185,7 @@ describe("registration confirmation templates", () => {
     expect(content.text).toContain("scan the posted self-check-in QR code");
     expect(content.text).not.toContain("private-leader-token");
     expect(content.html).not.toContain("/self-check-in/private-leader-token");
+    expect(content.html).toContain('<img src="cid:byc-logo@believersyouthcamp.com"');
+    expect(content.html).toContain("Thank you for serving as a leader");
   });
 });

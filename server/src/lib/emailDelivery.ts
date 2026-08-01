@@ -1,6 +1,10 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { writeOpsLog } from "./opsLog.js";
+
+export const BYC_LOGO_CID = "byc-logo@believersyouthcamp.com";
 
 export type EmailContent = {
   subject: string;
@@ -64,6 +68,16 @@ function safeProviderErrorCode(error: unknown): string {
   return "email_provider_error";
 }
 
+function resolveEmailLogoPath(): string | null {
+  const clientDistPath = process.env.CLIENT_DIST_PATH?.trim();
+  const candidates = [
+    ...(clientDistPath ? [resolve(clientDistPath, "byc-logo.png")] : []),
+    resolve(process.cwd(), "../client/public/byc-logo.png"),
+    resolve(process.cwd(), "client/public/byc-logo.png"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
 /**
  * Delivers a rendered message through the shared transport. The result and all
  * logs intentionally omit the recipient, subject, body, and provider error text.
@@ -98,12 +112,22 @@ export async function deliverEmail(input: {
   }
 
   try {
+    const logoPath = resolveEmailLogoPath();
     const info = await transport.sendMail({
       from: mail.emailFrom,
       to: input.to,
       subject: input.content.subject,
       text: input.content.text,
       html: input.content.html,
+      ...(logoPath ? {
+        attachments: [{
+          filename: "byc-logo.jpg",
+          path: logoPath,
+          cid: BYC_LOGO_CID,
+          contentType: "image/jpeg",
+          contentDisposition: "inline",
+        }],
+      } : {}),
     });
     const providerMessageId =
       typeof info.messageId === "string" && info.messageId.trim()

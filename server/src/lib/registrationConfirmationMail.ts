@@ -6,6 +6,13 @@ import {
   type EmailContent,
   type EmailDeliveryResult,
 } from "./emailDelivery.js";
+import {
+  renderBrandedEmail,
+  renderEmailSection,
+  renderFinePrint,
+  renderNotice,
+  renderResponseTable,
+} from "./emailTemplate.js";
 import { writeOpsLog } from "./opsLog.js";
 import { LEADER_T_SHIRT_GUIDANCE } from "./leaderRegistration.js";
 import { WORKER_CONFIRMATION_GUIDANCE } from "./workerRegistration.js";
@@ -203,36 +210,43 @@ export function buildFamilyRegistrationConfirmationContent(
   ].join("\n");
 
   const receiptHtml = input.receiptLines
-    .map((line) => `<li>${escapeHtml(familyReceiptLineText(line))}</li>`)
+    .map((line, index) => `<tr>
+  <td style="padding:11px 12px;border-bottom:${index === input.receiptLines.length - 1 ? "0" : "1px solid #e5e0d7"};color:#1f2b36;font-size:14px;line-height:1.45;">${escapeHtml(familyReceiptLineText(line))}</td>
+</tr>`)
     .join("");
   const merchandiseHtml = input.merchandiseLines.length > 0
-    ? input.merchandiseLines.map((line) => {
+    ? input.merchandiseLines.map((line, index) => {
       const options = optionsSummary(line.selectedOptions);
       const summary =
         `${line.itemName}${options ? ` (${options})` : ""} × ${line.quantity}: ${formatMoney(line.lineTotalCents)}`;
-      return `<li>${escapeHtml(summary)}</li>`;
+      return `<tr><td style="padding:11px 12px;border-bottom:${index === input.merchandiseLines.length - 1 ? "0" : "1px solid #e5e0d7"};font-size:14px;line-height:1.45;">${escapeHtml(summary)}</td></tr>`;
     }).join("")
-    : "<li>No merchandise was ordered.</li>";
+    : "<tr><td style=\"padding:11px 12px;color:#657484;font-size:14px;\">No merchandise was ordered.</td></tr>";
   const campInformationHtml = campInformation
-    ? `<h2>Camp information</h2><p>${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`
+    ? renderEmailSection("Camp information", `<p style="margin:0;color:#3d5468;">${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`)
     : "";
-  const html = `<p>Hello ${escapeHtml(input.guardianName)},</p>
-<p>Your registration for <strong>${escapeHtml(input.campName)}</strong> is confirmed.</p>
-<h2>Registered campers</h2>
-<ul>${input.camperNames.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ul>
-<h2>Itemized pricing</h2>
-<ul>${receiptHtml}</ul>
-<p>Registration subtotal: ${escapeHtml(formatMoney(input.registrationSubtotalCents))}<br>
-${input.merchandiseSubtotalCents > 0 ? `Merchandise subtotal: ${escapeHtml(formatMoney(input.merchandiseSubtotalCents))}<br>\n` : ""}${input.discountCents > 0 ? `Discounts: -${escapeHtml(formatMoney(input.discountCents))}<br>\n` : ""}
-<strong>Total: ${escapeHtml(formatMoney(input.totalDueCents))}</strong></p>
-<p><strong>${escapeHtml(paymentText)}</strong></p>
-<h2>Merchandise summary</h2>
-<ul>${merchandiseHtml}</ul>
-<p><strong>Camp dates:</strong> ${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</p>
+  const totalsHtml = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin-top:12px;border-collapse:collapse;">
+  <tr><td style="padding:5px 4px;color:#556575;">Registration subtotal</td><td align="right" style="padding:5px 4px;">${escapeHtml(formatMoney(input.registrationSubtotalCents))}</td></tr>
+  ${input.merchandiseSubtotalCents > 0 ? `<tr><td style="padding:5px 4px;color:#556575;">Merchandise subtotal</td><td align="right" style="padding:5px 4px;">${escapeHtml(formatMoney(input.merchandiseSubtotalCents))}</td></tr>` : ""}
+  ${input.discountCents > 0 ? `<tr><td style="padding:5px 4px;color:#2d6b4e;">Discounts</td><td align="right" style="padding:5px 4px;color:#2d6b4e;">-${escapeHtml(formatMoney(input.discountCents))}</td></tr>` : ""}
+  <tr><td style="padding:10px 4px 4px;border-top:2px solid #d8d3c8;color:#1e2a35;font-size:17px;font-weight:700;">Total</td><td align="right" style="padding:10px 4px 4px;border-top:2px solid #d8d3c8;color:#1e2a35;font-size:17px;font-weight:700;">${escapeHtml(formatMoney(input.totalDueCents))}</td></tr>
+</table>`;
+  const html = renderBrandedEmail({
+    previewText: `Registration confirmed for ${input.camperNames.join(", ")}.`,
+    eyebrow: "Registration confirmed",
+    title: "You’re all set for camp",
+    campName: input.campName,
+    bodyHtml: `<p style="margin:0 0 10px;">Hello ${escapeHtml(input.guardianName)},</p>
+<p style="margin:0;">Your registration for <strong>${escapeHtml(input.campName)}</strong> is confirmed. We’re looking forward to welcoming your family!</p>
+${renderNotice(`<strong style="display:block;margin-bottom:3px;">${paid ? "Payment received" : "Payment due at check-in"}</strong>${escapeHtml(paymentText)}`, paid ? "success" : "accent")}
+${renderEmailSection("Registered campers", `<ul style="margin:0;padding-left:22px;">${input.camperNames.map((name) => `<li style="margin:4px 0;">${escapeHtml(name)}</li>`).join("")}</ul>`)}
+${renderEmailSection("Itemized pricing", `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f8f7f3;border:1px solid #e5e0d7;border-radius:8px;border-collapse:separate;border-spacing:0;overflow:hidden;">${receiptHtml}</table>${totalsHtml}`)}
+${renderEmailSection("Merchandise summary", `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f8f7f3;border:1px solid #e5e0d7;border-radius:8px;border-collapse:separate;border-spacing:0;overflow:hidden;">${merchandiseHtml}</table>`)}
+${renderEmailSection("Camp details", `<p style="margin:0;"><strong>Camp dates</strong><br><span style="color:#556575;">${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</span></p>`)}
 ${campInformationHtml}
-<h2>Arrival and check-in</h2>
-<p>${escapeHtml(arrival)}</p>
-<p><em>This email intentionally does not include a QR code or self-check-in link.</em></p>`;
+${renderNotice(`<strong style="display:block;margin-bottom:3px;">Arrival and check-in</strong>${escapeHtml(arrival)}`)}
+${renderFinePrint("For security, this email does not include a QR code or self-check-in link.")}`,
+  });
 
   return {
     subject: `Registration confirmed — ${input.campName}`,
@@ -292,24 +306,23 @@ export function buildWorkerRegistrationConfirmationContent(
     "",
     "This email intentionally does not include a QR code or self-check-in link.",
   ].join("\n");
-  const responseHtml = rows
-    .map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
-    .join("");
   const campInformationHtml = campInformation
-    ? `<h2>Camp information</h2><p>${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`
+    ? renderEmailSection("Camp information", `<p style="margin:0;color:#3d5468;">${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`)
     : "";
-  const html = `<p>Hello ${escapeHtml(input.responses.firstName)},</p>
-<p>Your worker registration for <strong>${escapeHtml(input.campName)}</strong> was received.</p>
-<h2>Copy of your submitted responses</h2>
-<table><tbody>${responseHtml}</tbody></table>
-<h2>Required follow-up</h2>
-<p><strong>Testimony and pastor recommendation:</strong> ${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.testimony)}</p>
-<p><strong>Rules expectations:</strong> ${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.rules)}</p>
-<p><strong>Camp dates:</strong> ${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</p>
+  const html = renderBrandedEmail({
+    previewText: `We received your worker registration for ${input.campName}.`,
+    eyebrow: "Registration received",
+    title: "Thank you for volunteering",
+    campName: input.campName,
+    bodyHtml: `<p style="margin:0 0 10px;">Hello ${escapeHtml(input.responses.firstName)},</p>
+<p style="margin:0;">Your worker registration for <strong>${escapeHtml(input.campName)}</strong> was received. Please keep this email as a copy of your submission.</p>
+${renderNotice(`<strong style="display:block;margin-bottom:5px;">Required follow-up</strong><strong>Testimony and pastor recommendation:</strong> ${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.testimony)}<br><br><strong>Rules expectations:</strong> ${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.rules)}`, "accent")}
+${renderEmailSection("Your submitted responses", renderResponseTable(rows))}
+${renderEmailSection("Camp details", `<p style="margin:0;"><strong>Camp dates</strong><br><span style="color:#556575;">${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</span></p>`)}
 ${campInformationHtml}
-<h2>Arrival and check-in</h2>
-<p>${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.arrival)}</p>
-<p><em>This email intentionally does not include a QR code or self-check-in link.</em></p>`;
+${renderNotice(`<strong style="display:block;margin-bottom:3px;">Arrival and check-in</strong>${escapeHtml(WORKER_CONFIRMATION_GUIDANCE.arrival)}`)}
+${renderFinePrint("For security, this email does not include a QR code or self-check-in link.")}`,
+  });
   return {
     subject: `Worker registration received — ${input.campName}`,
     text,
@@ -367,23 +380,23 @@ export function buildLeaderRegistrationConfirmationContent(
     "",
     "This email intentionally does not include a QR code or self-check-in link.",
   ].join("\n");
-  const responseHtml = rows
-    .map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
-    .join("");
   const campInformationHtml = campInformation
-    ? `<h2>Camp information</h2><p>${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`
+    ? renderEmailSection("Camp information", `<p style="margin:0;color:#3d5468;">${escapeHtml(campInformation).replace(/\r?\n/g, "<br>")}</p>`)
     : "";
-  const html = `<p>Hello ${escapeHtml(input.responses.firstName)},</p>
-<p>Your leader registration for <strong>${escapeHtml(input.campName)}</strong> was received.</p>
-<h2>Copy of your submitted responses</h2>
-<table><tbody>${responseHtml}</tbody></table>
-<h2>T-shirt information</h2>
-<p>${escapeHtml(LEADER_T_SHIRT_GUIDANCE)}</p>
-<p><strong>Camp dates:</strong> ${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</p>
+  const html = renderBrandedEmail({
+    previewText: `We received your leader registration for ${input.campName}.`,
+    eyebrow: "Registration received",
+    title: "Thank you for serving as a leader",
+    campName: input.campName,
+    bodyHtml: `<p style="margin:0 0 10px;">Hello ${escapeHtml(input.responses.firstName)},</p>
+<p style="margin:0;">Your leader registration for <strong>${escapeHtml(input.campName)}</strong> was received. Please keep this email as a copy of your submission.</p>
+${renderNotice(`<strong style="display:block;margin-bottom:3px;">T-shirt information</strong>${escapeHtml(LEADER_T_SHIRT_GUIDANCE)}`, "accent")}
+${renderEmailSection("Your submitted responses", renderResponseTable(rows))}
+${renderEmailSection("Camp details", `<p style="margin:0;"><strong>Camp dates</strong><br><span style="color:#556575;">${escapeHtml(campDateRange(input.campStartDate, input.campEndDate))}</span></p>`)}
 ${campInformationHtml}
-<h2>Arrival and check-in</h2>
-<p>${escapeHtml(arrival)}</p>
-<p><em>This email intentionally does not include a QR code or self-check-in link.</em></p>`;
+${renderNotice(`<strong style="display:block;margin-bottom:3px;">Arrival and check-in</strong>${escapeHtml(arrival)}`)}
+${renderFinePrint("For security, this email does not include a QR code or self-check-in link.")}`,
+  });
   return {
     subject: `Leader registration received — ${input.campName}`,
     text,

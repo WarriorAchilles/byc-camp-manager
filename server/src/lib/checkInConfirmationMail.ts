@@ -2,6 +2,11 @@ import {
   deliverEmail,
   escapeHtml,
 } from "./emailDelivery.js";
+import {
+  renderBrandedEmail,
+  renderEmailSection,
+  renderNotice,
+} from "./emailTemplate.js";
 
 export type CheckInMailPayload = {
   to: string;
@@ -34,10 +39,16 @@ export function buildCheckInConfirmationContent(payload: CheckInMailPayload): {
     "",
     "If you have questions, contact the camp office.",
   ].join("\n");
-  const html = `<p><strong>${escapeHtml(payload.camperFullName)}</strong> has been checked in.</p>
-<p><strong>Dorm assignment:</strong> ${escapeHtml(payload.dormLabel)}</p>
-<p><strong>Check-in date and time (UTC):</strong> ${escapeHtml(when)}</p>
-<p>If you have questions, contact the camp office.</p>`;
+  const html = renderBrandedEmail({
+    previewText: `${payload.camperFullName} has completed check-in.`,
+    eyebrow: "Check-in complete",
+    title: `${payload.camperFullName} is checked in`,
+    bodyHtml: `<p style="margin:0 0 18px;">Hello,</p>
+<p style="margin:0;">We’re glad to let you know that <strong>${escapeHtml(payload.camperFullName)}</strong> has arrived and completed camp check-in.</p>
+${renderNotice(`<span style="display:block;margin-bottom:4px;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Dorm assignment</span><strong style="font-size:21px;line-height:1.35;">${escapeHtml(payload.dormLabel)}</strong>`, "success")}
+${renderEmailSection("Check-in details", `<p style="margin:0;"><strong>Date and time (UTC)</strong><br><span style="color:#556575;">${escapeHtml(when)}</span></p>`)}
+<p style="margin:22px 0 0;color:#556575;font-size:14px;">If you have questions, please contact the camp office.</p>`,
+  });
   return { subject, text, html };
 }
 

@@ -67,9 +67,8 @@ describe("shared email delivery", () => {
     process.env.SMTP_USER = "apikey";
     process.env.SMTP_PASS = "test-only-secret";
     process.env.EMAIL_FROM = "verified@example.test";
-    createTransportMock.mockReturnValue({
-      sendMail: vi.fn().mockResolvedValue({ messageId: "provider-message-123" }),
-    });
+    const sendMailMock = vi.fn().mockResolvedValue({ messageId: "provider-message-123" });
+    createTransportMock.mockReturnValue({ sendMail: sendMailMock });
     vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     const result = await deliverEmail({
@@ -79,6 +78,14 @@ describe("shared email delivery", () => {
     });
 
     expect(result).toEqual({ status: "sent", providerMessageId: "provider-message-123" });
+    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: [expect.objectContaining({
+        filename: "byc-logo.jpg",
+        cid: "byc-logo@believersyouthcamp.com",
+        contentType: "image/jpeg",
+        contentDisposition: "inline",
+      })],
+    }));
   });
 
   it("returns and logs only a safe code when the provider fails", async () => {
