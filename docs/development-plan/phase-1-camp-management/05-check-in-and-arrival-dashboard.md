@@ -5,36 +5,36 @@
 **Product decisions (confirmed — no longer blocking):**
 
 - Check-in confirmation email (sent to the camper’s parent/guardian) must include: **camper full name**, **dorm assignment** (building/room label as shown in admin), and **date and time of check-in** (same instant as persisted on the camper, e.g. `checked_in_at`).
-- **Local development** must send through **[SendGrid](https://sendgrid.com)** (not only console logging), so delivery is realistic and visible in SendGrid **Activity** (and in the recipient mailbox). Optional: keep a `log` or `disabled` transport for CI/tests without credentials.
+- **Local development** must send through **Amazon SES SMTP** (not only console logging), so delivery is realistic and visible in the SES sending metrics and the recipient mailbox. Keep the `log` transport for CI/tests without credentials.
 
-**SendGrid setup (you do this before re-running the build step for email work):**
+**Amazon SES setup (you do this before re-running the build step for email work):**
 
-The implementation will use **SMTP** against SendGrid’s relay ([SMTP relay docs](https://docs.sendgrid.com/for-developers/sending-email/getting-started-smtp)).
+The implementation uses **SMTP** against the regional Amazon SES endpoint ([SES SMTP documentation](https://docs.aws.amazon.com/ses/latest/dg/send-email-smtp.html)).
 
-1. Create or sign in to a **Twilio SendGrid** account.
-2. **Sender authentication**: complete **Single Sender Verification** (quickest for dev) or **Domain Authentication** (closer to production). The address or domain you verify must match what you put in `EMAIL_FROM`.
-3. **API key**: Settings → **API Keys** → create a key with permission to send mail (e.g. “Restricted Access” with **Mail Send**). Treat it like a password.
-4. **SMTP credentials** (fixed for SendGrid; the secret is the API key):
-   - Host: `smtp.sendgrid.net`
+1. Open **Amazon SES** in the AWS region from which the application will send.
+2. **Sender authentication**: create and verify a domain identity, publish the generated DKIM DNS records, and use an address covered by that identity for `EMAIL_FROM`.
+3. **Production access**: request removal from the SES sandbox before sending to addresses that are not verified SES identities.
+4. **SMTP credentials**: generate credentials under SES **SMTP settings**. These credentials are region-specific and are not ordinary AWS access keys.
+   - Host: `email-smtp.<region>.amazonaws.com` (for example, `email-smtp.us-east-2.amazonaws.com`)
    - Port: `587` (recommended) or `465`
-   - Username: the literal string **`apikey`**
-   - Password: your **API key** (not your SendGrid login password)
+   - Username: the generated **SES SMTP username**
+   - Password: the generated **SES SMTP password**
 5. Copy host, port, username, password, and your chosen **`EMAIL_FROM`** into `server/.env` when the agent adds the variables (see **Environment variables for email** below). Do not commit real secrets.
 
-**Note:** SendGrid delivers **real** email to the guardian address on check-in. For local testing, use campers whose `guardianEmail` is an address you control, or watch **Activity** in the SendGrid dashboard for bounces and drops.
+**Note:** SES delivers **real** email to the guardian address on check-in. For local testing, use campers whose `guardianEmail` is an address you control. While the account remains in the SES sandbox, recipients must also be verified identities.
 
 **Environment variables for email** (to be documented in `server/.env.example` when implemented):
 
 | Variable          | Purpose                                                                                  |
 | ----------------- | ---------------------------------------------------------------------------------------- |
-| `EMAIL_TRANSPORT` | `smtp` for SendGrid (or any SMTP relay); `log` (or similar) for tests/CI without network |
-| `SMTP_HOST`       | e.g. `smtp.sendgrid.net`                                                                 |
+| `EMAIL_TRANSPORT` | `smtp` for SES delivery; `log` for tests/CI without network                              |
+| `SMTP_HOST`       | Regional endpoint, e.g. `email-smtp.us-east-2.amazonaws.com`                            |
 | `SMTP_PORT`       | e.g. `587`                                                                               |
-| `SMTP_USER`       | For SendGrid: always `apikey`                                                            |
-| `SMTP_PASS`       | For SendGrid: API key with Mail Send                                                     |
-| `EMAIL_FROM`      | Verified sender (must match SendGrid single sender or domain auth)                       |
+| `SMTP_USER`       | Region-specific SES SMTP username                                                        |
+| `SMTP_PASS`       | Region-specific SES SMTP password                                                        |
+| `EMAIL_FROM`      | Address covered by a verified SES identity in the sending region                        |
 
-Other SMTP providers can reuse the same variables with their own host, port, user, and password.
+The shared Nodemailer transport remains provider-neutral even though Amazon SES is the configured production provider.
 
 ## Spec References
 
@@ -64,7 +64,7 @@ Deliver the arrival-day workflow for camp admins: scan or search attendees, revi
 - [ ] Add worker and dorm leader check-in by name search, including dorm assignment display.
 - [ ] Persist check-in status and timestamp for campers, workers, and dorm leaders.
 - [ ] Build a check-in dashboard showing registered versus checked-in campers, registered versus checked-in workers and dorm leaders, and unpaid registrations remaining.
-- [ ] Send or queue the camper check-in confirmation email after a camper transitions to checked in (guardian address). Body must include **camper full name**, **dorm assignment** (or explicit “unassigned” if none), and **check-in date/time** matching persisted `checked_in_at`, in a readable format. Use **SMTP** (SendGrid relay) when `EMAIL_TRANSPORT=smtp` and credentials are set; use non-network transport (e.g. log) in CI/tests.
+- [ ] Send or queue the camper check-in confirmation email after a camper transitions to checked in (guardian address). Body must include **camper full name**, **dorm assignment** (or explicit “unassigned” if none), and **check-in date/time** matching persisted `checked_in_at`, in a readable format. Use the **Amazon SES SMTP relay** when `EMAIL_TRANSPORT=smtp` and credentials are set; use the non-network `log` transport in CI/tests.
 - [ ] Add tests for QR lookup, manual search, cash payment updates, duplicate check-in handling, worker check-in, dorm leader check-in, dashboard counts, and email queueing.
 
 ## Verification
@@ -76,15 +76,15 @@ Deliver the arrival-day workflow for camp admins: scan or search attendees, revi
 - [ ] Search for a camper without a QR code and complete the same check-in flow.
 - [ ] Mark an unpaid camper as paid cash during check-in and confirm dashboard unpaid counts update.
 - [ ] Check in a worker and a dorm leader by name search.
-- [ ] With SendGrid credentials in `server/.env`, complete a camper check-in and confirm delivery (guardian inbox and/or SendGrid **Activity**) with **name**, **dorm assignment**, and **check-in timestamp**. Confirm CI/tests use non-SMTP transport without requiring secrets.
+- [ ] With SES SMTP credentials in `server/.env`, complete a camper check-in and confirm delivery to a controlled guardian inbox with **name**, **dorm assignment**, and **check-in timestamp**. Confirm CI/tests use the non-network transport without requiring secrets.
 
 ## Completion Criteria
 
 - [ ] Camp admins can complete arrival-day check-in from mobile and desktop form factors.
 - [ ] QR and manual check-in paths reach the same persisted result.
 - [ ] Dashboard counts update from real check-in and payment data.
-- [ ] Check-in confirmation email is implemented with the confirmed fields; local dev uses SendGrid SMTP when configured; missing SMTP credentials do not crash check-in (degrade gracefully or log per transport design).
+- [ ] Check-in confirmation email is implemented with the confirmed fields; local dev uses Amazon SES SMTP when configured; missing SMTP credentials do not crash check-in (degrade gracefully or log per transport design).
 
 ## Follow-ups
 
-- Align production SendGrid domain authentication and shared “from” branding with **phase 2** registration-email work and camp ops; this step still expects SendGrid (or compatible SMTP) for local dev delivery.
+- Align the production SES domain identity, DKIM configuration, and shared “from” branding with **phase 2** registration-email work and camp operations.

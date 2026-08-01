@@ -58,7 +58,7 @@ The registration system may not be used in the first year of operation. The admi
 | Payments | Stripe                                                |
 | Hosting  | AWS (specific services TBD)                           |
 | QR Codes | Camp self-check-in QR generated server-side and posted at the physical check-in location; not emailed to registrants |
-| Email    | Transactional email service (e.g., AWS SES, SendGrid) |
+| Email    | Amazon SES via SMTP                                  |
 
 ### Key Technical Considerations
 

@@ -6,7 +6,7 @@ This document describes how to run, build, migrate, deploy, back up, and observe
 
 - **Web UI**: React SPA (`client`), built to static files under `client/dist`.
 - **API**: Node.js + Express (`server`), Prisma ORM, PostgreSQL.
-- **Email**: one shared Nodemailer delivery service (`server/src/lib/emailDelivery.ts`) for check-in and registration confirmations. Real delivery uses the SendGrid SMTP relay; tests/CI use a non-network, metadata-only log transport.
+- **Email**: one shared Nodemailer delivery service (`server/src/lib/emailDelivery.ts`) for check-in and registration confirmations. Real delivery uses the Amazon SES SMTP relay; tests/CI use a non-network, metadata-only log transport.
 
 Further product context: `docs/specs.md`.
 
@@ -27,19 +27,21 @@ Further product context: `docs/specs.md`.
 | `STRIPE_SECRET_KEY` | test restricted key (`rk_test_...`) preferred | test/staging restricted key | live restricted key (`rk_live_...`) preferred | Server-only Stripe API key; never expose to client code or logs |
 | `STRIPE_WEBHOOK_SECRET` | from `stripe listen` | staging webhook signing secret | production webhook signing secret | Required to verify `checkout.session.completed` webhook events |
 | `EMAIL_TRANSPORT` | `log` (default) | `smtp` | `smtp` | `smtp` sends all check-in, family-registration, and worker-registration confirmations; `log` performs no network send and records safe metadata/status only |
-| `EMAIL_FROM` | n/a if `log` | SendGrid-verified sender | same | Required for `smtp`; must use a verified single sender or authenticated domain |
-| `SMTP_HOST` | n/a if `log` | `smtp.sendgrid.net` | same | Shared by every transactional email type |
+| `EMAIL_FROM` | n/a if `log` | SES-verified sender/domain | same | Required for `smtp`; the identity must be verified in the SES sending region |
+| `SMTP_HOST` | n/a if `log` | `email-smtp.<region>.amazonaws.com` | same | Regional SES SMTP endpoint shared by every transactional email type |
 | `SMTP_PORT` | n/a if `log` | `587` | same | STARTTLS; use `465` only for intentionally configured implicit TLS |
-| `SMTP_USER` | n/a if `log` | `apikey` | same | SendGrid requires this literal username |
-| `SMTP_PASS` | n/a if `log` | secret store | same | SendGrid API key restricted to **Mail Send**; never commit or log it |
+| `SMTP_USER` | n/a if `log` | secret store | same | Region-specific username generated under SES SMTP settings |
+| `SMTP_PASS` | n/a if `log` | secret store | same | Region-specific SES SMTP password; never commit or log it |
 
 Never commit real `.env` files. Use your AWS account secret store, CI OIDC, or platform env configuration (see Human Tasks in step 07 of the development plan).
 
-### SendGrid transactional email
+### Amazon SES transactional email
 
-The same SMTP settings deliver camper check-in confirmations and family/worker registration confirmations. Configure sender authentication in SendGrid, create a production-specific API key with only **Mail Send** permission, and store `SMTP_PASS` in the deployment secret store. Delivery results and the Nodemailer provider message identifier (when supplied) are recorded in `email_delivery_attempts` for registration emails; the public registration API never returns that identifier.
+The same SMTP settings deliver camper check-in confirmations and family/worker registration confirmations. In the AWS region used for sending, create and verify an SES domain identity, publish the generated DKIM records, and request production access so the application can send to unverified recipients. Generate SES SMTP credentials for that region and store both `SMTP_USER` and `SMTP_PASS` in the deployment secret store. SES SMTP credentials are not ordinary AWS access keys and are region-specific.
 
-`EMAIL_TRANSPORT=log` is intended for automated tests and CI. It does not connect to SendGrid and logs only the template key, transport, and status. Recipient addresses, subjects, bodies, medical/legal data, and submitted worker responses must not be written to application logs.
+Set `SMTP_HOST` to the regional endpoint, such as `email-smtp.us-east-2.amazonaws.com`, and set `EMAIL_FROM` to an address covered by the verified identity. Delivery results and the Nodemailer provider message identifier (when supplied) are recorded in `email_delivery_attempts` for registration emails; the public registration API never returns that identifier.
+
+`EMAIL_TRANSPORT=log` is intended for automated tests and CI. It does not connect to SES and logs only the template key, transport, and status. Recipient addresses, subjects, bodies, medical/legal data, and submitted worker responses must not be written to application logs.
 
 ### Stripe Checkout for self check-in
 
