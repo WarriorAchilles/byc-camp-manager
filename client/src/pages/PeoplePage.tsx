@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiJson, apiUrl, type ApiHttpError } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
@@ -11,6 +11,12 @@ import {
   type AgeGroupBracket,
 } from "../ageGroups";
 import { resolveCampYearSelection } from "../campYearSelection";
+import {
+  parsePeopleListFilters,
+  type PeopleCheckInFilter,
+  type PeopleListKind,
+  type PeoplePaymentFilter,
+} from "../peopleListFilters";
 
 type CampYearOption = {
   id: string;
@@ -119,10 +125,6 @@ type CheckInStatus = "checked_in" | "not_checked_in";
 
 type PeopleGenderFilter = "" | "male" | "female";
 
-type PeopleCheckInFilter = "" | CheckInStatus;
-
-type PeoplePaymentFilter = "" | "paid" | "unpaid";
-
 function formatUsdFromCents(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) {
     return "—";
@@ -199,8 +201,6 @@ type PeoplePageProps = {
 
 type AddPersonKind = "camper" | "worker" | "leader";
 
-type PeopleListKind = "camper" | "worker" | "dorm_leader";
-
 type PersonToDelete = {
   id: string;
   firstName: string;
@@ -219,13 +219,17 @@ type PersonToEdit = {
 export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactElement {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialListFilters = useMemo(() => parsePeopleListFilters(searchParams), [searchParams]);
   const superAdmin = user?.role === "super_admin";
   const canAddPeople = superAdmin;
   const [addPersonKind, setAddPersonKind] = useState<AddPersonKind>("camper");
-  const [peopleListKind, setPeopleListKind] = useState<PeopleListKind>("camper");
+  const [peopleListKind, setPeopleListKind] = useState<PeopleListKind>(
+    initialListFilters.peopleListKind,
+  );
 
   const [campYears, setCampYears] = useState<CampYearOption[]>([]);
-  const [campYearId, setCampYearId] = useState<string>("");
+  const [campYearId, setCampYearId] = useState<string>(initialListFilters.campYearId);
   const [campers, setCampers] = useState<CamperRow[]>([]);
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [workerRegistrationReviews, setWorkerRegistrationReviews] = useState<WorkerRegistrationReview[]>([]);
@@ -250,8 +254,12 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
   const [resolvingWorkerReviewId, setResolvingWorkerReviewId] = useState<string | null>(null);
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState<PeopleGenderFilter>("");
-  const [checkInFilter, setCheckInFilter] = useState<PeopleCheckInFilter>("");
-  const [paymentFilter, setPaymentFilter] = useState<PeoplePaymentFilter>("");
+  const [checkInFilter, setCheckInFilter] = useState<PeopleCheckInFilter>(
+    initialListFilters.checkInFilter,
+  );
+  const [paymentFilter, setPaymentFilter] = useState<PeoplePaymentFilter>(
+    initialListFilters.paymentFilter,
+  );
   const [nameSearch, setNameSearch] = useState("");
   const deletePersonConfirmRef = useRef<HTMLButtonElement | null>(null);
 
@@ -433,10 +441,13 @@ export function PeoplePage({ mode = "list" }: PeoplePageProps): React.ReactEleme
         if (checkInFilter && camper.checkInStatus !== checkInFilter) {
           return false;
         }
-        if (paymentFilter === "paid" && camper.paymentStatus === "unpaid") {
+        const hasOutstandingBalance = camper.feeDueCents === null
+          ? camper.paymentStatus === "unpaid"
+          : Math.max(camper.feeDueCents - (camper.feePaidCents ?? 0), 0) > 0;
+        if (paymentFilter === "paid" && hasOutstandingBalance) {
           return false;
         }
-        if (paymentFilter === "unpaid" && camper.paymentStatus !== "unpaid") {
+        if (paymentFilter === "unpaid" && !hasOutstandingBalance) {
           return false;
         }
         return filterByAgeGroup(camper.dateOfBirth);

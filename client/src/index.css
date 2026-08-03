@@ -1003,6 +1003,24 @@ tbody tr:hover td {
   background: var(--surface);
 }
 
+.check-in-stat-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.check-in-stat-link:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.check-in-stat-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-slate-600) 35%, transparent);
+  outline-offset: 2px;
+}
+
 .check-in-stat-warn {
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
   background: color-mix(in srgb, var(--danger) 6%, var(--surface));

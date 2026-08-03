@@ -1,8 +1,10 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiJson } from "../api";
 import { useAuth } from "../auth";
 import { CampYearReadOnly } from "../components/CampYearReadOnly";
 import { resolveCampYearSelection } from "../campYearSelection";
+import { peopleListUrl } from "../peopleListFilters";
 
 type CampYearOption = {
   id: string;
@@ -447,28 +449,56 @@ export function CheckInPage(): React.ReactElement {
 
       {summary ? (
         <section className="check-in-summary-grid" aria-label="Arrival progress">
-          <div className="check-in-stat">
+          <Link
+            className="check-in-stat check-in-stat-link"
+            to={peopleListUrl({
+              campYearId,
+              peopleListKind: "camper",
+              checkInFilter: "checked_in",
+            })}
+          >
             <span className="check-in-stat-value">
               {summary.campersCheckedIn} / {summary.campersRegistered}
             </span>
             <span className="check-in-stat-label">Campers checked in</span>
-          </div>
-          <div className="check-in-stat">
+          </Link>
+          <Link
+            className="check-in-stat check-in-stat-link"
+            to={peopleListUrl({
+              campYearId,
+              peopleListKind: "worker",
+              checkInFilter: "checked_in",
+            })}
+          >
             <span className="check-in-stat-value">
               {summary.workersCheckedIn} / {summary.workersRegistered}
             </span>
             <span className="check-in-stat-label">Workers checked in</span>
-          </div>
-          <div className="check-in-stat">
+          </Link>
+          <Link
+            className="check-in-stat check-in-stat-link"
+            to={peopleListUrl({
+              campYearId,
+              peopleListKind: "dorm_leader",
+              checkInFilter: "checked_in",
+            })}
+          >
             <span className="check-in-stat-value">
               {summary.dormLeadersCheckedIn} / {summary.dormLeadersRegistered}
             </span>
             <span className="check-in-stat-label">Dorm leaders checked in</span>
-          </div>
-          <div className="check-in-stat check-in-stat-warn">
+          </Link>
+          <Link
+            className="check-in-stat check-in-stat-warn check-in-stat-link"
+            to={peopleListUrl({
+              campYearId,
+              peopleListKind: "camper",
+              paymentFilter: "unpaid",
+            })}
+          >
             <span className="check-in-stat-value">{summary.unpaidCampersRemaining}</span>
             <span className="check-in-stat-label">Unpaid campers</span>
-          </div>
+          </Link>
         </section>
       ) : null}
 
