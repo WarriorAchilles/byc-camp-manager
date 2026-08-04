@@ -233,6 +233,80 @@ npx cdk diff `
 
 ### Post-deploy activation and manual operations
 
+From the repository root, the seasonal controller can be inspected and operated
+without manually looking up CloudFormation outputs or quoting JSON:
+
+```powershell
+npm run season:status
+npm run season:wake
+npm run season:hibernate
+```
+
+The wake and hibernate commands refuse to run while another controller execution
+is active or while the mode is transitional. After confirming that no execution
+is running and inspecting the failed execution, recover an abandoned transition
+explicitly with one of these commands:
+
+```powershell
+npm run season:recover:wake
+npm run season:recover:hibernate
+```
+
+The recovery commands change `WAKING`, `HIBERNATING`, or `MAINTENANCE` to
+`ERROR` before starting the requested operation. To target a different stack,
+region, or AWS profile, pass PowerShell parameters after `--`, for example:
+
+```powershell
+npm run season:status -- -StackName BycCampDevStack -Region us-east-2 -Profile production
+```
+
+#### Using the AWS Step Functions console
+
+Use the console when you need to watch each controller state or investigate a
+failed operation:
+
+1. Sign in to the intended AWS account and select the `us-east-2` region.
+2. Open **CloudFormation**, select `BycCampDevStack`, and open **Outputs**.
+3. Copy the `SeasonalControllerStateMachineArn` output.
+4. Open **Step Functions** > **State machines** and select the state machine with
+   that ARN.
+5. Check the **Executions** list. Do not start another operation while an
+   execution has the `Running` status.
+6. Choose **Start execution**, leave the generated execution name or enter a
+   unique one, and paste one of the inputs below into the JSON input field.
+7. Choose **Start execution**. Use **Graph view** and **Event history** on the
+   execution page to monitor progress or locate the failed state.
+
+Wake the system:
+
+```json
+{
+  "operation": "WAKE",
+  "source": "operator"
+}
+```
+
+Hibernate the system:
+
+```json
+{
+  "operation": "HIBERNATE",
+  "source": "operator"
+}
+```
+
+The controller also accepts `MAINTENANCE` and `RECONCILE` as operation values.
+`WAKE` normally transitions `HIBERNATED` to `WAKING` and then `ACTIVE`.
+`HIBERNATE` normally transitions `ACTIVE` to `HIBERNATING` and then
+`HIBERNATED`. Operation names and stored modes are deliberately different: do
+not use `WAKING` or `HIBERNATING` as the operation input.
+
+If a previous execution stopped in `WAKING`, `HIBERNATING`, or `MAINTENANCE`, a
+new console execution is intentionally skipped. First verify that no execution
+is running, inspect the interrupted execution, and correct its failure. Then use
+the explicit npm recovery command above, or follow the manual `ERROR` recovery
+procedure below. Never edit the parameter while an execution is still running.
+
 Confirm the SNS subscription email, then run reconciliation:
 
 ```powershell
@@ -244,12 +318,9 @@ $outputs = aws cloudformation describe-stacks `
 
 $stateMachineArn = ($outputs | Where-Object OutputKey -eq "SeasonalControllerStateMachineArn").OutputValue
 $modeParameter = ($outputs | Where-Object OutputKey -eq "SeasonalModeParameterName").OutputValue
-$inputJson = @{ operation = "RECONCILE"; source = "operator" } |
-  ConvertTo-Json -Compress
-
 aws stepfunctions start-execution `
   --state-machine-arn $stateMachineArn `
-  --input $inputJson `
+  --input '{\"operation\":\"RECONCILE\",\"source\":\"operator\"}' `
   --region us-east-2
 
 aws ssm get-parameter --name $modeParameter --region us-east-2

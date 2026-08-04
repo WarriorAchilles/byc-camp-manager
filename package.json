@@ -17,7 +17,12 @@
     "db:migrate": "npm run db:migrate -w server",
     "db:seed": "npm run db:seed -w server",
     "db:seed:prod": "npm run db:seed:prod -w server",
-    "db:generate": "npm run db:generate -w server"
+    "db:generate": "npm run db:generate -w server",
+    "season:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seasonal-operation.ps1 -Operation STATUS",
+    "season:wake": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seasonal-operation.ps1 -Operation WAKE",
+    "season:hibernate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seasonal-operation.ps1 -Operation HIBERNATE",
+    "season:recover:wake": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seasonal-operation.ps1 -Operation WAKE -Recover",
+    "season:recover:hibernate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seasonal-operation.ps1 -Operation HIBERNATE -Recover"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
