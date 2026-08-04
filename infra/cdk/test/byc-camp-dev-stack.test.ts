@@ -298,6 +298,51 @@ describe("BYC seasonal controller", () => {
     }
   });
 
+  it("uses Step Functions response casing and guards missing RDS status paths", () => {
+    const template = Template.fromStack(createStack());
+    const stateMachines = Object.values(
+      template.findResources("AWS::StepFunctions::StateMachine"),
+    );
+    const definition = JSON.parse(stateMachines[0].Properties.DefinitionString) as {
+      States: Record<
+        string,
+        { Type: string; Choices?: Array<Record<string, unknown>> }
+      >;
+    };
+    const rdsCheckStateNames = [
+      "Wake RDS check",
+      "Hibernate RDS check",
+      "Maintenance RDS start check",
+      "Maintenance RDS stop check",
+    ];
+
+    for (const stateName of rdsCheckStateNames) {
+      expect(definition.States[stateName].Choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            Variable: "$.rds.DbInstances[0].DbInstanceStatus",
+            IsPresent: false,
+            Next: "Compensate close traffic",
+          }),
+        ]),
+      );
+    }
+
+    expect(definition.States["Compensate RDS choice"].Choices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Variable: "$.compensationRds.DbInstances[0].DbInstanceStatus",
+          IsPresent: false,
+          Next: "Set error mode",
+        }),
+      ]),
+    );
+
+    const serializedDefinition = JSON.stringify(definition);
+    expect(serializedDefinition).not.toContain(".DBInstances");
+    expect(serializedDefinition).not.toContain(".DBInstanceStatus");
+  });
+
   it("validates human-readable seasonal context", () => {
     expect(() => createStack({ seasonWakeMonthDay: "02-31" })).toThrow(
       "seasonWakeMonthDay must be a valid calendar date",

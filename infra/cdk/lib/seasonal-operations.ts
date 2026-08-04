@@ -151,6 +151,7 @@ function addEnsureRdsAvailable(
   prefix: string,
   successNext: string,
 ): string {
+  const statusPath = "$.rds.DbInstances[0].DbInstanceStatus";
   const initialize = `${prefix} initialize`;
   const describe = `${prefix} describe`;
   const choice = `${prefix} check`;
@@ -172,7 +173,12 @@ function addEnsureRdsAvailable(
     Type: "Choice",
     Choices: [
       {
-        Variable: "$.rds.DBInstances[0].DBInstanceStatus",
+        Variable: statusPath,
+        IsPresent: false,
+        Next: FAILURE_STATE,
+      },
+      {
+        Variable: statusPath,
         StringEquals: "available",
         Next: successNext,
       },
@@ -182,7 +188,7 @@ function addEnsureRdsAvailable(
         Next: FAILURE_STATE,
       },
       {
-        Variable: "$.rds.DBInstances[0].DBInstanceStatus",
+        Variable: statusPath,
         StringEquals: "stopped",
         Next: start,
       },
@@ -203,6 +209,7 @@ function addEnsureRdsStopped(
   prefix: string,
   successNext: string,
 ): string {
+  const statusPath = "$.rds.DbInstances[0].DbInstanceStatus";
   const initialize = `${prefix} initialize`;
   const describe = `${prefix} describe`;
   const choice = `${prefix} check`;
@@ -224,7 +231,12 @@ function addEnsureRdsStopped(
     Type: "Choice",
     Choices: [
       {
-        Variable: "$.rds.DBInstances[0].DBInstanceStatus",
+        Variable: statusPath,
+        IsPresent: false,
+        Next: FAILURE_STATE,
+      },
+      {
+        Variable: statusPath,
         StringEquals: "stopped",
         Next: successNext,
       },
@@ -234,7 +246,7 @@ function addEnsureRdsStopped(
         Next: FAILURE_STATE,
       },
       {
-        Variable: "$.rds.DBInstances[0].DBInstanceStatus",
+        Variable: statusPath,
         StringEquals: "available",
         Next: stop,
       },
@@ -583,7 +595,12 @@ function buildStateMachineDefinition(): Record<string, unknown> {
     Type: "Choice",
     Choices: [
       {
-        Variable: "$.compensationRds.DBInstances[0].DBInstanceStatus",
+        Variable: "$.compensationRds.DbInstances[0].DbInstanceStatus",
+        IsPresent: false,
+        Next: "Set error mode",
+      },
+      {
+        Variable: "$.compensationRds.DbInstances[0].DbInstanceStatus",
         StringEquals: "available",
         Next: "Compensate stop RDS",
       },
