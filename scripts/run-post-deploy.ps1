@@ -106,20 +106,34 @@ function Invoke-EcsOneOffTask {
     )
   } | ConvertTo-Json -Compress -Depth 10
 
-  $runTaskResult = Invoke-AwsJson -Arguments @(
-    "ecs",
-    "run-task",
-    "--cluster",
-    $ClusterName,
-    "--launch-type",
-    "FARGATE",
-    "--task-definition",
-    $TaskDefinitionArn,
-    "--network-configuration",
-    $NetworkConfiguration,
-    "--overrides",
-    $overrides
-  )
+  # Windows PowerShell can strip the quotes from JSON passed directly to a
+  # native executable. Give the AWS CLI a UTF-8 file instead so --overrides is
+  # parsed consistently across Windows PowerShell and PowerShell 7.
+  $overridesFile = [System.IO.Path]::GetTempFileName()
+  try {
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($overridesFile, $overrides, $utf8WithoutBom)
+    $overridesUri = "file://$($overridesFile -replace '\\', '/')"
+
+    $runTaskResult = Invoke-AwsJson -Arguments @(
+      "ecs",
+      "run-task",
+      "--cluster",
+      $ClusterName,
+      "--launch-type",
+      "FARGATE",
+      "--task-definition",
+      $TaskDefinitionArn,
+      "--network-configuration",
+      $NetworkConfiguration,
+      "--overrides",
+      $overridesUri
+    )
+  } finally {
+    if (Test-Path -LiteralPath $overridesFile) {
+      Remove-Item -LiteralPath $overridesFile -Force
+    }
+  }
 
   if ($runTaskResult.failures -and $runTaskResult.failures.Count -gt 0) {
     $failureMessage = $runTaskResult.failures | ConvertTo-Json -Compress -Depth 10
